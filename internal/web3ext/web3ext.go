@@ -569,6 +569,22 @@ web3._extend({
 			call: 'eth_getLogs',
 			params: 1,
 		}),
+		new web3._extend.Method({
+			name: 'callBundle',
+			call: 'eth_callBundle',
+			params: 1,
+		}),
+		new web3._extend.Method({
+			name: 'multicall',
+			call: 'eth_multicall',
+			params: 2,
+			inputFormatter: [null, web3._extend.formatters.inputBlockNumberFormatter]
+		}),
+		new web3._extend.Method({
+			name: 'getCompactBlock',
+			call: 'eth_getCompactBlock',
+			params: 2,
+		}),
 	],
 	properties: [
 		new web3._extend.Property({
