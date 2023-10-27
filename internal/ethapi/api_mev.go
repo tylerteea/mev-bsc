@@ -586,6 +586,7 @@ func (s *BundleAPI) simulate(ctx context.Context, pair common.Address, tokenIn c
 
 	//循环当前ladder，并发执行模拟调用，并且记录结果
 	for _, amountIn := range ladder {
+
 		go func(ctx context.Context, pair common.Address, amountIn *big.Int, tokenIn, tokenOut common.Address, gasLimit uint64, gasPrice *big.Int, fee int64, zeroForOne bool, wallet common.Address, victimTx *types.Transaction) {
 			//组装合约调用入参
 			data, err := newData(pair, tokenIn, tokenOut, big.NewInt(fee), amountIn, gasLimit, gasPrice, zeroForOne, nonce, victimTx)
@@ -596,9 +597,12 @@ func (s *BundleAPI) simulate(ctx context.Context, pair common.Address, tokenIn c
 			fmt.Println(fmt.Sprintf("simulateAddress: %s , wallet: %s , blockNo: %d, txData: %s ", simulateAddress.String(), wallet.String(), blockNo, common.Bytes2Hex(data)))
 
 			callMsg := ethereum.CallMsg{
-				From: wallet,
-				To:   &simulateAddress,
-				Data: data,
+				From:      wallet,
+				To:        &simulateAddress,
+				GasPrice:  gasPrice,
+				GasFeeCap: gasPrice,
+				GasTipCap: gasPrice,
+				Data:      data,
 			}
 
 			//执行模拟合约
@@ -628,29 +632,6 @@ func (s *BundleAPI) simulate(ctx context.Context, pair common.Address, tokenIn c
 }
 
 func callContract(blockChain *core.BlockChain, call ethereum.CallMsg, header *types.Header, stateDB *state.StateDB) (*core.ExecutionResult, error) {
-	// Gas prices post 1559 need to be initialized
-	if call.GasPrice != nil && (call.GasFeeCap != nil || call.GasTipCap != nil) {
-		return nil, errors.New("both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified")
-	}
-
-	// A basefee is provided, necessitating 1559-type execution
-	if call.GasPrice != nil {
-		// User specified the legacy gas field, convert to 1559 gas typing
-		call.GasFeeCap, call.GasTipCap = call.GasPrice, call.GasPrice
-	} else {
-		// User specified 1559 gas fields (or none), use those
-		if call.GasFeeCap == nil {
-			call.GasFeeCap = new(big.Int)
-		}
-		if call.GasTipCap == nil {
-			call.GasTipCap = new(big.Int)
-		}
-		// Backfill the legacy gasPrice for EVM execution, unless we're all zeroes
-		call.GasPrice = new(big.Int)
-		if call.GasFeeCap.BitLen() > 0 || call.GasTipCap.BitLen() > 0 {
-			call.GasPrice = math.BigMin(new(big.Int).Add(call.GasTipCap, header.BaseFee), call.GasFeeCap)
-		}
-	}
 
 	msg := &core.Message{
 		From:              call.From,
@@ -665,11 +646,11 @@ func callContract(blockChain *core.BlockChain, call ethereum.CallMsg, header *ty
 		SkipAccountChecks: true,
 	}
 
-	// Create a new environment which holds all relevant information
-	// about the transaction and calling mechanisms.
+	sb := stateDB.Copy()
+
 	txContext := core.NewEVMTxContext(msg)
 	evmContext := core.NewEVMBlockContext(header, blockChain, nil)
-	vmEnv := vm.NewEVM(evmContext, txContext, stateDB, blockChain.Config(), vm.Config{NoBaseFee: true})
+	vmEnv := vm.NewEVM(evmContext, txContext, sb, blockChain.Config(), vm.Config{NoBaseFee: true})
 	gasPool := new(core.GasPool).AddGas(math.MaxUint64)
 
 	return core.ApplyMessage(vmEnv, msg, gasPool)
