@@ -6,8 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"math/big"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -23,17 +27,187 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
+var (
+	simulateAddress = common.HexToAddress("0x9Dc590b1CD86cA5c4035DcDd8dfDD1ac2DB5480b")
+	simulateAbi, _  = abi.JSON(strings.NewReader(abiStr))
+
+	steps = big.NewInt(50)
+)
+
+const abiStr = `[
+    {
+      "inputs": [],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_tokenIn",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "_sandwich",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "_target",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_frontSize",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_backSize",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_targetSize",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bytes",
+          "name": "_frontParma",
+          "type": "bytes"
+        },
+        {
+          "internalType": "bytes",
+          "name": "_backParma",
+          "type": "bytes"
+        },
+        {
+          "internalType": "bytes",
+          "name": "_targetParam",
+          "type": "bytes"
+        }
+      ],
+      "name": "Simulate",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "amountOut",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address[]",
+          "name": "_operators",
+          "type": "address[]"
+        }
+      ],
+      "name": "addOperators",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "confirmOwner",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "operators",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "owner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address[]",
+          "name": "_operators",
+          "type": "address[]"
+        }
+      ],
+      "name": "removeOperators",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "updateOwner",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address[]",
+          "name": "tokens",
+          "type": "address[]"
+        }
+      ],
+      "name": "withdraw",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "stateMutability": "payable",
+      "type": "receive"
+    }
+  ],`
+
 // --------------------------------------------------------Call Bundle--------------------------------------------------------
 
 // BundleAPI offers an API for accepting bundled transactions
 type BundleAPI struct {
 	b     Backend
 	chain *core.BlockChain
+	bcapi *BlockChainAPI
 }
 
 // NewBundleAPI creates a new Tx Bundle API instance.
 func NewBundleAPI(b Backend, chain *core.BlockChain) *BundleAPI {
-	return &BundleAPI{b, chain}
+	return &BundleAPI{b, chain, NewBlockChainAPI(b)}
 }
 
 // CallBundleArgs represents the arguments for a call.
@@ -383,4 +557,174 @@ func RPCMarshalCompactLogs(receipts types.Receipts) []map[string]interface{} {
 		}
 	}
 	return logs
+}
+
+func (s *BundleAPI) simulate(ctx context.Context, pair common.Address, tokenIn common.Address, tokenOut common.Address, amountIn *big.Int, zeroForOne bool, gasLimit uint64, fee int64, wallet common.Address, victimTx *types.Transaction) []map[string]interface{} {
+
+	head := s.chain.CurrentHeader()
+	blockNo := s.bcapi.BlockNumber()
+	number := rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNo))
+	stateDB, _, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
+	balance := stateDB.GetBalance(wallet)
+	nonce := stateDB.GetNonce(wallet)
+	gasPrice := victimTx.GasPrice()
+
+	//计算出每次步长
+	stepAmount := new(big.Int).Quo(new(big.Int).SetInt64(0).Sub(balance, amountIn), steps)
+
+	//初始化整个执行ladder结构
+	var ladder []*big.Int
+	for amountIn.Cmp(balance) < 0 {
+		ladder = append(ladder, new(big.Int).Set(amountIn))
+		//累加
+		amountIn = new(big.Int).Add(amountIn, stepAmount)
+	}
+
+	var results []map[string]interface{}
+	var wg = new(sync.WaitGroup)
+	wg.Add(len(ladder))
+
+	//循环当前ladder，并发执行模拟调用，并且记录结果
+	for _, amountIn := range ladder {
+		go func(ctx context.Context, pair common.Address, amountIn *big.Int, tokenIn, tokenOut common.Address, gasLimit uint64, gasPrice *big.Int, fee int64, zeroForOne bool, wallet common.Address, victimTx *types.Transaction) {
+			//组装合约调用入参
+			data, err := newData(pair, tokenIn, tokenOut, big.NewInt(fee), amountIn, gasLimit, gasPrice, zeroForOne, nonce, victimTx)
+			if err != nil {
+				return
+			}
+
+			fmt.Println(fmt.Sprintf("simulateAddress: %s , wallet: %s , blockNo: %d, txData: %s ", simulateAddress.String(), wallet.String(), blockNo, common.Bytes2Hex(data)))
+
+			callMsg := ethereum.CallMsg{
+				From: wallet,
+				To:   &simulateAddress,
+				Data: data,
+			}
+
+			//执行模拟合约
+			callResult, err := callContract(s.chain, callMsg, head, stateDB)
+
+			if err != nil || callResult.Err != nil || len(callResult.ReturnData) == 0 {
+				return
+			}
+			//解析返回值，记录返回amountOut
+			mapResult := make(map[string]interface{})
+			_ = json.Unmarshal(callResult.ReturnData, &mapResult)
+
+			amountOut2 := mapResult["amountOut"].(int)
+			//如果执行成功，记录当前输入值
+			result := make(map[string]interface{})
+			result["tokenIn"] = tokenIn
+			result["tokenOut"] = tokenOut
+			result["amountIn"] = new(big.Int).Set(amountIn)
+			result["amountOut"] = new(big.Int).SetInt64(int64(amountOut2))
+			results = append(results, result)
+
+			wg.Done()
+		}(ctx, pair, amountIn, tokenIn, tokenOut, gasLimit, gasPrice, fee, zeroForOne, wallet, victimTx)
+	}
+	wg.Wait()
+	return results
+}
+
+func callContract(blockChain *core.BlockChain, call ethereum.CallMsg, header *types.Header, stateDB *state.StateDB) (*core.ExecutionResult, error) {
+	// Gas prices post 1559 need to be initialized
+	if call.GasPrice != nil && (call.GasFeeCap != nil || call.GasTipCap != nil) {
+		return nil, errors.New("both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified")
+	}
+
+	// A basefee is provided, necessitating 1559-type execution
+	if call.GasPrice != nil {
+		// User specified the legacy gas field, convert to 1559 gas typing
+		call.GasFeeCap, call.GasTipCap = call.GasPrice, call.GasPrice
+	} else {
+		// User specified 1559 gas fields (or none), use those
+		if call.GasFeeCap == nil {
+			call.GasFeeCap = new(big.Int)
+		}
+		if call.GasTipCap == nil {
+			call.GasTipCap = new(big.Int)
+		}
+		// Backfill the legacy gasPrice for EVM execution, unless we're all zeroes
+		call.GasPrice = new(big.Int)
+		if call.GasFeeCap.BitLen() > 0 || call.GasTipCap.BitLen() > 0 {
+			call.GasPrice = math.BigMin(new(big.Int).Add(call.GasTipCap, header.BaseFee), call.GasFeeCap)
+		}
+	}
+
+	msg := &core.Message{
+		From:              call.From,
+		To:                call.To,
+		Value:             call.Value,
+		GasLimit:          call.Gas,
+		GasPrice:          call.GasPrice,
+		GasFeeCap:         call.GasFeeCap,
+		GasTipCap:         call.GasTipCap,
+		Data:              call.Data,
+		AccessList:        call.AccessList,
+		SkipAccountChecks: true,
+	}
+
+	// Create a new environment which holds all relevant information
+	// about the transaction and calling mechanisms.
+	txContext := core.NewEVMTxContext(msg)
+	evmContext := core.NewEVMBlockContext(header, blockChain, nil)
+	vmEnv := vm.NewEVM(evmContext, txContext, stateDB, blockChain.Config(), vm.Config{NoBaseFee: true})
+	gasPool := new(core.GasPool).AddGas(math.MaxUint64)
+
+	return core.ApplyMessage(vmEnv, msg, gasPool)
+}
+
+func newData(
+	pairAddress common.Address,
+	tokenIn common.Address,
+	tokenOut common.Address,
+	fee *big.Int,
+	amountIn *big.Int,
+	gasLimit uint64,
+	gasPrice *big.Int,
+	zeroForOne bool,
+	nonce uint64,
+	victimTx *types.Transaction,
+) ([]byte, error) {
+
+	selector := simulateAbi.Methods["Simulate"].ID[:4]
+
+	params := make([]byte, 0)
+	params = append(params, selector...)
+	params = append(params, fillBytes(14, amountIn.Bytes())...)
+	params = append(params, pairAddress.Bytes()...)
+	params = append(params, tokenIn.Bytes()...)
+	params = append(params, tokenOut.Bytes()...)
+	params = append(params, pairAddress.Bytes()...)
+	params = append(params, fillBytes(14, big.NewInt(0).Bytes())...)
+	params = append(params, fillBytes(2, fee.Bytes())...)
+	if zeroForOne {
+		params = append(params, []byte{1}...)
+	} else {
+		params = append(params, []byte{0}...)
+	}
+	params = append(params, fillBytes(14, big.NewInt(0).Bytes())...)
+
+	frontTxData := types.NewTransaction(nonce, simulateAddress, big.NewInt(0), gasLimit, gasPrice, params)
+
+	backTxData := types.NewTransaction(nonce+1, simulateAddress, big.NewInt(0), gasLimit, gasPrice, nil)
+
+	victimSize := int64(len(victimTx.Data()))
+	result, err := simulateAbi.Pack("Simulate", tokenIn, simulateAddress, victimTx.To(),
+		new(big.Int).SetUint64(frontTxData.Size()), new(big.Int).SetUint64(backTxData.Size()),
+
+		new(big.Int).SetInt64(victimSize), frontTxData.Data(), backTxData.Data(), victimTx.Data())
+
+	return result, err
+}
+
+func fillBytes(l int, rawData []byte) []byte {
+	rawLen := len(rawData)
+	head := l - rawLen
+	res := make([]byte, l)
+	for i := 0; i < rawLen; i++ {
+		res[head+i] = rawData[i]
+	}
+	return res
 }
