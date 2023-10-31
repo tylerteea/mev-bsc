@@ -565,9 +565,13 @@ func (s *BundleAPI) simulate(ctx context.Context, pair common.Address, tokenIn c
 	blockNo := s.bcapi.BlockNumber()
 	number := rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNo))
 	stateDB, _, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
+
+	// todo 获取不同币的余额  待讨论
 	balance := stateDB.GetBalance(wallet)
 	nonce := stateDB.GetNonce(wallet)
 	gasPrice := victimTx.GasPrice()
+	// todo 郭鹏传
+	//gasPrice := big.NewInt(params.3GWei)
 
 	//计算出每次步长
 	stepAmount := new(big.Int).Quo(new(big.Int).SetInt64(0).Sub(balance, amountIn), steps)
