@@ -6,11 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
+	"github.com/ethereum/go-ethereum/params"
 	"math/big"
-	"strings"
 	"sync"
 	"time"
 
@@ -28,173 +26,8 @@ import (
 )
 
 var (
-	simulateAddress = common.HexToAddress("0x9Dc590b1CD86cA5c4035DcDd8dfDD1ac2DB5480b")
-	simulateAbi, _  = abi.JSON(strings.NewReader(abiStr))
-
-	steps = big.NewInt(50)
+	steps = big.NewInt(3)
 )
-
-const abiStr = `[
-    {
-      "inputs": [],
-      "stateMutability": "nonpayable",
-      "type": "constructor"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "_tokenIn",
-          "type": "address"
-        },
-        {
-          "internalType": "address",
-          "name": "_sandwich",
-          "type": "address"
-        },
-        {
-          "internalType": "address",
-          "name": "_target",
-          "type": "address"
-        },
-        {
-          "internalType": "uint256",
-          "name": "_frontSize",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "_backSize",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "_targetSize",
-          "type": "uint256"
-        },
-        {
-          "internalType": "bytes",
-          "name": "_frontParma",
-          "type": "bytes"
-        },
-        {
-          "internalType": "bytes",
-          "name": "_backParma",
-          "type": "bytes"
-        },
-        {
-          "internalType": "bytes",
-          "name": "_targetParam",
-          "type": "bytes"
-        }
-      ],
-      "name": "Simulate",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "amountOut",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address[]",
-          "name": "_operators",
-          "type": "address[]"
-        }
-      ],
-      "name": "addOperators",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "confirmOwner",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "",
-          "type": "address"
-        }
-      ],
-      "name": "operators",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "owner",
-      "outputs": [
-        {
-          "internalType": "address",
-          "name": "",
-          "type": "address"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address[]",
-          "name": "_operators",
-          "type": "address[]"
-        }
-      ],
-      "name": "removeOperators",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "_newOwner",
-          "type": "address"
-        }
-      ],
-      "name": "updateOwner",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address[]",
-          "name": "tokens",
-          "type": "address[]"
-        }
-      ],
-      "name": "withdraw",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "stateMutability": "payable",
-      "type": "receive"
-    }
-  ],`
 
 // --------------------------------------------------------Call Bundle--------------------------------------------------------
 
@@ -336,7 +169,7 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 		coinbaseBalanceBeforeTx := state.GetBalance(coinbase)
 
 		from, err := types.Sender(signer, tx)
-		state.Prepare(rules, from, header.Coinbase, tx.To(), vm.ActivePrecompiles(rules), tx.AccessList())
+		state.Prepare(rules, from, coinbase, tx.To(), vm.ActivePrecompiles(rules), tx.AccessList())
 
 		receipt, result, err := core.ApplyTransactionWithResult(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, &header.GasUsed, vmconfig)
 		if err != nil {
@@ -559,22 +392,131 @@ func RPCMarshalCompactLogs(receipts types.Receipts) []map[string]interface{} {
 	return logs
 }
 
-func (s *BundleAPI) simulate(ctx context.Context, pair common.Address, tokenIn common.Address, tokenOut common.Address, amountIn *big.Int, zeroForOne bool, gasLimit uint64, fee int64, wallet common.Address, victimTx *types.Transaction) []map[string]interface{} {
+// SbpArgs SandwichBestProfitArgs represents the arguments for a call.
+type SbpArgs struct {
+	Contract     common.Address `json:"contract"`
+	Pair         common.Address `json:"pair"`
+	TokenIn      common.Address `json:"tokenIn"`
+	TokenOut     common.Address `json:"tokenOut"`
+	BloxAddress  common.Address `json:"blox"`
+	Balance      *big.Int       `json:"balance"`
+	AmountIn     *big.Int       `json:"amountIn"`
+	AmountOutMin *big.Int       `json:"amountOutMin"`
+	BloxAmount   *big.Int       `json:"bloxAmount"`
+	Fee          int64          `json:"fee"`
+	Wallet       common.Address `json:"wallet"`
+	VictimTxHash common.Hash    `json:"vTxHash"`
+	DebugMode    bool           `json:"debugMode"`
+	ZeroForOne   bool           `json:"zeroForOne"`
+	Steps        *big.Int       `json:"steps"`
+}
 
+// SandwichBestProfit profit calculate
+func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) (results []map[string]interface{}) {
+
+	reqId := time.Now().UnixMilli()
+	req, _ := json.Marshal(sbp)
+	log.Info("call_SandwichBestProfit_1_", "reqId", reqId, "sbp", string(req))
+
+	timeout := s.b.RPCEVMTimeout()
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+	} else {
+		ctx, cancel = context.WithCancel(ctx)
+	}
+	// Make sure the context is cancelled when the call has completed
+	// this makes sure resources are cleaned up.
+	defer cancel()
+	defer func(results *[]map[string]interface{}) {
+		if r := recover(); r != nil {
+			oldResultJson, _ := json.Marshal(results)
+			log.Info("call_SandwichBestProfit_old_result_", "reqId", reqId, "result", string(oldResultJson))
+			results = new([]map[string]interface{})
+			result := make(map[string]interface{})
+			result["error"] = "panic"
+			result["reason"] = r
+			*results = append(*results, result)
+			newResultJson, _ := json.Marshal(results)
+			log.Info("call_SandwichBestProfit_defer_result_", "reqId", reqId, "result", string(newResultJson))
+		}
+	}(&results)
+
+	if sbp.Balance.Int64() == 0 {
+		result := make(map[string]interface{})
+		result["error"] = "args_err"
+		result["reason"] = "balance_is_0"
+		results = append(results, result)
+		return results
+	}
+	balance := sbp.Balance
+
+	amountIn := sbp.AmountIn
+	wallet := sbp.Wallet
+	victimTxHash := sbp.VictimTxHash
+	amountOutMin := sbp.AmountOutMin
+
+	// 根据受害人tx hash  从内存池得到tx msg
+	victimTransaction := s.b.GetPoolTransaction(victimTxHash)
+
+	//初始化数据
 	head := s.chain.CurrentHeader()
-	blockNo := s.bcapi.BlockNumber()
+	blockNo := head.Number.Uint64()
+
+	// 如果是测试阶段，可以使用已经上块的tx
+	if sbp.DebugMode {
+		if victimTransaction == nil {
+			tx, _, blockNumber, _, _ := s.b.GetTransaction(ctx, victimTxHash)
+			if tx != nil {
+				blockNo = blockNumber - 1
+				head = s.chain.GetHeaderByNumber(blockNo)
+				victimTransaction = tx
+			}
+		}
+	}
+	// 获取不到 直接返回
+	if victimTransaction == nil {
+		result := make(map[string]interface{})
+		result["error"] = "tx_is_nil"
+		result["reason"] = "GetPoolTransaction and GetTransaction all nil : " + victimTxHash.Hex()
+		results = append(results, result)
+		resultJson, _ := json.Marshal(result)
+		log.Info("call_SandwichBestProfit_2_", "reqId", reqId, "result", string(resultJson))
+		return results
+	}
+	// todo 如果是历史块，使用 b -1
+	//number := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 	number := rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNo))
-	stateDB, _, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
 
-	// todo 获取不同币的余额  待讨论
-	balance := stateDB.GetBalance(wallet)
+	stateDB, block, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
 	nonce := stateDB.GetNonce(wallet)
-	gasPrice := victimTx.GasPrice()
-	// todo 郭鹏传
-	//gasPrice := big.NewInt(params.3GWei)
+	globalGasCap := s.b.RPCGasCap()
 
+	log.Info("call_SandwichBestProfit_3_", "reqId", reqId, "blockNo", blockNo, "nonce", nonce, "globalGasCap", globalGasCap)
+	victimTxMsg, victimTxMsgErr := core.TransactionToMessage(victimTransaction, types.MakeSigner(s.b.ChainConfig(), head.Number, head.Time), head.BaseFee)
+
+	if victimTxMsgErr != nil {
+		result := make(map[string]interface{})
+		result["error"] = "victimTxMsgErr"
+		result["reason"] = victimTxMsgErr
+		results = append(results, result)
+
+		resultJson, _ := json.Marshal(result)
+		log.Info("call_SandwichBestProfit_4_", "reqId", reqId, "result", string(resultJson))
+		return results
+	}
+
+	victimTxContext := core.NewEVMTxContext(victimTxMsg)
+
+	log.Info("call_SandwichBestProfit_vtm_", "reqId", reqId)
+
+	log.Info("call_SandwichBestProfit_vtm_", "reqId", "steps", sbp.Steps)
+	if sbp.Steps == nil {
+		sbp.Steps = steps
+	}
+	log.Info("call_SandwichBestProfit_steps", "reqId", "steps", sbp.Steps)
 	//计算出每次步长
-	stepAmount := new(big.Int).Quo(new(big.Int).SetInt64(0).Sub(balance, amountIn), steps)
+	stepAmount := new(big.Int).Quo(new(big.Int).SetInt64(0).Sub(balance, amountIn), sbp.Steps)
 
 	//初始化整个执行ladder结构
 	var ladder []*big.Int
@@ -584,124 +526,608 @@ func (s *BundleAPI) simulate(ctx context.Context, pair common.Address, tokenIn c
 		amountIn = new(big.Int).Add(amountIn, stepAmount)
 	}
 
-	var results []map[string]interface{}
 	var wg = new(sync.WaitGroup)
 	wg.Add(len(ladder))
 
-	//循环当前ladder，并发执行模拟调用，并且记录结果
-	for _, amountIn := range ladder {
+	isPostMerge := head.Difficulty.Cmp(common.Big0) == 0
+	rules := s.b.ChainConfig().Rules(head.Number, isPostMerge, head.Time)
 
-		go func(ctx context.Context, pair common.Address, amountIn *big.Int, tokenIn, tokenOut common.Address, gasLimit uint64, gasPrice *big.Int, fee int64, zeroForOne bool, wallet common.Address, victimTx *types.Transaction) {
-			//组装合约调用入参
-			data, err := newData(pair, tokenIn, tokenOut, big.NewInt(fee), amountIn, gasLimit, gasPrice, zeroForOne, nonce, victimTx)
-			if err != nil {
-				return
-			}
+	//并发执行模拟调用，记录结果
+	for _, amountInReal := range ladder {
 
-			fmt.Println(fmt.Sprintf("simulateAddress: %s , wallet: %s , blockNo: %d, txData: %s ", simulateAddress.String(), wallet.String(), blockNo, common.Bytes2Hex(data)))
-
-			callMsg := ethereum.CallMsg{
-				From:      wallet,
-				To:        &simulateAddress,
-				GasPrice:  gasPrice,
-				GasFeeCap: gasPrice,
-				GasTipCap: gasPrice,
-				Data:      data,
-			}
-
-			//执行模拟合约
-			callResult, err := callContract(s.chain, callMsg, head, stateDB)
-
-			if err != nil || callResult.Err != nil || len(callResult.ReturnData) == 0 {
-				return
-			}
-			//解析返回值，记录返回amountOut
-			mapResult := make(map[string]interface{})
-			_ = json.Unmarshal(callResult.ReturnData, &mapResult)
-
-			amountOut2 := mapResult["amountOut"].(int)
-			//如果执行成功，记录当前输入值
-			result := make(map[string]interface{})
-			result["tokenIn"] = tokenIn
-			result["tokenOut"] = tokenOut
-			result["amountIn"] = new(big.Int).Set(amountIn)
-			result["amountOut"] = new(big.Int).SetInt64(int64(amountOut2))
-			results = append(results, result)
-
-			wg.Done()
-		}(ctx, pair, amountIn, tokenIn, tokenOut, gasLimit, gasPrice, fee, zeroForOne, wallet, victimTx)
+		//sdb := stateDB.Copy()
+		// todo  go
+		worker(rules, block.Coinbase, results, head, victimTxHash, victimTxMsg, victimTxContext, wg, sbp, s, reqId, amountOutMin, stateDB.Copy(), amountInReal, timeout, globalGasCap)
 	}
 	wg.Wait()
+	resultJson, _ := json.Marshal(results)
+	log.Info("call_SandwichBestProfit_5_", "reqId", reqId, "result", string(resultJson))
 	return results
 }
 
-func callContract(blockChain *core.BlockChain, call ethereum.CallMsg, header *types.Header, stateDB *state.StateDB) (*core.ExecutionResult, error) {
+// SandwichBestProfitTest profit calculate
+func (s *BundleAPI) SandwichBestProfitTest(ctx context.Context, sbp SbpArgs) (results []map[string]interface{}) {
 
-	msg := &core.Message{
-		From:              call.From,
-		To:                call.To,
-		Value:             call.Value,
-		GasLimit:          call.Gas,
-		GasPrice:          call.GasPrice,
-		GasFeeCap:         call.GasFeeCap,
-		GasTipCap:         call.GasTipCap,
-		Data:              call.Data,
-		AccessList:        call.AccessList,
-		SkipAccountChecks: true,
+	reqId := time.Now().UnixMilli()
+	req, _ := json.Marshal(sbp)
+	log.Info("call_SandwichBestProfit_1_", "reqId", reqId, "sbp", string(req))
+
+	timeout := s.b.RPCEVMTimeout()
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+	} else {
+		ctx, cancel = context.WithCancel(ctx)
+	}
+	// Make sure the context is cancelled when the call has completed
+	// this makes sure resources are cleaned up.
+	defer cancel()
+	defer func(results *[]map[string]interface{}) {
+		if r := recover(); r != nil {
+			oldResultJson, _ := json.Marshal(results)
+			log.Info("call_SandwichBestProfit_old_result_", "reqId", reqId, "result", string(oldResultJson))
+			results = new([]map[string]interface{})
+			result := make(map[string]interface{})
+			result["error"] = "panic"
+			result["reason"] = r
+			*results = append(*results, result)
+			newResultJson, _ := json.Marshal(results)
+			log.Info("call_SandwichBestProfit_defer_result_", "reqId", reqId, "result", string(newResultJson))
+		}
+	}(&results)
+
+	if sbp.Balance.Int64() == 0 {
+		result := make(map[string]interface{})
+		result["error"] = "args_err"
+		result["reason"] = "balance_is_0"
+		results = append(results, result)
+		return results
+	}
+	balance := sbp.Balance
+
+	amountIn := sbp.AmountIn
+	wallet := sbp.Wallet
+	victimTxHash := sbp.VictimTxHash
+	amountOutMin := sbp.AmountOutMin
+
+	// 根据受害人tx hash  从内存池得到tx msg
+	victimTransaction := s.b.GetPoolTransaction(victimTxHash)
+
+	//初始化数据
+	head := s.chain.CurrentHeader()
+	blockNo := head.Number.Uint64()
+
+	// 如果是测试阶段，可以使用已经上块的tx
+	if sbp.DebugMode {
+		if victimTransaction == nil {
+			tx, _, blockNumber, _, _ := s.b.GetTransaction(ctx, victimTxHash)
+			if tx != nil {
+				blockNo = blockNumber - 1
+				head = s.chain.GetHeaderByNumber(blockNo)
+				victimTransaction = tx
+			}
+		}
+	}
+	// 获取不到 直接返回
+	if victimTransaction == nil {
+		result := make(map[string]interface{})
+		result["error"] = "tx_is_nil"
+		result["reason"] = "GetPoolTransaction and GetTransaction all nil : " + victimTxHash.Hex()
+		results = append(results, result)
+		resultJson, _ := json.Marshal(result)
+		log.Info("call_SandwichBestProfit_2_", "reqId", reqId, "result", string(resultJson))
+		return results
+	}
+	// todo 如果是历史块，使用 b -1
+	//number := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+	number := rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNo))
+
+	stateDB, _, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
+	nonce := stateDB.GetNonce(wallet)
+	globalGasCap := s.b.RPCGasCap()
+
+	log.Info("call_SandwichBestProfit_3_", "reqId", reqId, "blockNo", blockNo, "nonce", nonce, "globalGasCap", globalGasCap)
+
+	victimTxMsg, victimTxMsgErr := core.TransactionToMessage(victimTransaction, types.MakeSigner(s.b.ChainConfig(), head.Number, head.Time), head.BaseFee)
+
+	if victimTxMsgErr != nil {
+		result := make(map[string]interface{})
+		result["error"] = "victimTxMsgErr"
+		result["reason"] = victimTxMsgErr
+		results = append(results, result)
+
+		resultJson, _ := json.Marshal(result)
+		log.Info("call_SandwichBestProfit_4_", "reqId", reqId, "result", string(resultJson))
+		return results
 	}
 
-	sb := stateDB.Copy()
+	victimTxContext := core.NewEVMTxContext(victimTxMsg)
 
-	txContext := core.NewEVMTxContext(msg)
-	evmContext := core.NewEVMBlockContext(header, blockChain, nil)
-	vmEnv := vm.NewEVM(evmContext, txContext, sb, blockChain.Config(), vm.Config{NoBaseFee: true})
+	log.Info("call_SandwichBestProfit_vtm_", "reqId", reqId)
+
+	log.Info("call_SandwichBestProfit_vtm_", "reqId", "steps", sbp.Steps)
+	if sbp.Steps == nil {
+		sbp.Steps = steps
+	}
+	log.Info("call_SandwichBestProfit_steps", "reqId", "steps", sbp.Steps)
+	//计算出每次步长
+	stepAmount := new(big.Int).Quo(new(big.Int).SetInt64(0).Sub(balance, amountIn), sbp.Steps)
+
+	//初始化整个执行ladder结构
+	var ladder []*big.Int
+	for amountIn.Cmp(balance) < 0 {
+		ladder = append(ladder, new(big.Int).Set(amountIn))
+		//累加
+		amountIn = new(big.Int).Add(amountIn, stepAmount)
+	}
+
+	var wg = new(sync.WaitGroup)
+	wg.Add(len(ladder))
+
+	isPostMerge := head.Difficulty.Cmp(common.Big0) == 0
+	rules := s.b.ChainConfig().Rules(head.Number, isPostMerge, head.Time)
+
+	//并发执行模拟调用，记录结果
+	for _, amountInReal := range ladder {
+
+		sdb := stateDB.Copy()
+		// todo  go
+		worker_test(rules, ctx, results, head, victimTxHash, victimTxMsg, victimTxContext, wg, sbp, s, reqId, amountOutMin, sdb, amountInReal, timeout, globalGasCap)
+	}
+	wg.Wait()
+	resultJson, _ := json.Marshal(results)
+	log.Info("call_SandwichBestProfit_5_", "reqId", reqId, "result", string(resultJson))
+	return results
+}
+
+func worker(
+	rules params.Rules,
+	coinbase common.Address,
+	results []map[string]interface{},
+	head *types.Header,
+	victimTxHash common.Hash,
+	victimTxMsg *core.Message,
+	victimTxContext vm.TxContext,
+	wg *sync.WaitGroup,
+	sbp SbpArgs,
+	s *BundleAPI,
+	reqId int64,
+	amountOutMin *big.Int,
+	statedb *state.StateDB,
+	amountIn *big.Int,
+	timeout time.Duration,
+	globalGasCap uint64) {
+
+	defer func() {
+		if r := recover(); r != nil {
+			log.Info("call_SandwichBestProfit_defer_err_", "reqId", reqId, "err", r)
+			wg.Done()
+		}
+	}()
+
+	evmContext := core.NewEVMBlockContext(head, s.chain, nil)
+
+	result := make(map[string]interface{})
+
 	gasPool := new(core.GasPool).AddGas(math.MaxUint64)
 
-	return core.ApplyMessage(vmEnv, msg, gasPool)
+	// 抢跑----------------------------------------------------------------------------------------
+
+	frontAmountOut, fErr := call(rules, coinbase, 1, sbp, reqId, amountOutMin, sbp.ZeroForOne, sbp.TokenIn, sbp.TokenOut, amountIn, evmContext, statedb, s, gasPool, timeout, globalGasCap, head)
+
+	if fErr != nil {
+		result["error"] = "frontCallErr"
+		result["reason"] = fErr.Error()
+		result["amountIn"] = amountIn.String()
+		results = append(results, result)
+		wg.Done()
+		return
+	}
+	// 受害者----------------------------------------------------------------------------------------
+	statedb.Prepare(rules, victimTxMsg.From, coinbase, victimTxMsg.To, vm.ActivePrecompiles(rules), victimTxMsg.AccessList)
+
+	vmEnv := vm.NewEVM(evmContext, victimTxContext, statedb, s.chain.Config(), vm.Config{NoBaseFee: true})
+	err := gopool.Submit(func() {
+		vmEnv.Cancel()
+	})
+	if err != nil {
+		wg.Done()
+		return
+	}
+	victimTxCallResult, victimTxCallErr := core.ApplyMessage(vmEnv, victimTxMsg, gasPool)
+
+	log.Info("call_victimTx", "reqId", reqId, "victimTxCallResult", victimTxCallResult)
+
+	if victimTxCallErr != nil {
+		result["error"] = "victimTxCallErr"
+		result["reason"] = victimTxCallErr.Error()
+		result["amountIn"] = amountIn.String()
+		results = append(results, result)
+		wg.Done()
+		return
+	}
+	// todo  假设 amount in  = x 的时候  Revert 了， 那么大于 x 都停了, 目前做不到，后续增加二分搜索实现
+	if len(victimTxCallResult.Revert()) > 0 {
+		revertErr := newRevertError(victimTxCallResult)
+		data, _ := json.Marshal(&revertErr)
+		_ = json.Unmarshal(data, &result)
+		result["error"] = "execution_victimTx_reverted"
+		result["reason"] = victimTxCallResult.Err.Error()
+		result["amountIn"] = amountIn.String()
+		results = append(results, result)
+		wg.Done()
+		return
+	}
+	if victimTxCallResult.Err != nil {
+		result["error"] = "execution_victimTx_callResult_err"
+		result["reason"] = victimTxCallResult.Err.Error()
+		result["amountIn"] = amountIn.String()
+		results = append(results, result)
+		wg.Done()
+		return
+	}
+
+	data := victimTxCallResult.Return()
+	bytes2Hex := common.Bytes2Hex(data)
+	dst := make([]byte, hex.EncodedLen(len(data)))
+	hex.Encode(dst, data)
+
+	log.Info("call_victimTx", "reqId", reqId, "bytes2Hex", bytes2Hex, "string", string(dst))
+
+	// 跟跑----------------------------------------------------------------------------------------
+	backAmountOut, bErr := call(rules, coinbase, 3, sbp, reqId, amountOutMin, !sbp.ZeroForOne, sbp.TokenOut, sbp.TokenIn, frontAmountOut, evmContext, statedb, s, gasPool, timeout, globalGasCap, head)
+
+	if bErr != nil {
+		result["error"] = "backCallErr"
+		result["reason"] = bErr.Error()
+		result["amountIn"] = amountIn.String()
+		results = append(results, result)
+		wg.Done()
+		return
+	}
+
+	result["tokenIn"] = sbp.TokenIn
+	result["tokenOut"] = sbp.TokenOut
+	result["amountIn"] = new(big.Int).Set(amountIn)
+	result["amountOut"] = new(big.Int).Set(backAmountOut)
+	results = append(results, result)
+	wg.Done()
+}
+
+func worker_test(
+	rules params.Rules,
+	ctx context.Context,
+	results []map[string]interface{},
+	head *types.Header,
+	victimTxHash common.Hash,
+	victimTxMsg *core.Message,
+	victimTxContext vm.TxContext,
+	wg *sync.WaitGroup,
+	sbp SbpArgs,
+	s *BundleAPI,
+	reqId int64,
+	amountOutMin *big.Int,
+	statedb *state.StateDB,
+	amountIn *big.Int,
+	timeout time.Duration,
+	globalGasCap uint64) {
+
+	defer func() {
+		if r := recover(); r != nil {
+			log.Info("call_SandwichBestProfit_defer_err_", "reqId", reqId, "err", r)
+			wg.Done()
+		}
+	}()
+
+	evmContext := core.NewEVMBlockContext(head, s.chain, nil)
+
+	result := make(map[string]interface{})
+
+	gasPool := new(core.GasPool).AddGas(math.MaxUint64)
+
+	// 抢跑----------------------------------------------------------------------------------------
+	frontAmountOut, fErr := call_test(ctx, 1, sbp, reqId, amountOutMin, sbp.ZeroForOne, sbp.TokenIn, sbp.TokenOut, amountIn, evmContext, statedb, s, gasPool, timeout, globalGasCap, head)
+
+	if fErr != nil {
+		result["error"] = "frontCallErr"
+		result["reason"] = fErr.Error()
+		result["amountIn"] = amountIn.String()
+		results = append(results, result)
+		wg.Done()
+		return
+	}
+	// 受害者----------------------------------------------------------------------------------------
+	statedb.Prepare(rules, victimTxMsg.From, head.Coinbase, victimTxMsg.To, vm.ActivePrecompiles(rules), victimTxMsg.AccessList)
+	vmEnv := vm.NewEVM(evmContext, victimTxContext, statedb, s.chain.Config(), vm.Config{NoBaseFee: true})
+	err := gopool.Submit(func() {
+		vmEnv.Cancel()
+	})
+	if err != nil {
+		wg.Done()
+		return
+	}
+	victimTxCallResult, victimTxCallErr := core.ApplyMessage(vmEnv, victimTxMsg, gasPool)
+
+	log.Info("call_victimTx", "reqId", reqId, "victimTxCallResult", victimTxCallResult)
+
+	if victimTxCallErr != nil {
+		result["error"] = "victimTxCallErr"
+		result["reason"] = victimTxCallErr.Error()
+		result["amountIn"] = amountIn.String()
+		results = append(results, result)
+		wg.Done()
+		return
+	}
+	// todo  假设 amount in  = x 的时候  Revert 了， 那么大于 x 都停了, 目前做不到，后续增加二分搜索实现
+	if len(victimTxCallResult.Revert()) > 0 {
+		revertErr := newRevertError(victimTxCallResult)
+		data, _ := json.Marshal(&revertErr)
+		_ = json.Unmarshal(data, &result)
+		result["error"] = "execution_victimTx_reverted"
+		result["reason"] = victimTxCallResult.Err.Error()
+		result["amountIn"] = amountIn.String()
+		results = append(results, result)
+		wg.Done()
+		return
+	}
+	if victimTxCallResult.Err != nil {
+		result["error"] = "execution_victimTx_callResult_err"
+		result["reason"] = victimTxCallResult.Err.Error()
+		result["amountIn"] = amountIn.String()
+		results = append(results, result)
+		wg.Done()
+		return
+	}
+
+	data := victimTxCallResult.Return()
+	bytes2Hex := common.Bytes2Hex(data)
+	dst := make([]byte, hex.EncodedLen(len(data)))
+	hex.Encode(dst, data)
+
+	log.Info("call_victimTx", "reqId", reqId, "bytes2Hex", bytes2Hex, "string", string(dst))
+
+	// 跟跑----------------------------------------------------------------------------------------
+	backAmountOut, bErr := call_test(ctx, 3, sbp, reqId, amountOutMin, !sbp.ZeroForOne, sbp.TokenOut, sbp.TokenIn, frontAmountOut, evmContext, statedb, s, gasPool, timeout, globalGasCap, head)
+
+	if bErr != nil {
+		result["error"] = "backCallErr"
+		result["reason"] = bErr.Error()
+		result["amountIn"] = amountIn.String()
+		results = append(results, result)
+		wg.Done()
+		return
+	}
+
+	result["tokenIn"] = sbp.TokenIn
+	result["tokenOut"] = sbp.TokenOut
+	result["amountIn"] = new(big.Int).Set(amountIn)
+	result["amountOut"] = new(big.Int).Set(backAmountOut)
+	results = append(results, result)
+	wg.Done()
+}
+
+func call(rules params.Rules, coinbase common.Address, ti int, sbp SbpArgs, reqId int64, amountOunMin *big.Int, zeroForOne bool, tokenIn common.Address, tokenOut common.Address, amountIn *big.Int, evmContext vm.BlockContext, sdb *state.StateDB, s *BundleAPI, gasPool *core.GasPool, timeout time.Duration, globalGasCap uint64, head *types.Header) (*big.Int, error) {
+
+	log.Info("call_newData_args",
+		"reqId", reqId,
+		"amountOunMin", amountOunMin,
+		"bloxAmount", sbp.BloxAmount,
+		"bloxAddress", sbp.BloxAddress,
+		"pair", sbp.Pair,
+		"tokenIn", tokenIn,
+		"fee", sbp.Fee,
+		"amountIn", amountIn,
+		"zeroForOne", zeroForOne,
+	)
+	data := newData(amountOunMin, sbp.BloxAmount, sbp.BloxAddress, sbp.Pair, tokenIn, tokenOut, big.NewInt(sbp.Fee), amountIn, zeroForOne)
+
+	log.Info("call_newData_result", "reqId", reqId, "data_hex", common.Bytes2Hex(data))
+
+	bytes := hexutil.Bytes(data)
+
+	nonce := sdb.GetNonce(sbp.Wallet)
+
+	gas := hexutil.Uint64(10000000)
+
+	callArgs := TransactionArgs{
+		From:  &sbp.Wallet,
+		To:    &sbp.Contract,
+		Value: (*hexutil.Big)(amountIn),
+		Data:  &bytes,
+		Nonce: (*hexutil.Uint64)(&nonce),
+		Gas:   &gas,
+		//AccessList: nil,
+	}
+
+	//err := callArgs.setDefaults(ctx, s.b)
+	//if err != nil {
+	//	log.Info("call_newData_result_0", "reqId", reqId, "err", err)
+	//	return nil, err
+	//}
+
+	log.Info("call_newData_result_1", "reqId", reqId, "callArgs", callArgs)
+	tx := callArgs.toTransaction()
+	log.Info("call_newData_result_2", "reqId", reqId, "tx", tx)
+	sdb.Prepare(rules, callArgs.from(), head.Coinbase, tx.To(), vm.ActivePrecompiles(rules), tx.AccessList())
+	log.Info("call_newData_result_3", "reqId", reqId, "tx_hash", tx.Hash())
+
+	basegasUsed := uint64(0)
+
+	receipt, result, applyErr := core.ApplyTransactionWithResultNoSign(s.b.ChainConfig(), s.chain, &coinbase, gasPool, sdb, head, tx, &basegasUsed, vm.Config{NoBaseFee: true})
+	log.Info("call_ApplyTransactionWithResult",
+		"reqId", reqId,
+		"amountIn", amountIn,
+		"zeroForOne", zeroForOne,
+		"data", result,
+		"receipt", receipt,
+		"err", applyErr,
+	)
+
+	if applyErr != nil {
+		return nil, fmt.Errorf("err: %w; txhash %s", applyErr, tx.Hash())
+	}
+	marshalJSON, marErr := receipt.MarshalJSON()
+
+	if marErr != nil {
+		log.Info("call_result",
+			"reqId", reqId,
+			"amountIn", amountIn,
+			"zeroForOne", zeroForOne,
+			"data", result,
+			"receipt", string(marshalJSON),
+		)
+		return nil, marErr
+	}
+
+	if result.Err != nil {
+		log.Info("call_applyMessage_callResult_err", "reqId", reqId, "error", result.Err)
+		return nil, result.Err
+	}
+	amountOut := new(big.Int).SetBytes(result.Return())
+
+	//message, toMessageErr := callArgs.ToMessage(globalGasCap, head.BaseFee)
+
+	//if toMessageErr != nil {
+	//	return nil, toMessageErr
+	//}
+	//txContext := core.NewEVMTxContext(message)
+	//vmEnv := vm.NewEVM(evmContext, txContext, sdb, s.chain.Config(), vm.Config{NoBaseFee: true})
+	//
+	//err := gopool.Submit(func() {
+	//	vmEnv.Cancel()
+	//})
+	//if err != nil {
+	//	return nil, err
+	//}
+	//
+	//// apply
+	//callResult, err := core.ApplyMessage(vmEnv, message, gasPool)
+	//
+	//log.Info("call_result",
+	//	"reqId", reqId,
+	//	"amountIn", amountIn,
+	//	"zeroForOne", zeroForOne,
+	//	"data", callResult,
+	//	"revert", common.Bytes2Hex(callResult.Revert()),
+	//	"returnData", common.Bytes2Hex(callResult.Return()),
+	//)
+
+	//if err != nil {
+	//	log.Info("call_applyMessage_err", "reqId", reqId, "error", err)
+	//	return nil, err
+	//}
+	//if callResult.Err != nil {
+	//	log.Info("call_applyMessage_callResult_err", "reqId", reqId, "error", callResult.Err)
+	//	return nil, callResult.Err
+	//}
+	//amountOut := new(big.Int).SetBytes(callResult.Return())
+
+	log.Info("call_success", "reqId", reqId, "amountIn", amountIn, "zeroForOne", zeroForOne, "amountOut", amountOut)
+	return amountOut, nil
+}
+
+func call_test(ctx context.Context, ti int, sbp SbpArgs, reqId int64, amountOunMin *big.Int, zeroForOne bool, tokenIn common.Address, tokenOut common.Address, amountIn *big.Int, evmContext vm.BlockContext, sdb *state.StateDB, s *BundleAPI, gasPool *core.GasPool, timeout time.Duration, globalGasCap uint64, head *types.Header) (*big.Int, error) {
+
+	log.Info("call_newData_args",
+		"reqId", reqId,
+		"amountOunMin", amountOunMin,
+		"bloxAmount", sbp.BloxAmount,
+		"bloxAddress", sbp.BloxAddress,
+		"pair", sbp.Pair,
+		"tokenIn", tokenIn,
+		"fee", sbp.Fee,
+		"amountIn", amountIn,
+		"zeroForOne", zeroForOne,
+	)
+	data := newData(amountOunMin, sbp.BloxAmount, sbp.BloxAddress, sbp.Pair, tokenIn, tokenOut, big.NewInt(sbp.Fee), amountIn, zeroForOne)
+
+	log.Info("call_newData_result", "reqId", reqId, "data_hex", common.Bytes2Hex(data))
+
+	bytes := hexutil.Bytes(data)
+
+	//nonce := sdb.GetNonce(sbp.Wallet)
+	//gas := hexutil.Uint64(100000000)
+
+	callArgs := TransactionArgs{
+		From: &sbp.Wallet,
+		To:   &sbp.Contract,
+		//Value: (*hexutil.Big)(amountIn),
+		Data: &bytes,
+		//Nonce: (*hexutil.Uint64)(&nonce),
+		//Gas:   &gas,
+		//AccessList: nil,
+	}
+
+	message, toMessageErr := callArgs.ToMessage(globalGasCap, head.BaseFee)
+
+	if toMessageErr != nil {
+		return nil, toMessageErr
+	}
+	txContext := core.NewEVMTxContext(message)
+	vmEnv := vm.NewEVM(evmContext, txContext, sdb, s.chain.Config(), vm.Config{NoBaseFee: true})
+
+	err := gopool.Submit(func() {
+		vmEnv.Cancel()
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// apply
+	callResult, err := core.ApplyMessage(vmEnv, message, gasPool)
+
+	log.Info("call_result",
+		"reqId", reqId,
+		"amountIn", amountIn,
+		"zeroForOne", zeroForOne,
+		"data", callResult,
+		"revert", common.Bytes2Hex(callResult.Revert()),
+		"returnData", common.Bytes2Hex(callResult.Return()),
+	)
+
+	if err != nil {
+		log.Info("call_applyMessage_err", "reqId", reqId, "error", err)
+		return nil, err
+	}
+	if callResult.Err != nil {
+		log.Info("call_applyMessage_callResult_err", "reqId", reqId, "error", callResult.Err)
+		return nil, callResult.Err
+	}
+	amountOut := new(big.Int).SetBytes(callResult.Return())
+
+	log.Info("call_success", "reqId", reqId, "amountIn", amountIn, "zeroForOne", zeroForOne, "amountOut", amountOut)
+	return amountOut, nil
 }
 
 func newData(
+	amountOutMin *big.Int,
+	bloxAmount *big.Int,
+	bloxAddress common.Address,
 	pairAddress common.Address,
 	tokenIn common.Address,
 	tokenOut common.Address,
 	fee *big.Int,
 	amountIn *big.Int,
-	gasLimit uint64,
-	gasPrice *big.Int,
 	zeroForOne bool,
-	nonce uint64,
-	victimTx *types.Transaction,
-) ([]byte, error) {
-
-	selector := simulateAbi.Methods["Simulate"].ID[:4]
+) []byte {
 
 	params := make([]byte, 0)
-	params = append(params, selector...)
+	params = append(params, []byte{0xa9, 0x24, 0x83, 0xf0}...)
 	params = append(params, fillBytes(14, amountIn.Bytes())...)
 	params = append(params, pairAddress.Bytes()...)
 	params = append(params, tokenIn.Bytes()...)
 	params = append(params, tokenOut.Bytes()...)
-	params = append(params, pairAddress.Bytes()...)
-	params = append(params, fillBytes(14, big.NewInt(0).Bytes())...)
+	params = append(params, bloxAddress.Bytes()...)
+	params = append(params, fillBytes(14, amountOutMin.Bytes())...)
 	params = append(params, fillBytes(2, fee.Bytes())...)
 	if zeroForOne {
 		params = append(params, []byte{1}...)
 	} else {
 		params = append(params, []byte{0}...)
 	}
-	params = append(params, fillBytes(14, big.NewInt(0).Bytes())...)
+	params = append(params, fillBytes(14, bloxAmount.Bytes())...)
 
-	frontTxData := types.NewTransaction(nonce, simulateAddress, big.NewInt(0), gasLimit, gasPrice, params)
-
-	backTxData := types.NewTransaction(nonce+1, simulateAddress, big.NewInt(0), gasLimit, gasPrice, nil)
-
-	victimSize := int64(len(victimTx.Data()))
-	result, err := simulateAbi.Pack("Simulate", tokenIn, simulateAddress, victimTx.To(),
-		new(big.Int).SetUint64(frontTxData.Size()), new(big.Int).SetUint64(backTxData.Size()),
-
-		new(big.Int).SetInt64(victimSize), frontTxData.Data(), backTxData.Data(), victimTx.Data())
-
-	return result, err
+	return params
 }
 
 func fillBytes(l int, rawData []byte) []byte {

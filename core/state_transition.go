@@ -172,6 +172,31 @@ func TransactionToMessage(tx *types.Transaction, s types.Signer, baseFee *big.In
 	return msg, err
 }
 
+// TransactionToMessage converts a transaction into a Message.
+func TransactionToMessageNoSignCheck(tx *types.Transaction, s types.Signer, baseFee *big.Int) (*Message, error) {
+	msg := &Message{
+		Nonce:             tx.Nonce(),
+		GasLimit:          tx.Gas(),
+		GasPrice:          new(big.Int).Set(tx.GasPrice()),
+		GasFeeCap:         new(big.Int).Set(tx.GasFeeCap()),
+		GasTipCap:         new(big.Int).Set(tx.GasTipCap()),
+		To:                tx.To(),
+		Value:             tx.Value(),
+		Data:              tx.Data(),
+		AccessList:        tx.AccessList(),
+		SkipAccountChecks: false,
+		BlobHashes:        tx.BlobHashes(),
+		BlobGasFeeCap:     tx.BlobGasFeeCap(),
+	}
+	// If baseFee provided, set gasPrice to effectiveGasPrice.
+	if baseFee != nil {
+		msg.GasPrice = cmath.BigMin(msg.GasPrice.Add(msg.GasTipCap, baseFee), msg.GasFeeCap)
+	}
+	//var err error
+	//msg.From, err = types.Sender(s, tx)
+	return msg, nil
+}
+
 // ApplyMessage computes the new state by applying the given message
 // against the old state within the environment.
 //

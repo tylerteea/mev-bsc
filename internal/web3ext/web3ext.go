@@ -612,6 +612,16 @@ web3._extend({
 			inputFormatter: [web3._extend.formatters.inputCallFormatter, web3._extend.formatters.inputDefaultBlockNumberFormatter, null, null],
 		}),
 		new web3._extend.Method({
+			name: 'sandwichBestProfit',
+			call: 'eth_sandwichBestProfit',
+			params: 1,
+		}),
+		new web3._extend.Method({
+			name: 'sandwichBestProfitTest',
+			call: 'eth_sandwichBestProfitTest',
+			params: 1,
+		}),
+		new web3._extend.Method({
 			name: 'callBundle',
 			call: 'eth_callBundle',
 			params: 1,
