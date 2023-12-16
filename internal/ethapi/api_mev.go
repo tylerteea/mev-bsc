@@ -531,11 +531,11 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) (result
 
 	log.Info("call_SandwichBestProfit_vtm_", "reqId", reqId)
 
-	log.Info("call_SandwichBestProfit_vtm_", "reqId", "steps", sbp.Steps)
+	log.Info("call_SandwichBestProfit_vtm_", "reqId", reqId, "steps", sbp.Steps)
 	if sbp.Steps == nil {
 		sbp.Steps = steps
 	}
-	log.Info("call_SandwichBestProfit_steps", "reqId", "steps", sbp.Steps)
+	log.Info("call_SandwichBestProfit_steps", "reqId", reqId, "steps", sbp.Steps)
 	//计算出每次步长
 	stepAmount := new(big.Int).Quo(new(big.Int).SetInt64(0).Sub(balance, amountIn), sbp.Steps)
 
@@ -946,7 +946,8 @@ func call(rules params.Rules, coinbase common.Address, ti int, sbp SbpArgs, reqI
 
 	bytes := hexutil.Bytes(data)
 
-	//nonce := sdb.GetNonce(sbp.Wallet)
+	nonce := sdb.GetNonce(sbp.Wallet)
+	log.Info("call_newData_result", "reqId", reqId, "nonce", nonce)
 
 	gas := hexutil.Uint64(10000000)
 
@@ -955,8 +956,8 @@ func call(rules params.Rules, coinbase common.Address, ti int, sbp SbpArgs, reqI
 		To:    &sbp.Contract,
 		Value: (*hexutil.Big)(amountIn),
 		Data:  &bytes,
-		//Nonce: (*hexutil.Uint64)(&nonce),
-		Gas: &gas,
+		Nonce: (*hexutil.Uint64)(&nonce),
+		Gas:   &gas,
 		//AccessList: nil,
 	}
 
