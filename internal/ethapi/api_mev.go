@@ -456,24 +456,32 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) (result
 	victimTxHash := sbp.VictimTxHash
 	amountOutMin := sbp.AmountOutMin
 
+	log.Info("call_SandwichBestProfit_debug_2", "reqId", reqId)
+
 	// 根据受害人tx hash  从内存池得到tx msg
 	victimTransaction := s.b.GetPoolTransaction(victimTxHash)
+	log.Info("call_SandwichBestProfit_debug_3", "reqId", reqId)
 
 	//初始化数据
 	head := s.chain.CurrentHeader()
+	log.Info("call_SandwichBestProfit_debug_4", "reqId", reqId)
 	blockNo := head.Number.Uint64()
+	log.Info("call_SandwichBestProfit_debug_5", "reqId", reqId)
 
 	// 如果是测试阶段，可以使用已经上块的tx
 	if sbp.DebugMode {
 		if victimTransaction == nil {
 			tx, _, blockNumber, _, _ := s.b.GetTransaction(ctx, victimTxHash)
+			log.Info("call_SandwichBestProfit_debug_5_1", "reqId", reqId)
 			if tx != nil {
 				blockNo = blockNumber - 1
 				head = s.chain.GetHeaderByNumber(blockNo)
 				victimTransaction = tx
+				log.Info("call_SandwichBestProfit_debug_5_2", "reqId", reqId)
 			}
 		}
 	}
+	log.Info("call_SandwichBestProfit_debug_6", "reqId", reqId)
 	// 获取不到 直接返回
 	if victimTransaction == nil {
 		result := make(map[string]interface{})
@@ -925,7 +933,7 @@ func call(rules params.Rules, coinbase common.Address, ti int, sbp SbpArgs, reqI
 
 	bytes := hexutil.Bytes(data)
 
-	nonce := sdb.GetNonce(sbp.Wallet)
+	//nonce := sdb.GetNonce(sbp.Wallet)
 
 	gas := hexutil.Uint64(10000000)
 
@@ -934,8 +942,8 @@ func call(rules params.Rules, coinbase common.Address, ti int, sbp SbpArgs, reqI
 		To:    &sbp.Contract,
 		Value: (*hexutil.Big)(amountIn),
 		Data:  &bytes,
-		Nonce: (*hexutil.Uint64)(&nonce),
-		Gas:   &gas,
+		//Nonce: (*hexutil.Uint64)(&nonce),
+		Gas: &gas,
 		//AccessList: nil,
 	}
 
