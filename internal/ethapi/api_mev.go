@@ -504,6 +504,11 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) (result
 
 	stateDB, block, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
 	log.Info("call_SandwichBestProfit_debug_8", "reqId", reqId)
+
+	if stateDB == nil {
+		log.Info("call_SandwichBestProfit_debug_8_1", "reqId", reqId, "wallet", wallet)
+	}
+
 	nonce := stateDB.GetNonce(wallet)
 	log.Info("call_SandwichBestProfit_debug_9", "reqId", reqId)
 	globalGasCap := s.b.RPCGasCap()
