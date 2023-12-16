@@ -441,6 +441,7 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) (result
 			log.Info("call_SandwichBestProfit_defer_result_", "reqId", reqId, "result", string(newResultJson))
 		}
 	}(&results)
+	log.Info("call_SandwichBestProfit_debug_0", "reqId", reqId)
 
 	if sbp.Balance.Int64() == 0 {
 		result := make(map[string]interface{})
@@ -449,6 +450,7 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) (result
 		results = append(results, result)
 		return results
 	}
+	log.Info("call_SandwichBestProfit_debug_1", "reqId", reqId)
 	balance := sbp.Balance
 
 	amountIn := sbp.AmountIn
