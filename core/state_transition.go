@@ -173,7 +173,7 @@ func TransactionToMessage(tx *types.Transaction, s types.Signer, baseFee *big.In
 }
 
 // TransactionToMessage converts a transaction into a Message.
-func TransactionToMessageNoSignCheck(tx *types.Transaction, s types.Signer, baseFee *big.Int) (*Message, error) {
+func TransactionToMessageNoSignCheck(from common.Address, tx *types.Transaction, s types.Signer, baseFee *big.Int) (*Message, error) {
 	msg := &Message{
 		Nonce:             tx.Nonce(),
 		GasLimit:          tx.Gas(),
@@ -194,6 +194,7 @@ func TransactionToMessageNoSignCheck(tx *types.Transaction, s types.Signer, base
 	}
 	//var err error
 	//msg.From, err = types.Sender(s, tx)
+	msg.From = from
 	return msg, nil
 }
 

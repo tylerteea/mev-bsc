@@ -975,7 +975,7 @@ func call(rules params.Rules, coinbase common.Address, ti int, sbp SbpArgs, reqI
 
 	basegasUsed := uint64(0)
 
-	receipt, result, applyErr := core.ApplyTransactionWithResultNoSign(s.b.ChainConfig(), s.chain, &coinbase, gasPool, sdb, head, tx, &basegasUsed, vm.Config{NoBaseFee: true})
+	receipt, result, applyErr := core.ApplyTransactionWithResultNoSign(callArgs.from(), s.b.ChainConfig(), s.chain, &coinbase, gasPool, sdb, head, tx, &basegasUsed, vm.Config{NoBaseFee: true})
 	log.Info("call_ApplyTransactionWithResult",
 		"reqId", reqId,
 		"amountIn", amountIn,
