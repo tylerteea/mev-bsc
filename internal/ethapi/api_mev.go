@@ -479,7 +479,7 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) (result
 				blockNo = blockNumber - 1
 				head = s.chain.GetHeaderByNumber(blockNo)
 				victimTransaction = tx
-				log.Info("call_SandwichBestProfit_debug_5_2", "reqId", reqId)
+				log.Info("call_SandwichBestProfit_debug_5_2", "reqId", reqId, "blockNo", blockNo)
 			}
 		}
 	}
@@ -496,10 +496,16 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) (result
 	}
 	// todo 如果是历史块，使用 b -1
 	//number := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
-	number := rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNo))
+	log.Info("call_SandwichBestProfit_debug_7", "reqId", reqId)
+	blockNumber := rpc.BlockNumber(blockNo)
+	log.Info("call_SandwichBestProfit_debug_7_1", "reqId", reqId)
+	number := rpc.BlockNumberOrHashWithNumber(blockNumber)
+	log.Info("call_SandwichBestProfit_debug_7_2", "reqId", reqId)
 
 	stateDB, block, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
+	log.Info("call_SandwichBestProfit_debug_8", "reqId", reqId)
 	nonce := stateDB.GetNonce(wallet)
+	log.Info("call_SandwichBestProfit_debug_9", "reqId", reqId)
 	globalGasCap := s.b.RPCGasCap()
 
 	log.Info("call_SandwichBestProfit_3_", "reqId", reqId, "blockNo", blockNo, "nonce", nonce, "globalGasCap", globalGasCap)
