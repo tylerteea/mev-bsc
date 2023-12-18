@@ -691,7 +691,8 @@ func (s *BundleAPI) SandwichBestProfitTest(ctx context.Context, sbp SbpArgs) (re
 	//并发执行模拟调用，记录结果
 	for _, amountInReal := range ladder {
 
-		sdb := stateDB.Copy()
+		sdb := stateDB
+		//sdb := stateDB.Copy()
 		// todo  go
 		worker_test(rules, ctx, results, head, victimTxHash, victimTxMsg, victimTxContext, wg, sbp, s, reqId, amountOutMin, sdb, amountInReal, timeout, globalGasCap)
 	}
