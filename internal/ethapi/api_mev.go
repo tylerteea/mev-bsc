@@ -666,11 +666,11 @@ func (s *BundleAPI) SandwichBestProfitTest(ctx context.Context, sbp SbpArgs) (re
 
 	log.Info("call_SandwichBestProfit_vtm_", "reqId", reqId)
 
-	log.Info("call_SandwichBestProfit_vtm_", "reqId", "steps", sbp.Steps)
+	log.Info("call_SandwichBestProfit_vtm_", "reqId", reqId, "steps", sbp.Steps)
 	if sbp.Steps == nil {
 		sbp.Steps = steps
 	}
-	log.Info("call_SandwichBestProfit_steps", "reqId", "steps", sbp.Steps)
+	log.Info("call_SandwichBestProfit_steps", "reqId", reqId, "steps", sbp.Steps)
 	//计算出每次步长
 	stepAmount := new(big.Int).Quo(new(big.Int).SetInt64(0).Sub(balance, amountIn), sbp.Steps)
 
@@ -1080,6 +1080,9 @@ func call_test(ctx context.Context, ti int, sbp SbpArgs, reqId int64, amountOunM
 		//Gas:   &gas,
 		//AccessList: nil,
 	}
+
+	callResultTest, callErr := s.bcapi.Call(ctx, callArgs, rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber), nil, nil)
+	log.Info("call_newData_result_eth_call", "reqId", reqId, "callResult_test", callResultTest, "callErr", callErr)
 
 	message, toMessageErr := callArgs.ToMessage(globalGasCap, head.BaseFee)
 
