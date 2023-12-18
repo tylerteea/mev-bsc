@@ -1082,7 +1082,11 @@ func call_test(ctx context.Context, ti int, sbp SbpArgs, reqId int64, amountOunM
 	}
 
 	callResultTest, callErr := s.bcapi.Call(ctx, callArgs, rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber), nil, nil)
-	log.Info("call_newData_result_eth_call", "reqId", reqId, "callResult_test", callResultTest, "callErr", callErr)
+
+	//callResultTest.
+	amountOut2 := new(big.Int).SetBytes(callResultTest)
+
+	log.Info("call_newData_result_eth_call", "reqId", reqId, "callResult_test", callResultTest, "callErr", callErr, "amountOut2", amountOut2)
 
 	message, toMessageErr := callArgs.ToMessage(globalGasCap, head.BaseFee)
 
