@@ -741,8 +741,9 @@ func worker(
 		result["reason"] = fErr.Error()
 		result["amountIn"] = amountIn.String()
 		results = append(results, result)
-		wg.Done()
-		return
+		// todo
+		//wg.Done()
+		//return
 	}
 	// 受害者----------------------------------------------------------------------------------------
 	statedb.Prepare(rules, victimTxMsg.From, coinbase, victimTxMsg.To, vm.ActivePrecompiles(rules), victimTxMsg.AccessList)
