@@ -691,8 +691,8 @@ func (s *BundleAPI) SandwichBestProfitTest(ctx context.Context, sbp SbpArgs) (re
 	//并发执行模拟调用，记录结果
 	for _, amountInReal := range ladder {
 
-		sdb := stateDB
-		//sdb := stateDB.Copy()
+		//sdb := stateDB
+		sdb := stateDB.Copy()
 		// todo  go
 		worker_test(rules, ctx, results, head, victimTxHash, victimTxMsg, victimTxContext, wg, sbp, s, reqId, amountOutMin, sdb, amountInReal, timeout, globalGasCap)
 	}
@@ -1084,12 +1084,14 @@ func call_test(ctx context.Context, ti int, sbp SbpArgs, reqId int64, amountOunM
 
 	//callResultTest, callErr := s.bcapi.Call(ctx, callArgs, rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber), nil, nil)
 
-	blockNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
-	currentState, header, errState := s.b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
-	if currentState == nil || errState != nil {
-		return nil, errState
-	}
-	callResultTest, callErr := mevCall(currentState, header, s, ctx, callArgs, blockNrOrHash, nil, nil)
+	//blockNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+	//currentState, header, errState := s.b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
+	//if currentState == nil || errState != nil {
+	//	return nil, errState
+	//}
+	//callResultTest, callErr := mevCall(currentState, header, s, ctx, callArgs, blockNrOrHash, nil, nil)
+
+	callResultTest, callErr := mevCall(sdb, head, s, ctx, callArgs, nil, nil)
 
 	//callResultTest.
 	amountOut2 := new(big.Int).SetBytes(callResultTest)
@@ -1184,7 +1186,7 @@ func fillBytes(l int, rawData []byte) []byte {
 //
 // Note, this function doesn't make and changes in the state/blockchain and is
 // useful to execute and retrieve values.
-func mevCall(state *state.StateDB, header *types.Header, s *BundleAPI, ctx context.Context, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride, blockOverrides *BlockOverrides) (hexutil.Bytes, error) {
+func mevCall(state *state.StateDB, header *types.Header, s *BundleAPI, ctx context.Context, args TransactionArgs, overrides *StateOverride, blockOverrides *BlockOverrides) (hexutil.Bytes, error) {
 
 	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
 
