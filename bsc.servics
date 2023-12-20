@@ -1,0 +1,19 @@
+[Unit]
+Description=BSC node geth
+After=syslog.target network.target
+
+[Service]
+# User=geth
+# Group=geth
+# Environment=HOME=/home/geth
+Type=simple
+# PIDFile=/node/bsc/data/geth.pid
+ExecStart=/node/bsc/geth/build/bin/geth --config /node/bsc/config/config.toml --datadir /node/bsc/fastdata  --cache 20000 --diffsync --rpc.allow-unprotected-txs --txlookuplimit=0 --syncmode=full --tries-verify-mode=none --pruneancient=true
+KillMode=process
+KillSignal=SIGINT
+TimeoutStopSec=90
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target
