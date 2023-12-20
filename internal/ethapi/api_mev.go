@@ -565,7 +565,7 @@ func worker(
 	gasPool := new(core.GasPool).AddGas(math.MaxUint64)
 
 	// 抢跑----------------------------------------------------------------------------------------
-	frontAmountOut, fErr := excute(ctx, sbp, reqId, amountOutMin, sbp.ZeroForOne, sbp.TokenIn, sbp.TokenOut, amountIn, evmContext, statedb, s, gasPool, globalGasCap, head)
+	frontAmountOut, fErr := execute(ctx, sbp, reqId, amountOutMin, sbp.ZeroForOne, sbp.TokenIn, sbp.TokenOut, amountIn, evmContext, statedb, s, gasPool, globalGasCap, head)
 
 	if fErr != nil {
 		result["error"] = "frontCallErr"
@@ -596,7 +596,6 @@ func worker(
 		wg.Done()
 		return
 	}
-	// todo  假设 amount in  = x 的时候  Revert 了， 那么大于 x 都停了, 目前做不到，后续增加二分搜索实现
 	if len(victimTxCallResult.Revert()) > 0 {
 		revertErr := newRevertError(victimTxCallResult)
 		data, _ := json.Marshal(&revertErr)
@@ -625,7 +624,7 @@ func worker(
 	log.Info("call_victimTx", "reqId", reqId, "bytes2Hex", bytes2Hex, "string", string(dst))
 
 	// 跟跑----------------------------------------------------------------------------------------
-	backAmountOut, bErr := excute(ctx, sbp, reqId, amountOutMin, !sbp.ZeroForOne, sbp.TokenOut, sbp.TokenIn, frontAmountOut, evmContext, statedb, s, gasPool, globalGasCap, head)
+	backAmountOut, bErr := execute(ctx, sbp, reqId, amountOutMin, !sbp.ZeroForOne, sbp.TokenOut, sbp.TokenIn, frontAmountOut, evmContext, statedb, s, gasPool, globalGasCap, head)
 
 	if bErr != nil {
 		result["error"] = "backCallErr"
@@ -643,7 +642,7 @@ func worker(
 	results = append(results, result)
 	wg.Done()
 }
-func excute(ctx context.Context, sbp SbpArgs, reqId int64, amountOunMin *big.Int, zeroForOne bool, tokenIn common.Address, tokenOut common.Address, amountIn *big.Int, evmContext vm.BlockContext, sdb *state.StateDB, s *BundleAPI, gasPool *core.GasPool, globalGasCap uint64, head *types.Header) (*big.Int, error) {
+func execute(ctx context.Context, sbp SbpArgs, reqId int64, amountOunMin *big.Int, zeroForOne bool, tokenIn common.Address, tokenOut common.Address, amountIn *big.Int, evmContext vm.BlockContext, sdb *state.StateDB, s *BundleAPI, gasPool *core.GasPool, globalGasCap uint64, head *types.Header) (*big.Int, error) {
 
 	log.Info("call_newData_args",
 		"reqId", reqId,
