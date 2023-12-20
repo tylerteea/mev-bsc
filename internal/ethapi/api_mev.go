@@ -735,7 +735,7 @@ func worker(
 
 	// 抢跑----------------------------------------------------------------------------------------
 
-	frontAmountOut, fErr := call(rules, coinbase, 1, sbp, reqId, amountOutMin, sbp.ZeroForOne, sbp.TokenIn, sbp.TokenOut, amountIn, evmContext, statedb, s, gasPool, timeout, globalGasCap, head)
+	frontAmountOut, fErr := callExe(rules, coinbase, 1, sbp, reqId, amountOutMin, sbp.ZeroForOne, sbp.TokenIn, sbp.TokenOut, amountIn, evmContext, statedb, s, gasPool, timeout, globalGasCap, head)
 
 	if fErr != nil {
 		result["error"] = "frontCallErr"
@@ -798,7 +798,7 @@ func worker(
 	log.Info("call_victimTx", "reqId", reqId, "bytes2Hex", bytes2Hex, "string", string(dst))
 
 	// 跟跑----------------------------------------------------------------------------------------
-	backAmountOut, bErr := call(rules, coinbase, 3, sbp, reqId, amountOutMin, !sbp.ZeroForOne, sbp.TokenOut, sbp.TokenIn, frontAmountOut, evmContext, statedb, s, gasPool, timeout, globalGasCap, head)
+	backAmountOut, bErr := callExe(rules, coinbase, 3, sbp, reqId, amountOutMin, !sbp.ZeroForOne, sbp.TokenOut, sbp.TokenIn, frontAmountOut, evmContext, statedb, s, gasPool, timeout, globalGasCap, head)
 
 	if bErr != nil {
 		result["error"] = "backCallErr"
@@ -929,7 +929,7 @@ func worker_test(
 	wg.Done()
 }
 
-func call(rules params.Rules, coinbase common.Address, ti int, sbp SbpArgs, reqId int64, amountOunMin *big.Int, zeroForOne bool, tokenIn common.Address, tokenOut common.Address, amountIn *big.Int, evmContext vm.BlockContext, sdb *state.StateDB, s *BundleAPI, gasPool *core.GasPool, timeout time.Duration, globalGasCap uint64, head *types.Header) (*big.Int, error) {
+func callExe(rules params.Rules, coinbase common.Address, ti int, sbp SbpArgs, reqId int64, amountOunMin *big.Int, zeroForOne bool, tokenIn common.Address, tokenOut common.Address, amountIn *big.Int, evmContext vm.BlockContext, sdb *state.StateDB, s *BundleAPI, gasPool *core.GasPool, timeout time.Duration, globalGasCap uint64, head *types.Header) (*big.Int, error) {
 
 	log.Info("call_newData_args",
 		"reqId", reqId,
@@ -1082,7 +1082,14 @@ func call_test(ctx context.Context, ti int, sbp SbpArgs, reqId int64, amountOunM
 		//AccessList: nil,
 	}
 
-	callResultTest, callErr := s.bcapi.Call(ctx, callArgs, rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber), nil, nil)
+	//callResultTest, callErr := s.bcapi.Call(ctx, callArgs, rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber), nil, nil)
+
+	blockNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+	currentState, header, errState := s.b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
+	if currentState == nil || errState != nil {
+		return nil, errState
+	}
+	callResultTest, callErr := mevCall(currentState, header, s, ctx, callArgs, blockNrOrHash, nil, nil)
 
 	//callResultTest.
 	amountOut2 := new(big.Int).SetBytes(callResultTest)
@@ -1169,4 +1176,77 @@ func fillBytes(l int, rawData []byte) []byte {
 		res[head+i] = rawData[i]
 	}
 	return res
+}
+
+// Call executes the given transaction on the state for the given block number.
+//
+// Additionally, the caller can specify a batch of contract for fields overriding.
+//
+// Note, this function doesn't make and changes in the state/blockchain and is
+// useful to execute and retrieve values.
+func mevCall(state *state.StateDB, header *types.Header, s *BundleAPI, ctx context.Context, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride, blockOverrides *BlockOverrides) (hexutil.Bytes, error) {
+
+	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
+
+	result, err := doMevCall(ctx, s.b, args, state, header, overrides, blockOverrides, s.b.RPCEVMTimeout(), s.b.RPCGasCap())
+
+	if err != nil {
+		return nil, err
+	}
+	// If the result contains a revert reason, try to unpack and return it.
+	if len(result.Revert()) > 0 {
+		return nil, newRevertError(result)
+	}
+	return result.Return(), result.Err
+}
+
+func doMevCall(ctx context.Context, b Backend, args TransactionArgs, state *state.StateDB, header *types.Header, overrides *StateOverride, blockOverrides *BlockOverrides, timeout time.Duration, globalGasCap uint64) (*core.ExecutionResult, error) {
+	if err := overrides.Apply(state); err != nil {
+		return nil, err
+	}
+	// Setup context so it may be cancelled the call has completed
+	// or, in case of unmetered gas, setup a context with a timeout.
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+	} else {
+		ctx, cancel = context.WithCancel(ctx)
+	}
+	// Make sure the context is cancelled when the call has completed
+	// this makes sure resources are cleaned up.
+	defer cancel()
+
+	// Get a new instance of the EVM.
+	msg, err := args.ToMessage(globalGasCap, header.BaseFee)
+	if err != nil {
+		return nil, err
+	}
+	blockCtx := core.NewEVMBlockContext(header, NewChainContext(ctx, b), nil)
+	if blockOverrides != nil {
+		blockOverrides.Apply(&blockCtx)
+	}
+	evm, vmError := b.GetEVM(ctx, msg, state, header, &vm.Config{NoBaseFee: true}, &blockCtx)
+
+	// Wait for the context to be done and cancel the evm. Even if the
+	// EVM has finished, cancelling may be done (repeatedly)
+	gopool.Submit(func() {
+		<-ctx.Done()
+		evm.Cancel()
+	})
+
+	// Execute the message.
+	gp := new(core.GasPool).AddGas(math.MaxUint64)
+	result, err := core.ApplyMessage(evm, msg, gp)
+	if err := vmError(); err != nil {
+		return nil, err
+	}
+
+	// If the timer caused an abort, return an appropriate error message
+	if evm.Cancelled() {
+		return nil, fmt.Errorf("execution aborted (timeout = %v)", timeout)
+	}
+	if err != nil {
+		return result, fmt.Errorf("err: %w (supplied gas %d)", err, msg.GasLimit)
+	}
+	return result, nil
 }
