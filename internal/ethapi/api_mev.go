@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
-	"github.com/ethereum/go-ethereum/params"
 	"math/big"
 	"sync"
 	"time"
@@ -425,163 +424,7 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) (result
 	} else {
 		ctx, cancel = context.WithCancel(ctx)
 	}
-	// Make sure the context is cancelled when the call has completed
-	// this makes sure resources are cleaned up.
-	defer cancel()
-	defer func(results *[]map[string]interface{}) {
-		if r := recover(); r != nil {
-			oldResultJson, _ := json.Marshal(results)
-			log.Info("call_SandwichBestProfit_old_result_", "reqId", reqId, "result", string(oldResultJson))
-			results = new([]map[string]interface{})
-			result := make(map[string]interface{})
-			result["error"] = "panic"
-			result["reason"] = r
-			*results = append(*results, result)
-			newResultJson, _ := json.Marshal(results)
-			log.Info("call_SandwichBestProfit_defer_result_", "reqId", reqId, "result", string(newResultJson))
-		}
-	}(&results)
-	log.Info("call_SandwichBestProfit_debug_0", "reqId", reqId)
 
-	if sbp.Balance.Int64() == 0 {
-		result := make(map[string]interface{})
-		result["error"] = "args_err"
-		result["reason"] = "balance_is_0"
-		results = append(results, result)
-		return results
-	}
-	log.Info("call_SandwichBestProfit_debug_1", "reqId", reqId)
-	balance := sbp.Balance
-
-	amountIn := sbp.AmountIn
-	wallet := sbp.Wallet
-	victimTxHash := sbp.VictimTxHash
-	amountOutMin := sbp.AmountOutMin
-
-	log.Info("call_SandwichBestProfit_debug_2", "reqId", reqId)
-
-	// 根据受害人tx hash  从内存池得到tx msg
-	victimTransaction := s.b.GetPoolTransaction(victimTxHash)
-	log.Info("call_SandwichBestProfit_debug_3", "reqId", reqId)
-
-	//初始化数据
-	head := s.chain.CurrentHeader()
-	log.Info("call_SandwichBestProfit_debug_4", "reqId", reqId)
-	blockNo := head.Number.Uint64()
-	log.Info("call_SandwichBestProfit_debug_5", "reqId", reqId)
-
-	// 如果是测试阶段，可以使用已经上块的tx
-	if sbp.DebugMode {
-		if victimTransaction == nil {
-			tx, _, blockNumber, _, _ := s.b.GetTransaction(ctx, victimTxHash)
-			log.Info("call_SandwichBestProfit_debug_5_1", "reqId", reqId)
-			if tx != nil {
-				blockNo = blockNumber - 1
-				head = s.chain.GetHeaderByNumber(blockNo)
-				victimTransaction = tx
-				log.Info("call_SandwichBestProfit_debug_5_2", "reqId", reqId, "blockNo", blockNo)
-			}
-		}
-	}
-	log.Info("call_SandwichBestProfit_debug_6", "reqId", reqId)
-	// 获取不到 直接返回
-	if victimTransaction == nil {
-		result := make(map[string]interface{})
-		result["error"] = "tx_is_nil"
-		result["reason"] = "GetPoolTransaction and GetTransaction all nil : " + victimTxHash.Hex()
-		results = append(results, result)
-		resultJson, _ := json.Marshal(result)
-		log.Info("call_SandwichBestProfit_2_", "reqId", reqId, "result", string(resultJson))
-		return results
-	}
-	// todo 如果是历史块，使用 b -1
-	//number := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
-	log.Info("call_SandwichBestProfit_debug_7", "reqId", reqId)
-	blockNumber := rpc.BlockNumber(blockNo)
-	log.Info("call_SandwichBestProfit_debug_7_1", "reqId", reqId)
-	number := rpc.BlockNumberOrHashWithNumber(blockNumber)
-	log.Info("call_SandwichBestProfit_debug_7_2", "reqId", reqId)
-
-	stateDB, block, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
-	log.Info("call_SandwichBestProfit_debug_8", "reqId", reqId)
-
-	if stateDB == nil {
-		log.Info("call_SandwichBestProfit_debug_8_1", "reqId", reqId, "wallet", wallet)
-	}
-
-	nonce := stateDB.GetNonce(wallet)
-	log.Info("call_SandwichBestProfit_debug_9", "reqId", reqId)
-	globalGasCap := s.b.RPCGasCap()
-
-	log.Info("call_SandwichBestProfit_3_", "reqId", reqId, "blockNo", blockNo, "nonce", nonce, "globalGasCap", globalGasCap)
-	victimTxMsg, victimTxMsgErr := core.TransactionToMessage(victimTransaction, types.MakeSigner(s.b.ChainConfig(), head.Number, head.Time), head.BaseFee)
-
-	if victimTxMsgErr != nil {
-		result := make(map[string]interface{})
-		result["error"] = "victimTxMsgErr"
-		result["reason"] = victimTxMsgErr
-		results = append(results, result)
-
-		resultJson, _ := json.Marshal(result)
-		log.Info("call_SandwichBestProfit_4_", "reqId", reqId, "result", string(resultJson))
-		return results
-	}
-
-	victimTxContext := core.NewEVMTxContext(victimTxMsg)
-
-	log.Info("call_SandwichBestProfit_vtm_", "reqId", reqId)
-
-	log.Info("call_SandwichBestProfit_vtm_", "reqId", reqId, "steps", sbp.Steps)
-	if sbp.Steps == nil {
-		sbp.Steps = steps
-	}
-	log.Info("call_SandwichBestProfit_steps", "reqId", reqId, "steps", sbp.Steps)
-	//计算出每次步长
-	stepAmount := new(big.Int).Quo(new(big.Int).SetInt64(0).Sub(balance, amountIn), sbp.Steps)
-
-	//初始化整个执行ladder结构
-	var ladder []*big.Int
-	for amountIn.Cmp(balance) < 0 {
-		ladder = append(ladder, new(big.Int).Set(amountIn))
-		//累加
-		amountIn = new(big.Int).Add(amountIn, stepAmount)
-	}
-
-	var wg = new(sync.WaitGroup)
-	wg.Add(len(ladder))
-
-	isPostMerge := head.Difficulty.Cmp(common.Big0) == 0
-	rules := s.b.ChainConfig().Rules(head.Number, isPostMerge, head.Time)
-
-	//并发执行模拟调用，记录结果
-	for _, amountInReal := range ladder {
-
-		//sdb := stateDB.Copy()
-		// todo  go
-		worker(rules, block.Coinbase, results, head, victimTxHash, victimTxMsg, victimTxContext, wg, sbp, s, reqId, amountOutMin, stateDB.Copy(), amountInReal, timeout, globalGasCap)
-	}
-	wg.Wait()
-	resultJson, _ := json.Marshal(results)
-	log.Info("call_SandwichBestProfit_5_", "reqId", reqId, "result", string(resultJson))
-	return results
-}
-
-// SandwichBestProfitTest profit calculate
-func (s *BundleAPI) SandwichBestProfitTest(ctx context.Context, sbp SbpArgs) (results []map[string]interface{}) {
-
-	reqId := time.Now().UnixMilli()
-	req, _ := json.Marshal(sbp)
-	log.Info("call_SandwichBestProfit_1_", "reqId", reqId, "sbp", string(req))
-
-	timeout := s.b.RPCEVMTimeout()
-	var cancel context.CancelFunc
-	if timeout > 0 {
-		ctx, cancel = context.WithTimeout(ctx, timeout)
-	} else {
-		ctx, cancel = context.WithCancel(ctx)
-	}
-	// Make sure the context is cancelled when the call has completed
-	// this makes sure resources are cleaned up.
 	defer cancel()
 	defer func(results *[]map[string]interface{}) {
 		if r := recover(); r != nil {
@@ -639,8 +482,6 @@ func (s *BundleAPI) SandwichBestProfitTest(ctx context.Context, sbp SbpArgs) (re
 		log.Info("call_SandwichBestProfit_2_", "reqId", reqId, "result", string(resultJson))
 		return results
 	}
-	// todo 如果是历史块，使用 b -1
-	//number := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 	number := rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNo))
 
 	stateDB, _, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
@@ -661,10 +502,7 @@ func (s *BundleAPI) SandwichBestProfitTest(ctx context.Context, sbp SbpArgs) (re
 		log.Info("call_SandwichBestProfit_4_", "reqId", reqId, "result", string(resultJson))
 		return results
 	}
-
 	victimTxContext := core.NewEVMTxContext(victimTxMsg)
-
-	log.Info("call_SandwichBestProfit_vtm_", "reqId", reqId)
 
 	log.Info("call_SandwichBestProfit_vtm_", "reqId", reqId, "steps", sbp.Steps)
 	if sbp.Steps == nil {
@@ -685,16 +523,12 @@ func (s *BundleAPI) SandwichBestProfitTest(ctx context.Context, sbp SbpArgs) (re
 	var wg = new(sync.WaitGroup)
 	wg.Add(len(ladder))
 
-	isPostMerge := head.Difficulty.Cmp(common.Big0) == 0
-	rules := s.b.ChainConfig().Rules(head.Number, isPostMerge, head.Time)
-
 	//并发执行模拟调用，记录结果
 	for _, amountInReal := range ladder {
 
-		//sdb := stateDB
 		sdb := stateDB.Copy()
 		// todo  go
-		worker_test(rules, ctx, results, head, victimTxHash, victimTxMsg, victimTxContext, wg, sbp, s, reqId, amountOutMin, sdb, amountInReal, timeout, globalGasCap)
+		worker(ctx, results, head, victimTxMsg, victimTxContext, wg, sbp, s, reqId, amountOutMin, sdb, amountInReal, globalGasCap)
 	}
 	wg.Wait()
 	resultJson, _ := json.Marshal(results)
@@ -703,126 +537,9 @@ func (s *BundleAPI) SandwichBestProfitTest(ctx context.Context, sbp SbpArgs) (re
 }
 
 func worker(
-	rules params.Rules,
-	coinbase common.Address,
-	results []map[string]interface{},
-	head *types.Header,
-	victimTxHash common.Hash,
-	victimTxMsg *core.Message,
-	victimTxContext vm.TxContext,
-	wg *sync.WaitGroup,
-	sbp SbpArgs,
-	s *BundleAPI,
-	reqId int64,
-	amountOutMin *big.Int,
-	statedb *state.StateDB,
-	amountIn *big.Int,
-	timeout time.Duration,
-	globalGasCap uint64) {
-
-	defer func() {
-		if r := recover(); r != nil {
-			log.Info("call_SandwichBestProfit_defer_err_", "reqId", reqId, "err", r)
-			wg.Done()
-		}
-	}()
-
-	evmContext := core.NewEVMBlockContext(head, s.chain, nil)
-
-	result := make(map[string]interface{})
-
-	gasPool := new(core.GasPool).AddGas(math.MaxUint64)
-
-	// 抢跑----------------------------------------------------------------------------------------
-
-	frontAmountOut, fErr := callExe(rules, coinbase, 1, sbp, reqId, amountOutMin, sbp.ZeroForOne, sbp.TokenIn, sbp.TokenOut, amountIn, evmContext, statedb, s, gasPool, timeout, globalGasCap, head)
-
-	if fErr != nil {
-		result["error"] = "frontCallErr"
-		result["reason"] = fErr.Error()
-		result["amountIn"] = amountIn.String()
-		results = append(results, result)
-		// todo
-		//wg.Done()
-		//return
-	}
-	// 受害者----------------------------------------------------------------------------------------
-	statedb.Prepare(rules, victimTxMsg.From, coinbase, victimTxMsg.To, vm.ActivePrecompiles(rules), victimTxMsg.AccessList)
-
-	vmEnv := vm.NewEVM(evmContext, victimTxContext, statedb, s.chain.Config(), vm.Config{NoBaseFee: true})
-	err := gopool.Submit(func() {
-		vmEnv.Cancel()
-	})
-	if err != nil {
-		wg.Done()
-		return
-	}
-	victimTxCallResult, victimTxCallErr := core.ApplyMessage(vmEnv, victimTxMsg, gasPool)
-
-	log.Info("call_victimTx", "reqId", reqId, "victimTxCallResult", victimTxCallResult)
-
-	if victimTxCallErr != nil {
-		result["error"] = "victimTxCallErr"
-		result["reason"] = victimTxCallErr.Error()
-		result["amountIn"] = amountIn.String()
-		results = append(results, result)
-		wg.Done()
-		return
-	}
-	// todo  假设 amount in  = x 的时候  Revert 了， 那么大于 x 都停了, 目前做不到，后续增加二分搜索实现
-	if len(victimTxCallResult.Revert()) > 0 {
-		revertErr := newRevertError(victimTxCallResult)
-		data, _ := json.Marshal(&revertErr)
-		_ = json.Unmarshal(data, &result)
-		result["error"] = "execution_victimTx_reverted"
-		result["reason"] = victimTxCallResult.Err.Error()
-		result["amountIn"] = amountIn.String()
-		results = append(results, result)
-		wg.Done()
-		return
-	}
-	if victimTxCallResult.Err != nil {
-		result["error"] = "execution_victimTx_callResult_err"
-		result["reason"] = victimTxCallResult.Err.Error()
-		result["amountIn"] = amountIn.String()
-		results = append(results, result)
-		wg.Done()
-		return
-	}
-
-	data := victimTxCallResult.Return()
-	bytes2Hex := common.Bytes2Hex(data)
-	dst := make([]byte, hex.EncodedLen(len(data)))
-	hex.Encode(dst, data)
-
-	log.Info("call_victimTx", "reqId", reqId, "bytes2Hex", bytes2Hex, "string", string(dst))
-
-	// 跟跑----------------------------------------------------------------------------------------
-	backAmountOut, bErr := callExe(rules, coinbase, 3, sbp, reqId, amountOutMin, !sbp.ZeroForOne, sbp.TokenOut, sbp.TokenIn, frontAmountOut, evmContext, statedb, s, gasPool, timeout, globalGasCap, head)
-
-	if bErr != nil {
-		result["error"] = "backCallErr"
-		result["reason"] = bErr.Error()
-		result["amountIn"] = amountIn.String()
-		results = append(results, result)
-		wg.Done()
-		return
-	}
-
-	result["tokenIn"] = sbp.TokenIn
-	result["tokenOut"] = sbp.TokenOut
-	result["amountIn"] = new(big.Int).Set(amountIn)
-	result["amountOut"] = new(big.Int).Set(backAmountOut)
-	results = append(results, result)
-	wg.Done()
-}
-
-func worker_test(
-	rules params.Rules,
 	ctx context.Context,
 	results []map[string]interface{},
 	head *types.Header,
-	victimTxHash common.Hash,
 	victimTxMsg *core.Message,
 	victimTxContext vm.TxContext,
 	wg *sync.WaitGroup,
@@ -832,7 +549,6 @@ func worker_test(
 	amountOutMin *big.Int,
 	statedb *state.StateDB,
 	amountIn *big.Int,
-	timeout time.Duration,
 	globalGasCap uint64) {
 
 	defer func() {
@@ -849,7 +565,7 @@ func worker_test(
 	gasPool := new(core.GasPool).AddGas(math.MaxUint64)
 
 	// 抢跑----------------------------------------------------------------------------------------
-	frontAmountOut, fErr := call_test(ctx, 1, sbp, reqId, amountOutMin, sbp.ZeroForOne, sbp.TokenIn, sbp.TokenOut, amountIn, evmContext, statedb, s, gasPool, timeout, globalGasCap, head)
+	frontAmountOut, fErr := excute(ctx, sbp, reqId, amountOutMin, sbp.ZeroForOne, sbp.TokenIn, sbp.TokenOut, amountIn, evmContext, statedb, s, gasPool, globalGasCap, head)
 
 	if fErr != nil {
 		result["error"] = "frontCallErr"
@@ -860,7 +576,6 @@ func worker_test(
 		return
 	}
 	// 受害者----------------------------------------------------------------------------------------
-	statedb.Prepare(rules, victimTxMsg.From, head.Coinbase, victimTxMsg.To, vm.ActivePrecompiles(rules), victimTxMsg.AccessList)
 	vmEnv := vm.NewEVM(evmContext, victimTxContext, statedb, s.chain.Config(), vm.Config{NoBaseFee: true})
 	err := gopool.Submit(func() {
 		vmEnv.Cancel()
@@ -910,7 +625,7 @@ func worker_test(
 	log.Info("call_victimTx", "reqId", reqId, "bytes2Hex", bytes2Hex, "string", string(dst))
 
 	// 跟跑----------------------------------------------------------------------------------------
-	backAmountOut, bErr := call_test(ctx, 3, sbp, reqId, amountOutMin, !sbp.ZeroForOne, sbp.TokenOut, sbp.TokenIn, frontAmountOut, evmContext, statedb, s, gasPool, timeout, globalGasCap, head)
+	backAmountOut, bErr := excute(ctx, sbp, reqId, amountOutMin, !sbp.ZeroForOne, sbp.TokenOut, sbp.TokenIn, frontAmountOut, evmContext, statedb, s, gasPool, globalGasCap, head)
 
 	if bErr != nil {
 		result["error"] = "backCallErr"
@@ -928,129 +643,7 @@ func worker_test(
 	results = append(results, result)
 	wg.Done()
 }
-
-func callExe(rules params.Rules, coinbase common.Address, ti int, sbp SbpArgs, reqId int64, amountOunMin *big.Int, zeroForOne bool, tokenIn common.Address, tokenOut common.Address, amountIn *big.Int, evmContext vm.BlockContext, sdb *state.StateDB, s *BundleAPI, gasPool *core.GasPool, timeout time.Duration, globalGasCap uint64, head *types.Header) (*big.Int, error) {
-
-	log.Info("call_newData_args",
-		"reqId", reqId,
-		"amountOunMin", amountOunMin,
-		"bloxAmount", sbp.BloxAmount,
-		"bloxAddress", sbp.BloxAddress,
-		"pair", sbp.Pair,
-		"tokenIn", tokenIn,
-		"fee", sbp.Fee,
-		"amountIn", amountIn,
-		"zeroForOne", zeroForOne,
-	)
-	data := newData(amountOunMin, sbp.BloxAmount, sbp.BloxAddress, sbp.Pair, tokenIn, tokenOut, big.NewInt(sbp.Fee), amountIn, zeroForOne)
-
-	log.Info("call_newData_result", "reqId", reqId, "data_hex", common.Bytes2Hex(data))
-
-	bytes := hexutil.Bytes(data)
-
-	nonce := sdb.GetNonce(sbp.Wallet)
-	log.Info("call_newData_result", "reqId", reqId, "nonce", nonce)
-
-	gas := hexutil.Uint64(10000000)
-
-	callArgs := TransactionArgs{
-		From:  &sbp.Wallet,
-		To:    &sbp.Contract,
-		Value: (*hexutil.Big)(amountIn),
-		Data:  &bytes,
-		Nonce: (*hexutil.Uint64)(&nonce),
-		Gas:   &gas,
-		//AccessList: nil,
-	}
-
-	//err := callArgs.setDefaults(ctx, s.b)
-	//if err != nil {
-	//	log.Info("call_newData_result_0", "reqId", reqId, "err", err)
-	//	return nil, err
-	//}
-
-	log.Info("call_newData_result_1", "reqId", reqId, "callArgs", callArgs)
-	tx := callArgs.toTransaction()
-	log.Info("call_newData_result_2", "reqId", reqId, "tx", tx)
-	sdb.Prepare(rules, callArgs.from(), head.Coinbase, tx.To(), vm.ActivePrecompiles(rules), tx.AccessList())
-	log.Info("call_newData_result_3", "reqId", reqId, "tx_hash", tx.Hash())
-
-	basegasUsed := uint64(0)
-
-	receipt, result, applyErr := core.ApplyTransactionWithResultNoSign(callArgs.from(), s.b.ChainConfig(), s.chain, &coinbase, gasPool, sdb, head, tx, &basegasUsed, vm.Config{NoBaseFee: true})
-	log.Info("call_ApplyTransactionWithResult",
-		"reqId", reqId,
-		"amountIn", amountIn,
-		"zeroForOne", zeroForOne,
-		"data", result,
-		"receipt", receipt,
-		"err", applyErr,
-	)
-
-	if applyErr != nil {
-		return nil, fmt.Errorf("err: %w; txhash %s", applyErr, tx.Hash())
-	}
-	marshalJSON, marErr := receipt.MarshalJSON()
-
-	if marErr != nil {
-		log.Info("call_result",
-			"reqId", reqId,
-			"amountIn", amountIn,
-			"zeroForOne", zeroForOne,
-			"data", result,
-			"receipt", string(marshalJSON),
-		)
-		return nil, marErr
-	}
-
-	if result.Err != nil {
-		log.Info("call_applyMessage_callResult_err", "reqId", reqId, "error", result.Err)
-		return nil, result.Err
-	}
-	amountOut := new(big.Int).SetBytes(result.Return())
-
-	//message, toMessageErr := callArgs.ToMessage(globalGasCap, head.BaseFee)
-
-	//if toMessageErr != nil {
-	//	return nil, toMessageErr
-	//}
-	//txContext := core.NewEVMTxContext(message)
-	//vmEnv := vm.NewEVM(evmContext, txContext, sdb, s.chain.Config(), vm.Config{NoBaseFee: true})
-	//
-	//err := gopool.Submit(func() {
-	//	vmEnv.Cancel()
-	//})
-	//if err != nil {
-	//	return nil, err
-	//}
-	//
-	//// apply
-	//callResult, err := core.ApplyMessage(vmEnv, message, gasPool)
-	//
-	//log.Info("call_result",
-	//	"reqId", reqId,
-	//	"amountIn", amountIn,
-	//	"zeroForOne", zeroForOne,
-	//	"data", callResult,
-	//	"revert", common.Bytes2Hex(callResult.Revert()),
-	//	"returnData", common.Bytes2Hex(callResult.Return()),
-	//)
-
-	//if err != nil {
-	//	log.Info("call_applyMessage_err", "reqId", reqId, "error", err)
-	//	return nil, err
-	//}
-	//if callResult.Err != nil {
-	//	log.Info("call_applyMessage_callResult_err", "reqId", reqId, "error", callResult.Err)
-	//	return nil, callResult.Err
-	//}
-	//amountOut := new(big.Int).SetBytes(callResult.Return())
-
-	log.Info("call_success", "reqId", reqId, "amountIn", amountIn, "zeroForOne", zeroForOne, "amountOut", amountOut)
-	return amountOut, nil
-}
-
-func call_test(ctx context.Context, ti int, sbp SbpArgs, reqId int64, amountOunMin *big.Int, zeroForOne bool, tokenIn common.Address, tokenOut common.Address, amountIn *big.Int, evmContext vm.BlockContext, sdb *state.StateDB, s *BundleAPI, gasPool *core.GasPool, timeout time.Duration, globalGasCap uint64, head *types.Header) (*big.Int, error) {
+func excute(ctx context.Context, sbp SbpArgs, reqId int64, amountOunMin *big.Int, zeroForOne bool, tokenIn common.Address, tokenOut common.Address, amountIn *big.Int, evmContext vm.BlockContext, sdb *state.StateDB, s *BundleAPI, gasPool *core.GasPool, globalGasCap uint64, head *types.Header) (*big.Int, error) {
 
 	log.Info("call_newData_args",
 		"reqId", reqId,
@@ -1068,53 +661,12 @@ func call_test(ctx context.Context, ti int, sbp SbpArgs, reqId int64, amountOunM
 	log.Info("call_newData_result", "reqId", reqId, "data_hex", common.Bytes2Hex(data))
 
 	bytes := hexutil.Bytes(data)
-
-	//nonce := sdb.GetNonce(sbp.Wallet)
-	//gas := hexutil.Uint64(100000000)
-
 	callArgs := TransactionArgs{
 		From: &sbp.Wallet,
 		To:   &sbp.Contract,
-		//Value: (*hexutil.Big)(amountIn),
 		Data: &bytes,
-		//Nonce: (*hexutil.Uint64)(&nonce),
-		//Gas:   &gas,
-		//AccessList: nil,
 	}
-
-	//callResultTest, callErr := s.bcapi.Call(ctx, callArgs, rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber), nil, nil)
-
-	//blockNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
-	//currentState, header, errState := s.b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
-	//if currentState == nil || errState != nil {
-	//	return nil, errState
-	//}
-	//callResultTest, callErr := mevCall(currentState, header, s, ctx, callArgs, blockNrOrHash, nil, nil)
-
-	callResultTest, callErr := mevCall(sdb, head, s, ctx, callArgs, nil, nil)
-
-	//callResultTest.
-	amountOut2 := new(big.Int).SetBytes(callResultTest)
-
-	log.Info("call_newData_result_eth_call", "reqId", reqId, "callResult_test", callResultTest, "callErr", callErr, "amountOut2", amountOut2)
-
-	message, toMessageErr := callArgs.ToMessage(globalGasCap, head.BaseFee)
-
-	if toMessageErr != nil {
-		return nil, toMessageErr
-	}
-	txContext := core.NewEVMTxContext(message)
-	vmEnv := vm.NewEVM(evmContext, txContext, sdb, s.chain.Config(), vm.Config{NoBaseFee: true})
-
-	err := gopool.Submit(func() {
-		vmEnv.Cancel()
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// apply
-	callResult, err := core.ApplyMessage(vmEnv, message, gasPool)
+	callResult, err := mevCall(sdb, head, s, ctx, callArgs, nil, nil)
 
 	log.Info("call_result",
 		"reqId", reqId,
@@ -1180,34 +732,18 @@ func fillBytes(l int, rawData []byte) []byte {
 	return res
 }
 
-// Call executes the given transaction on the state for the given block number.
-//
-// Additionally, the caller can specify a batch of contract for fields overriding.
-//
-// Note, this function doesn't make and changes in the state/blockchain and is
-// useful to execute and retrieve values.
-func mevCall(state *state.StateDB, header *types.Header, s *BundleAPI, ctx context.Context, args TransactionArgs, overrides *StateOverride, blockOverrides *BlockOverrides) (hexutil.Bytes, error) {
+func mevCall(state *state.StateDB, header *types.Header, s *BundleAPI, ctx context.Context, args TransactionArgs, overrides *StateOverride, blockOverrides *BlockOverrides) (*core.ExecutionResult, error) {
 
 	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
 
-	result, err := doMevCall(ctx, s.b, args, state, header, overrides, blockOverrides, s.b.RPCEVMTimeout(), s.b.RPCGasCap())
-
-	if err != nil {
-		return nil, err
-	}
-	// If the result contains a revert reason, try to unpack and return it.
-	if len(result.Revert()) > 0 {
-		return nil, newRevertError(result)
-	}
-	return result.Return(), result.Err
+	return doMevCall(ctx, s.b, args, state, header, overrides, blockOverrides, s.b.RPCEVMTimeout(), s.b.RPCGasCap())
 }
 
 func doMevCall(ctx context.Context, b Backend, args TransactionArgs, state *state.StateDB, header *types.Header, overrides *StateOverride, blockOverrides *BlockOverrides, timeout time.Duration, globalGasCap uint64) (*core.ExecutionResult, error) {
+
 	if err := overrides.Apply(state); err != nil {
 		return nil, err
 	}
-	// Setup context so it may be cancelled the call has completed
-	// or, in case of unmetered gas, setup a context with a timeout.
 	var cancel context.CancelFunc
 	if timeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, timeout)
@@ -1229,8 +765,6 @@ func doMevCall(ctx context.Context, b Backend, args TransactionArgs, state *stat
 	}
 	evm, vmError := b.GetEVM(ctx, msg, state, header, &vm.Config{NoBaseFee: true}, &blockCtx)
 
-	// Wait for the context to be done and cancel the evm. Even if the
-	// EVM has finished, cancelling may be done (repeatedly)
 	gopool.Submit(func() {
 		<-ctx.Done()
 		evm.Cancel()
