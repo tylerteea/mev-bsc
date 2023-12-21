@@ -24,10 +24,6 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-var (
-	steps = big.NewInt(3)
-)
-
 // --------------------------------------------------------Call Bundle--------------------------------------------------------
 
 // BundleAPI offers an API for accepting bundled transactions
@@ -504,11 +500,6 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) (result
 	}
 	victimTxContext := core.NewEVMTxContext(victimTxMsg)
 
-	log.Info("call_SandwichBestProfit_vtm_", "reqId", reqId, "steps", sbp.Steps)
-	if sbp.Steps == nil {
-		sbp.Steps = steps
-	}
-	log.Info("call_SandwichBestProfit_steps", "reqId", reqId, "steps", sbp.Steps)
 	//计算出每次步长
 	stepAmount := new(big.Int).Quo(new(big.Int).SetInt64(0).Sub(balance, amountIn), sbp.Steps)
 
@@ -525,15 +516,361 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) (result
 
 	//并发执行模拟调用，记录结果
 	for _, amountInReal := range ladder {
-
 		sdb := stateDB.Copy()
-		// todo  go
 		worker(ctx, results, head, victimTxMsg, victimTxContext, wg, sbp, s, reqId, amountOutMin, sdb, amountInReal, globalGasCap)
 	}
 	wg.Wait()
 	resultJson, _ := json.Marshal(results)
 	log.Info("call_SandwichBestProfit_5_", "reqId", reqId, "result", string(resultJson))
 	return results
+}
+
+// SandwichBestProfit3Search profit calculate
+func (s *BundleAPI) SandwichBestProfit3Search(ctx context.Context, sbp SbpArgs) (results []map[string]interface{}) {
+
+	reqId := time.Now().UnixMilli()
+	req, _ := json.Marshal(sbp)
+	log.Info("call_sbp_1_", "reqId", reqId, "sbp", string(req))
+
+	timeout := s.b.RPCEVMTimeout()
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+	} else {
+		ctx, cancel = context.WithCancel(ctx)
+	}
+
+	defer cancel()
+	defer func(results *[]map[string]interface{}) {
+		if r := recover(); r != nil {
+			oldResultJson, _ := json.Marshal(results)
+			log.Info("call_sbp_old_result_", "reqId", reqId, "result", string(oldResultJson))
+			results = new([]map[string]interface{})
+			result := make(map[string]interface{})
+			result["error"] = "panic"
+			result["reason"] = r
+			*results = append(*results, result)
+			newResultJson, _ := json.Marshal(results)
+			log.Info("call_sbp_defer_result_", "reqId", reqId, "result", string(newResultJson))
+		}
+	}(&results)
+
+	if sbp.Balance.Int64() == 0 {
+		result := make(map[string]interface{})
+		result["error"] = "args_err"
+		result["reason"] = "balance_is_0"
+		results = append(results, result)
+		return results
+	}
+
+	victimTxHash := sbp.VictimTxHash
+	// 根据受害人tx hash  从内存池得到tx msg
+	victimTransaction := s.b.GetPoolTransaction(victimTxHash)
+
+	//初始化数据
+	head := s.chain.CurrentHeader()
+	blockNo := head.Number.Uint64()
+
+	// 如果是测试阶段，可以使用已经上块的tx
+	if sbp.DebugMode {
+		if victimTransaction == nil {
+			tx, _, blockNumber, _, _ := s.b.GetTransaction(ctx, victimTxHash)
+			if tx != nil {
+				blockNo = blockNumber - 1
+				head = s.chain.GetHeaderByNumber(blockNo)
+				victimTransaction = tx
+			}
+		}
+	}
+	// 获取不到 直接返回
+	if victimTransaction == nil {
+		result := make(map[string]interface{})
+		result["error"] = "tx_is_nil"
+		result["reason"] = "GetPoolTransaction and GetTransaction all nil : " + victimTxHash.Hex()
+		results = append(results, result)
+		resultJson, _ := json.Marshal(result)
+		log.Info("call_sbp_2_", "reqId", reqId, "result", string(resultJson))
+		return results
+	}
+	number := rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNo))
+
+	stateDB, _, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
+	globalGasCap := s.b.RPCGasCap()
+
+	log.Info("call_sbp_3_", "reqId", reqId, "blockNo", blockNo, "globalGasCap", globalGasCap)
+
+	victimTxMsg, victimTxMsgErr := core.TransactionToMessage(victimTransaction, types.MakeSigner(s.b.ChainConfig(), head.Number, head.Time), head.BaseFee)
+
+	if victimTxMsgErr != nil {
+		result := make(map[string]interface{})
+		result["error"] = "victimTxMsgErr"
+		result["reason"] = victimTxMsgErr
+		results = append(results, result)
+
+		resultJson, _ := json.Marshal(result)
+		log.Info("call_sbp_4_", "reqId", reqId, "result", string(resultJson))
+		return results
+	}
+	victimTxContext := core.NewEVMTxContext(victimTxMsg)
+
+	//计算出每次步长
+	stepAmount := new(big.Int).Quo(new(big.Int).SetInt64(0).Sub(sbp.Balance, sbp.AmountIn), sbp.Steps)
+
+	args := &CallArgs{
+		ctx:             ctx,
+		head:            head,
+		s:               s,
+		blockNo:         hexutil.Uint64(blockNo),
+		sdb:             stateDB,
+		victimTxContext: victimTxContext,
+		victimTxMsg:     victimTxMsg,
+		timeout:         timeout,
+		globalGasCap:    globalGasCap,
+		sbp:             sbp,
+	}
+	maxProfitX, maxProfitY, getMaxErr := getMax(args, sbp.AmountIn, sbp.Balance, stepAmount)
+
+	if getMaxErr != nil {
+		result := make(map[string]interface{})
+		result["error"] = "getMaxErr"
+		result["reason"] = getMaxErr
+		results = append(results, result)
+		return results
+	}
+
+	result := make(map[string]interface{})
+	result["tokenIn"] = sbp.TokenIn
+	result["tokenOut"] = sbp.TokenOut
+	result["amountIn"] = maxProfitX
+	result["amountOut"] = maxProfitY
+	results = append(results, result)
+	resultJson, _ := json.Marshal(result)
+	log.Info("call_sbp_end_", "reqId", reqId, "result", string(resultJson))
+
+	return results
+}
+
+func getMax(args *CallArgs, a, b, step *big.Int) (*big.Int, *big.Int, error) {
+
+	log.Info("call_sbp_getMax_start", "reqId", args.reqId, "左边界", a, "右边界", b, "步长", step)
+
+	isConcave, err := concave(args, a, b)
+	log.Info("call_sbp_getMax_1", "reqId", args.reqId, "err", err, "isConcave", isConcave)
+	if err != nil {
+		return nil, nil, err
+	}
+	// 如果是凹函数，则最大值为左右边界中较大的一个
+	if isConcave {
+		aValue := callResultFunc(args, a)
+		if aValue == nil {
+			return nil, nil, errors.New("callResultFunc")
+		}
+		bValue := callResultFunc(args, b)
+		if bValue == nil {
+			return nil, nil, errors.New("callResultFunc")
+		}
+		if aValue.Int64() > bValue.Int64() {
+			return a, aValue, nil
+		} else {
+			return b, bValue, nil
+		}
+	}
+	log.Info("call_sbp_getMax_2", "reqId", args.reqId, "二分查找", "maxSearch")
+	x, y, err := maxSearch(args, a, b, step)
+	log.Info("call_sbp_getMax_end", "reqId", args.reqId, "maxX", x, "maxY", y, "maxX", "err", err)
+
+	return x, y, err
+}
+
+// 二分查找近似最大值
+func maxSearch(args *CallArgs, left, right, step *big.Int) (*big.Int, *big.Int, error) {
+
+	log.Info("call_sbp_maxSearch_start", "reqId", args.reqId)
+
+	maxValue := big.NewInt(0)
+	count := 0
+
+	for left.Int64() < right.Int64() {
+
+		count++
+		log.Info("call_sbp_maxSearch_find", "reqId", args.reqId, "count", count)
+
+		middle := mean(left, right)
+		middleSub1 := new(big.Int).Sub(middle, step)
+		middleAdd1 := new(big.Int).Add(middle, step)
+
+		// 中间值
+		midY := callResultFunc(args, middle)
+		if midY == nil {
+			log.Info("callResultFunc error midY is nil : ", middle)
+			continue
+		}
+		//中间值 - 1步
+		midSub := callResultFunc(args, middleSub1)
+		if midSub == nil {
+			log.Info("callResultFunc error midSub is nil : ", middleSub1)
+			continue
+		}
+		//中间值 + 1步
+		midAdd := callResultFunc(args, middleAdd1)
+		if midAdd == nil {
+			log.Info("callResultFunc error midAdd is nil : ", middleAdd1)
+			continue
+		}
+
+		// 如果f(x)大于左右两侧的f(x-1)和f(x+1)，那么认为此时x可以获得最大值y
+		if (midY.Int64() > midSub.Int64()) && midY.Int64() > midAdd.Int64() {
+			log.Info("find_max_x_y_1 : ", left, maxValue)
+			log.Info("call_sbp_maxSearch_find", "reqId", args.reqId, "totalCount", count, "x", left, "y", maxValue)
+			return middle, midY, nil
+		} else if midY.Int64() > midSub.Int64() {
+			log.Info("call_sbp_maxSearch_find", "reqId", args.reqId, "count", count, "右侧有更大值， 左侧的边界向中间移动left", left, "maxValue", maxValue)
+			left = middleAdd1 // 右侧有更大值， 左侧的边界向中间移动
+			maxValue = midAdd
+		} else {
+			log.Info("call_sbp_maxSearch_find", "reqId", args.reqId, "count", count, "左侧有更大值 ,右侧的边界向中间移动right", right, "maxValue", maxValue)
+			right = middleSub1 // 左侧有更大值 ,右侧的边界向中间移动
+		}
+	}
+
+	log.Info("call_sbp_maxSearch_find", "reqId", args.reqId, "totalCount", count, "x", left, "y", maxValue)
+	return left, maxValue, nil
+}
+
+// 调用合约的返回值
+func callResultFunc(args *CallArgs, amountInReal *big.Int) *big.Int {
+
+	result := realCall(args.ctx, args.head, args.s, args.sbp, args.reqId, args.sbp.AmountOutMin, args.sdb, args.victimTxMsg, args.victimTxContext, amountInReal, args.globalGasCap)
+
+	log.Info("realCall result : ", args, amountInReal, result)
+
+	var amountOutReal *big.Int
+	if result != nil && result["error"] == nil {
+
+		amountOut := result["amountOut"]
+		if amountOut != nil {
+			amountOutReal = result["amountOut"].(*big.Int)
+			log.Info("amountInReal、amountOutReal : ", amountInReal, amountOutReal)
+			return amountOutReal
+		}
+	}
+
+	return nil
+}
+
+func realCall(
+	ctx context.Context,
+	head *types.Header,
+	s *BundleAPI,
+	sbp SbpArgs,
+	reqId int64,
+	amountOutMin *big.Int,
+	stateDb *state.StateDB,
+	victimTxMsg *core.Message,
+	victimTxContext vm.TxContext,
+	amountIn *big.Int,
+	globalGasCap uint64) map[string]interface{} {
+
+	defer func() {
+		if r := recover(); r != nil {
+			log.Info("call_SandwichBestProfit_defer_err_", "reqId", reqId, "err", r)
+		}
+	}()
+
+	evmContext := core.NewEVMBlockContext(head, s.chain, nil)
+
+	result := make(map[string]interface{})
+
+	gasPool := new(core.GasPool).AddGas(math.MaxUint64)
+
+	sdb := stateDb.Copy()
+
+	// 抢跑----------------------------------------------------------------------------------------
+	frontAmountOut, fErr := execute(ctx, sbp, reqId, amountOutMin, sbp.ZeroForOne, sbp.TokenIn, sbp.TokenOut, amountIn, evmContext, sdb, s, gasPool, globalGasCap, head)
+
+	if fErr != nil {
+		result["error"] = "frontCallErr"
+		result["reason"] = fErr
+		return result
+	}
+
+	// 受害者----------------------------------------------------------------------------------------
+	vmEnv := vm.NewEVM(evmContext, victimTxContext, sdb, s.chain.Config(), vm.Config{NoBaseFee: true})
+	victimTxCallResult, victimTxCallErr := core.ApplyMessage(vmEnv, victimTxMsg, gasPool)
+
+	if victimTxCallErr != nil {
+		result["error"] = "victimTxCallErr"
+		result["reason"] = victimTxCallErr
+		return result
+	}
+	// todo  假设 amount in  = x 的时候  Revert 了， 那么大于 x 都停了, 目前做不到，后续增加二分搜索实现
+	if len(victimTxCallResult.Revert()) > 0 {
+		revertErr := newRevertError(victimTxCallResult)
+		data, _ := json.Marshal(&revertErr)
+		_ = json.Unmarshal(data, &result)
+		result["error"] = "execution_reverted"
+		return result
+	}
+	if victimTxCallResult.Err != nil {
+		result["error"] = "execution_victimTxCallResultErr"
+		result["reason"] = victimTxCallResult.Err
+		return result
+	}
+
+	// 跟跑----------------------------------------------------------------------------------------
+	backAmountOut, bErr := execute(ctx, sbp, reqId, amountOutMin, sbp.ZeroForOne, sbp.TokenOut, sbp.TokenIn, frontAmountOut, evmContext, sdb, s, gasPool, globalGasCap, head)
+
+	if bErr != nil {
+		result["error"] = "backCallErr"
+		result["reason"] = bErr
+		return result
+	}
+	result["amountIn"] = new(big.Int).Set(amountIn)
+	result["amountOut"] = new(big.Int).Set(backAmountOut)
+	return result
+}
+
+// 2数求平均
+func mean(a, b *big.Int) *big.Int {
+	sum := new(big.Int).Add(a, b)
+	return new(big.Int).Div(sum, big.NewInt(2))
+}
+
+// 是否是凹函数
+func concave(args *CallArgs, a, b *big.Int) (bool, error) {
+
+	funA := callResultFunc(args, a)
+	if funA == nil {
+		return false, errors.New("callResultFunc")
+	}
+
+	funB := callResultFunc(args, b)
+	if funB == nil {
+		return false, errors.New("callResultFunc")
+	}
+
+	middle := mean(a, b)
+	middleFunc := callResultFunc(args, middle)
+	if middleFunc == nil {
+		return false, errors.New("callResultFunc")
+	}
+
+	middleDiv2 := mean(funA, funB)
+	return middleDiv2.Int64() > middleFunc.Int64(), nil
+}
+
+type CallArgs struct {
+	ctx             context.Context
+	head            *types.Header
+	s               *BundleAPI
+	blockNo         hexutil.Uint64
+	sdb             *state.StateDB
+	victimTxContext vm.TxContext
+	victimTxMsg     *core.Message
+	timeout         time.Duration
+	globalGasCap    uint64
+	sbp             SbpArgs
+	reqId           int64
 }
 
 func worker(
@@ -642,7 +979,20 @@ func worker(
 	results = append(results, result)
 	wg.Done()
 }
-func execute(ctx context.Context, sbp SbpArgs, reqId int64, amountOunMin *big.Int, zeroForOne bool, tokenIn common.Address, tokenOut common.Address, amountIn *big.Int, evmContext vm.BlockContext, sdb *state.StateDB, s *BundleAPI, gasPool *core.GasPool, globalGasCap uint64, head *types.Header) (*big.Int, error) {
+func execute(ctx context.Context,
+	sbp SbpArgs,
+	reqId int64,
+	amountOunMin *big.Int,
+	zeroForOne bool,
+	tokenIn common.Address,
+	tokenOut common.Address,
+	amountIn *big.Int,
+	evmContext vm.BlockContext,
+	sdb *state.StateDB,
+	s *BundleAPI,
+	gasPool *core.GasPool,
+	globalGasCap uint64,
+	head *types.Header) (*big.Int, error) {
 
 	log.Info("call_newData_args",
 		"reqId", reqId,
