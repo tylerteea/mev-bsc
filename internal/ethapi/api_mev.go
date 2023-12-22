@@ -628,7 +628,7 @@ func (s *BundleAPI) SandwichBestProfit3Search(ctx context.Context, sbp SbpArgs) 
 		globalGasCap:    globalGasCap,
 		sbp:             sbp,
 	}
-	maxProfitX, maxProfitY, getMaxErr := getMax(args, sbp.AmountIn, sbp.Balance, stepAmount)
+	maxProfitX, maxProfitY, getMaxErr := getMax(args, sbp.AmountIn, sbp.Balance, stepAmount, sbp.Steps)
 
 	if getMaxErr != nil {
 		result := make(map[string]interface{})
@@ -650,114 +650,6 @@ func (s *BundleAPI) SandwichBestProfit3Search(ctx context.Context, sbp SbpArgs) 
 	return results
 }
 
-func getMax(args *CallArgs, a, b, step *big.Int) (*big.Int, *big.Int, error) {
-
-	log.Info("call_sbp_getMax_start", "reqId", args.reqId, "左边界", a, "右边界", b, "步长", step)
-
-	isConcave, err := concave(args, a, b)
-	log.Info("call_sbp_getMax_1", "reqId", args.reqId, "err", err, "isConcave", isConcave)
-	if err != nil {
-		return nil, nil, err
-	}
-	// 如果是凹函数，则最大值为左右边界中较大的一个
-	if isConcave {
-		aValue := callResultFunc(args, a)
-		if aValue == nil {
-			return nil, nil, errors.New("callResultFunc")
-		}
-		bValue := callResultFunc(args, b)
-		if bValue == nil {
-			return nil, nil, errors.New("callResultFunc")
-		}
-		if aValue.Int64() > bValue.Int64() {
-			return a, aValue, nil
-		} else {
-			return b, bValue, nil
-		}
-	}
-	log.Info("call_sbp_getMax_2", "reqId", args.reqId, "二分查找", "maxSearch")
-	x, y, err := maxSearch(args, a, b, step)
-	log.Info("call_sbp_getMax_end", "reqId", args.reqId, "maxX", x, "maxY", y, "maxX", "err", err)
-
-	return x, y, err
-}
-
-// 二分查找近似最大值
-func maxSearch(args *CallArgs, left, right, step *big.Int) (*big.Int, *big.Int, error) {
-
-	log.Info("call_sbp_maxSearch_start", "reqId", args.reqId)
-
-	maxValue := big.NewInt(0)
-	count := 0
-
-	for left.Int64() < right.Int64() {
-
-		count++
-		log.Info("call_sbp_maxSearch_find", "reqId", args.reqId, "count", count)
-
-		middle := mean(left, right)
-		middleSub1 := new(big.Int).Sub(middle, step)
-		middleAdd1 := new(big.Int).Add(middle, step)
-
-		// 中间值
-		midY := callResultFunc(args, middle)
-		if midY == nil {
-			log.Info("callResultFunc error midY is nil : ", middle)
-			continue
-		}
-		//中间值 - 1步
-		midSub := callResultFunc(args, middleSub1)
-		if midSub == nil {
-			log.Info("callResultFunc error midSub is nil : ", middleSub1)
-			continue
-		}
-		//中间值 + 1步
-		midAdd := callResultFunc(args, middleAdd1)
-		if midAdd == nil {
-			log.Info("callResultFunc error midAdd is nil : ", middleAdd1)
-			continue
-		}
-
-		// 如果f(x)大于左右两侧的f(x-1)和f(x+1)，那么认为此时x可以获得最大值y
-		if (midY.Int64() > midSub.Int64()) && midY.Int64() > midAdd.Int64() {
-			log.Info("find_max_x_y_1 : ", left, maxValue)
-			log.Info("call_sbp_maxSearch_find", "reqId", args.reqId, "totalCount", count, "x", left, "y", maxValue)
-			return middle, midY, nil
-		} else if midY.Int64() > midSub.Int64() {
-			log.Info("call_sbp_maxSearch_find", "reqId", args.reqId, "count", count, "右侧有更大值， 左侧的边界向中间移动left", left, "maxValue", maxValue)
-			left = middleAdd1 // 右侧有更大值， 左侧的边界向中间移动
-			maxValue = midAdd
-		} else {
-			log.Info("call_sbp_maxSearch_find", "reqId", args.reqId, "count", count, "左侧有更大值 ,右侧的边界向中间移动right", right, "maxValue", maxValue)
-			right = middleSub1 // 左侧有更大值 ,右侧的边界向中间移动
-		}
-	}
-
-	log.Info("call_sbp_maxSearch_find", "reqId", args.reqId, "totalCount", count, "x", left, "y", maxValue)
-	return left, maxValue, nil
-}
-
-// 调用合约的返回值
-func callResultFunc(args *CallArgs, amountInReal *big.Int) *big.Int {
-
-	result := realCall(args.ctx, args.head, args.s, args.sbp, args.reqId, args.sbp.AmountOutMin, args.sdb, args.victimTxMsg, args.victimTxContext, amountInReal, args.globalGasCap)
-
-	log.Info("realCall result : ", args, amountInReal, result)
-
-	var amountOutReal *big.Int
-	if result != nil && result["error"] == nil {
-
-		amountOut := result["amountOut"]
-		if amountOut != nil {
-			amountOutReal = result["amountOut"].(*big.Int)
-			log.Info("amountInReal、amountOutReal : ", amountInReal, amountOutReal)
-			return amountOutReal
-		}
-	}
-
-	return nil
-}
-
 func realCall(
 	ctx context.Context,
 	head *types.Header,
@@ -769,7 +661,7 @@ func realCall(
 	victimTxMsg *core.Message,
 	victimTxContext vm.TxContext,
 	amountIn *big.Int,
-	globalGasCap uint64) map[string]interface{} {
+	globalGasCap uint64) (map[string]interface{}, error) {
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -791,7 +683,7 @@ func realCall(
 	if fErr != nil {
 		result["error"] = "frontCallErr"
 		result["reason"] = fErr
-		return result
+		return result, fErr
 	}
 
 	// 受害者----------------------------------------------------------------------------------------
@@ -801,7 +693,7 @@ func realCall(
 	if victimTxCallErr != nil {
 		result["error"] = "victimTxCallErr"
 		result["reason"] = victimTxCallErr
-		return result
+		return result, victimTxCallErr
 	}
 	// todo  假设 amount in  = x 的时候  Revert 了， 那么大于 x 都停了, 目前做不到，后续增加二分搜索实现
 	if len(victimTxCallResult.Revert()) > 0 {
@@ -809,12 +701,12 @@ func realCall(
 		data, _ := json.Marshal(&revertErr)
 		_ = json.Unmarshal(data, &result)
 		result["error"] = "execution_reverted"
-		return result
+		return result, revertErr
 	}
 	if victimTxCallResult.Err != nil {
 		result["error"] = "execution_victimTxCallResultErr"
 		result["reason"] = victimTxCallResult.Err
-		return result
+		return result, victimTxCallResult.Err
 	}
 
 	// 跟跑----------------------------------------------------------------------------------------
@@ -823,40 +715,11 @@ func realCall(
 	if bErr != nil {
 		result["error"] = "backCallErr"
 		result["reason"] = bErr
-		return result
+		return result, bErr
 	}
 	result["amountIn"] = new(big.Int).Set(amountIn)
 	result["amountOut"] = new(big.Int).Set(backAmountOut)
-	return result
-}
-
-// 2数求平均
-func mean(a, b *big.Int) *big.Int {
-	sum := new(big.Int).Add(a, b)
-	return new(big.Int).Div(sum, big.NewInt(2))
-}
-
-// 是否是凹函数
-func concave(args *CallArgs, a, b *big.Int) (bool, error) {
-
-	funA := callResultFunc(args, a)
-	if funA == nil {
-		return false, errors.New("callResultFunc")
-	}
-
-	funB := callResultFunc(args, b)
-	if funB == nil {
-		return false, errors.New("callResultFunc")
-	}
-
-	middle := mean(a, b)
-	middleFunc := callResultFunc(args, middle)
-	if middleFunc == nil {
-		return false, errors.New("callResultFunc")
-	}
-
-	middleDiv2 := mean(funA, funB)
-	return middleDiv2.Int64() > middleFunc.Int64(), nil
+	return result, nil
 }
 
 type CallArgs struct {
