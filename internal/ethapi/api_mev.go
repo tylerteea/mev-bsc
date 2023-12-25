@@ -518,6 +518,8 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) (result
 	for _, amountInReal := range ladder {
 		sdb := stateDB.Copy()
 		worker(ctx, results, head, victimTxMsg, victimTxContext, wg, sbp, s, reqId, amountOutMin, sdb, amountInReal, globalGasCap)
+		resultJson, _ := json.Marshal(results)
+		log.Info("call_worker", "reqId", reqId, "amountInReal", amountInReal, "result", string(resultJson))
 	}
 	wg.Wait()
 	resultJson, _ := json.Marshal(results)
@@ -691,6 +693,8 @@ func realCall(
 	vmEnv := vm.NewEVM(evmContext, victimTxContext, sdb, s.chain.Config(), vm.Config{NoBaseFee: true})
 	victimTxCallResult, victimTxCallErr := core.ApplyMessage(vmEnv, victimTxMsg, gasPool)
 
+	log.Info("call_victimTx_1", "reqId", reqId, "victimTxCallResult", victimTxCallResult, "victimTxCallErr", victimTxCallErr)
+
 	if victimTxCallErr != nil {
 		result["error"] = "victimTxCallErr"
 		result["reason"] = victimTxCallErr
@@ -787,13 +791,16 @@ func worker(
 	}
 	victimTxCallResult, victimTxCallErr := core.ApplyMessage(vmEnv, victimTxMsg, gasPool)
 
-	log.Info("call_victimTx", "reqId", reqId, "victimTxCallResult", victimTxCallResult)
+	log.Info("call_victimTx_1", "reqId", reqId, "victimTxCallResult", victimTxCallResult, "victimTxCallErr", victimTxCallErr)
 
 	if victimTxCallErr != nil {
 		result["error"] = "victimTxCallErr"
 		result["reason"] = victimTxCallErr.Error()
 		result["amountIn"] = amountIn.String()
 		results = append(results, result)
+
+		resultJson, _ := json.Marshal(result)
+		log.Info("call_victimTx_2", "reqId", reqId, "result", string(resultJson))
 		wg.Done()
 		return
 	}
@@ -805,6 +812,8 @@ func worker(
 		result["reason"] = victimTxCallResult.Err.Error()
 		result["amountIn"] = amountIn.String()
 		results = append(results, result)
+		resultJson, _ := json.Marshal(result)
+		log.Info("call_victimTx_3", "reqId", reqId, "result", string(resultJson))
 		wg.Done()
 		return
 	}
@@ -813,6 +822,8 @@ func worker(
 		result["reason"] = victimTxCallResult.Err.Error()
 		result["amountIn"] = amountIn.String()
 		results = append(results, result)
+		resultJson, _ := json.Marshal(result)
+		log.Info("call_victimTx_4", "reqId", reqId, "result", string(resultJson))
 		wg.Done()
 		return
 	}
@@ -822,15 +833,17 @@ func worker(
 	dst := make([]byte, hex.EncodedLen(len(data)))
 	hex.Encode(dst, data)
 
-	log.Info("call_victimTx", "reqId", reqId, "bytes2Hex", bytes2Hex, "string", string(dst))
+	log.Info("call_victimTx_5", "reqId", reqId, "bytes2Hex", bytes2Hex, "string", string(dst))
 
 	// 跟跑----------------------------------------------------------------------------------------
 	backAmountOut, bErr := execute(ctx, sbp, reqId, amountOutMin, !sbp.ZeroForOne, sbp.TokenOut, sbp.TokenIn, frontAmountOut, evmContext, statedb, s, gasPool, globalGasCap, head)
 
+	log.Info("call_success", "reqId", reqId, "amountIn", frontAmountOut, "backAmountOut", backAmountOut)
+
 	if bErr != nil {
 		result["error"] = "backCallErr"
 		result["reason"] = bErr.Error()
-		result["amountIn"] = amountIn.String()
+		result["amountIn"] = frontAmountOut.String()
 		results = append(results, result)
 		wg.Done()
 		return
