@@ -162,7 +162,7 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 		coinbaseBalanceBeforeTx := state.GetBalance(coinbase)
 
 		from, err := types.Sender(signer, tx)
-		state.Prepare(rules, from, header.Coinbase, tx.To(), vm.ActivePrecompiles(rules), tx.AccessList())
+		state.Prepare(rules, from, coinbase, tx.To(), vm.ActivePrecompiles(rules), tx.AccessList())
 
 		receipt, result, err := core.ApplyTransactionWithResult(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, &header.GasUsed, vmconfig)
 		if err != nil {
