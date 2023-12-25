@@ -623,7 +623,7 @@ web3._extend({
 		}),		
  		new web3._extend.Method({
 			name: 'SandwichBestProfit3Search',
-			call: 'eth_sandwichBestProfit',
+			call: 'eth_sandwichBestProfit3Search',
 			params: 1,
 		}),
 		new web3._extend.Method({
