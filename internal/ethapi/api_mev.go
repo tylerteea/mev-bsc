@@ -628,8 +628,9 @@ func (s *BundleAPI) SandwichBestProfit3Search(ctx context.Context, sbp SbpArgs) 
 		globalGasCap:    globalGasCap,
 		sbp:             sbp,
 	}
-	maxProfitX, maxProfitY, getMaxErr := getMax(args, sbp.AmountIn, sbp.Balance, stepAmount, sbp.Steps)
+	totalCount, maxProfitX, maxProfitY, getMaxErr := getMax(args, sbp.AmountIn, sbp.Balance, stepAmount, sbp.Steps)
 
+	log.Info("call_sbp_getMax_", "reqId", reqId, "totalCount", totalCount, "maxProfitX", maxProfitX, "maxProfitY", maxProfitY, "err", getMaxErr)
 	if getMaxErr != nil {
 		result := make(map[string]interface{})
 		result["error"] = "getMaxErr"
