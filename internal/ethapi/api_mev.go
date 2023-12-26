@@ -447,7 +447,6 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) []map[s
 	balance := sbp.Balance
 
 	amountIn := sbp.AmountIn
-	wallet := sbp.Wallet
 	victimTxHash := sbp.VictimTxHash
 	amountOutMin := sbp.AmountOutMin
 
@@ -482,10 +481,9 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) []map[s
 	number := rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNo))
 
 	stateDB, _, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
-	nonce := stateDB.GetNonce(wallet)
 	globalGasCap := s.b.RPCGasCap()
 
-	log.Info("call_SandwichBestProfit_3_", "reqId", reqId, "blockNo", blockNo, "nonce", nonce, "globalGasCap", globalGasCap)
+	log.Info("call_SandwichBestProfit_3_", "reqId", reqId, "blockNo", blockNo, "globalGasCap", globalGasCap)
 
 	victimTxMsg, victimTxMsgErr := core.TransactionToMessage(victimTransaction, types.MakeSigner(s.b.ChainConfig(), head.Number, head.Time), head.BaseFee)
 
@@ -717,7 +715,7 @@ func realCall(
 	}
 
 	// 跟跑----------------------------------------------------------------------------------------
-	backAmountOut, bErr := execute(ctx, sbp, reqId, amountOutMin, sbp.ZeroForOne, sbp.TokenOut, sbp.TokenIn, frontAmountOut, evmContext, sdb, s, gasPool, globalGasCap, head)
+	backAmountOut, bErr := execute(ctx, sbp, reqId, amountOutMin, !sbp.ZeroForOne, sbp.TokenOut, sbp.TokenIn, frontAmountOut, evmContext, sdb, s, gasPool, globalGasCap, head)
 
 	if bErr != nil {
 		result["error"] = "backCallErr"
