@@ -4,7 +4,13 @@ import (
 	"errors"
 	"github.com/ethereum/go-ethereum/log"
 	"math/big"
+	"time"
 )
+
+func timeCost(reqId int64, start time.Time) {
+	tc := time.Since(start)
+	log.Info("call_cost", "reqId", reqId, tc.Milliseconds())
+}
 
 // a = 初始最小输入， b = 账户余额 即最大输入   正常情况下 a < b
 func getMax(args *CallArgs, a, b, stepAmount, steps *big.Int) (int, *big.Int, *big.Int, error) {

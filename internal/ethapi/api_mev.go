@@ -410,7 +410,11 @@ type SbpArgs struct {
 func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) []map[string]interface{} {
 
 	var results []map[string]interface{}
-	reqId := time.Now().UnixMilli()
+	now := time.Now()
+	reqId := now.UnixMilli()
+
+	defer timeCost(reqId, now)
+
 	req, _ := json.Marshal(sbp)
 	log.Info("call_SandwichBestProfit_1_", "reqId", reqId, "sbp", string(req))
 
@@ -530,8 +534,12 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) []map[s
 // SandwichBestProfit3Search profit calculate
 func (s *BundleAPI) SandwichBestProfit3Search(ctx context.Context, sbp SbpArgs) (results []map[string]interface{}) {
 
-	reqId := time.Now().UnixMilli()
+	now := time.Now()
+	reqId := now.UnixMilli()
+	defer timeCost(reqId, now)
+
 	req, _ := json.Marshal(sbp)
+
 	log.Info("call_sbp_1_", "reqId", reqId, "sbp", string(req))
 
 	timeout := s.b.RPCEVMTimeout()
@@ -629,6 +637,7 @@ func (s *BundleAPI) SandwichBestProfit3Search(ctx context.Context, sbp SbpArgs) 
 		timeout:         timeout,
 		globalGasCap:    globalGasCap,
 		sbp:             sbp,
+		reqId:           reqId,
 	}
 	totalCount, maxProfitX, maxProfitY, getMaxErr := getMax(args, sbp.AmountIn, sbp.Balance, stepAmount, sbp.Steps)
 
