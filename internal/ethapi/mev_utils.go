@@ -212,7 +212,6 @@ func concave(args *CallArgs, a, b, stepAmount, steps *big.Int) (int, *big.Int, *
 	exeCountMid, _, middleFunc, err := callResultFuncForCount(args, middle, stepAmount, 3, false)
 	totalCount += exeCountMid
 	if err != nil { // 如果中间值找不到，降级到，是凹函数
-
 		if funA.Int64() >= funB.Int64() {
 			return totalCount, a, funA, true, err
 		} else {
@@ -236,8 +235,13 @@ func callResultFunc(args *CallArgs, amountInReal *big.Int) (*big.Int, error) {
 		amountOut := result["amountOut"]
 		if amountOut != nil {
 			amountOutReal = result["amountOut"].(*big.Int)
-			log.Info("amountInReal、amountOutReal : ", amountInReal, amountOutReal)
-			return amountOutReal, nil
+
+			profit := new(big.Int).Add(amountOutReal, amountInReal)
+			log.Info("call_sbp_realCall_profit", "reqId", args.reqId, "amountIn", amountInReal, "amountOut", amountOutReal, "profit", profit)
+			if profit.Uint64() < 0 {
+				log.Info("call_sbp_realCall_profit_too_low", "reqId", args.reqId)
+			}
+			return profit, nil
 		}
 	}
 	return nil, err
