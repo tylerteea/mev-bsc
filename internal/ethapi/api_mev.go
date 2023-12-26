@@ -407,8 +407,9 @@ type SbpArgs struct {
 }
 
 // SandwichBestProfit profit calculate
-func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) (results []map[string]interface{}) {
+func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) []map[string]interface{} {
 
+	var results []map[string]interface{}
 	reqId := time.Now().UnixMilli()
 	req, _ := json.Marshal(sbp)
 	log.Info("call_SandwichBestProfit_1_", "reqId", reqId, "sbp", string(req))
@@ -517,7 +518,8 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) (result
 	//并发执行模拟调用，记录结果
 	for _, amountInReal := range ladder {
 		sdb := stateDB.Copy()
-		worker(ctx, results, head, victimTxMsg, victimTxContext, wg, sbp, s, reqId, amountOutMin, sdb, amountInReal, globalGasCap)
+		workerResults := worker(ctx, head, victimTxMsg, victimTxContext, wg, sbp, s, reqId, amountOutMin, sdb, amountInReal, globalGasCap)
+		results = append(results, workerResults...)
 		resultJson, _ := json.Marshal(results)
 		log.Info("call_worker", "reqId", reqId, "amountInReal", amountInReal, "result", string(resultJson))
 	}
@@ -743,7 +745,6 @@ type CallArgs struct {
 
 func worker(
 	ctx context.Context,
-	results []map[string]interface{},
 	head *types.Header,
 	victimTxMsg *core.Message,
 	victimTxContext vm.TxContext,
@@ -754,7 +755,7 @@ func worker(
 	amountOutMin *big.Int,
 	statedb *state.StateDB,
 	amountIn *big.Int,
-	globalGasCap uint64) {
+	globalGasCap uint64) []map[string]interface{} {
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -764,6 +765,8 @@ func worker(
 	}()
 
 	evmContext := core.NewEVMBlockContext(head, s.chain, nil)
+
+	var results []map[string]interface{}
 
 	result := make(map[string]interface{})
 
@@ -778,7 +781,7 @@ func worker(
 		result["amountIn"] = amountIn.String()
 		results = append(results, result)
 		wg.Done()
-		return
+		return results
 	}
 	// 受害者----------------------------------------------------------------------------------------
 	vmEnv := vm.NewEVM(evmContext, victimTxContext, statedb, s.chain.Config(), vm.Config{NoBaseFee: true})
@@ -787,7 +790,7 @@ func worker(
 	})
 	if err != nil {
 		wg.Done()
-		return
+		return results
 	}
 	victimTxCallResult, victimTxCallErr := core.ApplyMessage(vmEnv, victimTxMsg, gasPool)
 
@@ -802,7 +805,7 @@ func worker(
 		resultJson, _ := json.Marshal(result)
 		log.Info("call_victimTx_2", "reqId", reqId, "result", string(resultJson))
 		wg.Done()
-		return
+		return results
 	}
 	if len(victimTxCallResult.Revert()) > 0 {
 		revertErr := newRevertError(victimTxCallResult)
@@ -815,7 +818,7 @@ func worker(
 		resultJson, _ := json.Marshal(result)
 		log.Info("call_victimTx_3", "reqId", reqId, "result", string(resultJson))
 		wg.Done()
-		return
+		return results
 	}
 	if victimTxCallResult.Err != nil {
 		result["error"] = "execution_victimTx_callResult_err"
@@ -825,7 +828,7 @@ func worker(
 		resultJson, _ := json.Marshal(result)
 		log.Info("call_victimTx_4", "reqId", reqId, "result", string(resultJson))
 		wg.Done()
-		return
+		return results
 	}
 
 	data := victimTxCallResult.Return()
@@ -846,7 +849,7 @@ func worker(
 		result["amountIn"] = frontAmountOut.String()
 		results = append(results, result)
 		wg.Done()
-		return
+		return results
 	}
 
 	result["tokenIn"] = sbp.TokenIn
@@ -855,6 +858,7 @@ func worker(
 	result["amountOut"] = new(big.Int).Set(backAmountOut)
 	results = append(results, result)
 	wg.Done()
+	return results
 }
 func execute(ctx context.Context,
 	sbp SbpArgs,
