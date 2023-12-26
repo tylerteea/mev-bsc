@@ -9,7 +9,7 @@ import (
 
 func timeCost(reqId int64, start time.Time) {
 	tc := time.Since(start)
-	log.Info("call_cost", "reqId", reqId, tc.Milliseconds())
+	log.Info("call_cost", "reqId", reqId, "ms", tc.Milliseconds())
 }
 
 // a = 初始最小输入， b = 账户余额 即最大输入   正常情况下 a < b
