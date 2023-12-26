@@ -242,7 +242,7 @@ func callResultFunc(args *CallArgs, amountInReal *big.Int) (*big.Int, error) {
 		if amountOut != nil {
 			amountOutReal = result["amountOut"].(*big.Int)
 
-			profit := new(big.Int).Add(amountOutReal, amountInReal)
+			profit := new(big.Int).Sub(amountOutReal, amountInReal)
 			log.Info("call_sbp_realCall_profit", "reqId", args.reqId, "amountIn", amountInReal, "amountOut", amountOutReal, "profit", profit)
 			if profit.Uint64() < 0 {
 				log.Info("call_sbp_realCall_profit_too_low", "reqId", args.reqId)
