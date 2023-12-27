@@ -824,7 +824,7 @@ func realCall(
 	sdb := stateDb.Copy()
 
 	// 抢跑----------------------------------------------------------------------------------------
-	frontAmountOut, fErr := execute(ctx, sbp, reqId, amountOutMin, sbp.ZeroForOne, sbp.TokenIn, sbp.TokenOut, amountIn, evmContext, sdb, s, gasPool, globalGasCap, head)
+	frontAmountOut, fErr := execute(ctx, sbp, reqId, amountOutMin, sbp.ZeroForOne, sbp.TokenIn, sbp.TokenOut, amountIn, sdb, s, head)
 
 	if fErr != nil {
 		result["error"] = "frontCallErr"
@@ -858,7 +858,7 @@ func realCall(
 	}
 
 	// 跟跑----------------------------------------------------------------------------------------
-	backAmountOut, bErr := execute(ctx, sbp, reqId, amountOutMin, !sbp.ZeroForOne, sbp.TokenOut, sbp.TokenIn, frontAmountOut, evmContext, sdb, s, gasPool, globalGasCap, head)
+	backAmountOut, bErr := execute(ctx, sbp, reqId, amountOutMin, !sbp.ZeroForOne, sbp.TokenOut, sbp.TokenIn, frontAmountOut, sdb, s, head)
 
 	if bErr != nil {
 		result["error"] = "backCallErr"
@@ -914,7 +914,7 @@ func worker(
 	gasPool := new(core.GasPool).AddGas(math.MaxUint64)
 
 	// 抢跑----------------------------------------------------------------------------------------
-	frontAmountOut, fErr := execute(ctx, sbp, reqId, amountOutMin, sbp.ZeroForOne, sbp.TokenIn, sbp.TokenOut, amountIn, evmContext, statedb, s, gasPool, globalGasCap, head)
+	frontAmountOut, fErr := execute(ctx, sbp, reqId, amountOutMin, sbp.ZeroForOne, sbp.TokenIn, sbp.TokenOut, amountIn, statedb, s, head)
 
 	if fErr != nil {
 		result["error"] = "frontCallErr"
@@ -980,7 +980,7 @@ func worker(
 	log.Info("call_victimTx_5", "reqId", reqId, "bytes2Hex", bytes2Hex, "string", string(dst))
 
 	// 跟跑----------------------------------------------------------------------------------------
-	backAmountOut, bErr := execute(ctx, sbp, reqId, amountOutMin, !sbp.ZeroForOne, sbp.TokenOut, sbp.TokenIn, frontAmountOut, evmContext, statedb, s, gasPool, globalGasCap, head)
+	backAmountOut, bErr := execute(ctx, sbp, reqId, amountOutMin, !sbp.ZeroForOne, sbp.TokenOut, sbp.TokenIn, frontAmountOut, statedb, s, head)
 
 	log.Info("call_success", "reqId", reqId, "amountIn", frontAmountOut, "backAmountOut", backAmountOut)
 
@@ -992,11 +992,11 @@ func worker(
 		wg.Done()
 		return results
 	}
-
 	result["tokenIn"] = sbp.TokenIn
 	result["tokenOut"] = sbp.TokenOut
 	result["amountIn"] = new(big.Int).Set(amountIn)
 	result["amountOut"] = new(big.Int).Set(backAmountOut)
+	result["profit"] = new(big.Int).Sub(backAmountOut, amountIn)
 	results = append(results, result)
 	wg.Done()
 	return results
@@ -1035,7 +1035,7 @@ func workerSync(
 	gasPool := new(core.GasPool).AddGas(math.MaxUint64)
 
 	// 抢跑----------------------------------------------------------------------------------------
-	frontAmountOut, fErr := execute(ctx, sbp, reqId, amountOutMin, sbp.ZeroForOne, sbp.TokenIn, sbp.TokenOut, amountIn, evmContext, statedb, s, gasPool, globalGasCap, head)
+	frontAmountOut, fErr := execute(ctx, sbp, reqId, amountOutMin, sbp.ZeroForOne, sbp.TokenIn, sbp.TokenOut, amountIn, statedb, s, head)
 
 	if fErr != nil {
 		result["error"] = "frontCallErr"
@@ -1092,7 +1092,7 @@ func workerSync(
 	log.Info("call_victimTx_5", "reqId", reqId, "bytes2Hex", bytes2Hex, "string", string(dst))
 
 	// 跟跑----------------------------------------------------------------------------------------
-	backAmountOut, bErr := execute(ctx, sbp, reqId, amountOutMin, !sbp.ZeroForOne, sbp.TokenOut, sbp.TokenIn, frontAmountOut, evmContext, statedb, s, gasPool, globalGasCap, head)
+	backAmountOut, bErr := execute(ctx, sbp, reqId, amountOutMin, !sbp.ZeroForOne, sbp.TokenOut, sbp.TokenIn, frontAmountOut, statedb, s, head)
 	log.Info("call_success", "reqId", reqId, "amountIn", frontAmountOut, "backAmountOut", backAmountOut)
 
 	if bErr != nil {
@@ -1116,11 +1116,11 @@ func execute(ctx context.Context,
 	tokenIn common.Address,
 	tokenOut common.Address,
 	amountIn *big.Int,
-	evmContext vm.BlockContext,
+	//evmContext vm.BlockContext,
 	sdb *state.StateDB,
 	s *BundleAPI,
-	gasPool *core.GasPool,
-	globalGasCap uint64,
+	//gasPool *core.GasPool,
+	//globalGasCap uint64,
 	head *types.Header) (*big.Int, error) {
 
 	log.Info("call_newData_args",
@@ -1146,12 +1146,19 @@ func execute(ctx context.Context,
 	}
 	callResult, err := mevCall(sdb, head, s, ctx, callArgs, nil, nil)
 
+	var revertReason *revertError
+
+	if len(callResult.Revert()) > 0 {
+		revertReason = newRevertError(callResult)
+	}
+
 	log.Info("call_result",
 		"reqId", reqId,
 		"amountIn", amountIn,
 		"zeroForOne", zeroForOne,
 		"data", callResult,
 		"revert", common.Bytes2Hex(callResult.Revert()),
+		"revertReason", revertReason,
 		"returnData", common.Bytes2Hex(callResult.Return()),
 	)
 
@@ -1214,7 +1221,16 @@ func mevCall(state *state.StateDB, header *types.Header, s *BundleAPI, ctx conte
 
 	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
 
-	return doMevCall(ctx, s.b, args, state, header, overrides, blockOverrides, s.b.RPCEVMTimeout(), s.b.RPCGasCap())
+	result, err := doMevCall(ctx, s.b, args, state, header, overrides, blockOverrides, s.b.RPCEVMTimeout(), s.b.RPCGasCap())
+
+	if err != nil {
+		return nil, err
+	}
+	// If the result contains a revert reason, try to unpack and return it.
+	if len(result.Revert()) > 0 {
+		return nil, newRevertError(result)
+	}
+	return result, result.Err
 }
 
 func doMevCall(ctx context.Context, b Backend, args TransactionArgs, state *state.StateDB, header *types.Header, overrides *StateOverride, blockOverrides *BlockOverrides, timeout time.Duration, globalGasCap uint64) (*core.ExecutionResult, error) {
