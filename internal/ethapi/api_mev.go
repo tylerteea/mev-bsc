@@ -789,6 +789,8 @@ func (s *BundleAPI) SandwichBestProfit3Search(ctx context.Context, sbp SbpArgs) 
 	result["tokenOut"] = sbp.TokenOut
 	result["amountIn"] = maxProfitX
 	result["amountOut"] = maxProfitY
+	result["amountOut"] = new(big.Int).Add(maxProfitX, maxProfitY)
+	result["profit"] = maxProfitY
 	results = append(results, result)
 	resultJson, _ := json.Marshal(result)
 	log.Info("call_sbp_end_", "reqId", reqId, "result", string(resultJson))

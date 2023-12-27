@@ -34,7 +34,6 @@ func getMax(args *CallArgs, a, b, stepAmount, steps *big.Int) (int, *big.Int, *b
 		exeTotalCount, x, y, errMaxSearchOfConcave := maxSearchOfConcave(args, a, b, stepAmount)
 		totalCount += exeTotalCount
 		log.Info("call_sbp_getMax_execute_concave", "reqId", args.reqId, "totalCount", totalCount, "tmpX", x, "tmpY", y, "err", errMaxSearchOfConcave)
-
 		return totalCount, x, y, errMaxSearchOfConcave
 	} else {
 		// 如果是凸函数，开始走近似二分查找
