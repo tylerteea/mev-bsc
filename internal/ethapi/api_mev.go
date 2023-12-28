@@ -520,10 +520,12 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) []map[s
 	//并发执行模拟调用，记录结果
 	for _, amountInReal := range ladder {
 		sdb := stateDB.Copy()
-		workerResults := worker(ctx, head, victimTxMsg, victimTxContext, wg, sbp, s, reqId, amountOutMin, sdb, amountInReal, globalGasCap)
-		results = append(results, workerResults...)
-		resultJson, _ := json.Marshal(results)
-		log.Info("call_worker", "reqId", reqId, "amountInReal", amountInReal, "result", string(resultJson))
+		workerResults := worker(ctx, head, victimTxMsg, victimTxContext, wg, sbp, s, reqId, amountOutMin, sdb, amountInReal)
+		if workerResults["error"] == nil && workerResults["profit"] != nil {
+			results = append(results, workerResults)
+		} else {
+			log.Info("call_SandwichBestProfit_error", "reqId", reqId, "amountInReal", amountInReal)
+		}
 	}
 	wg.Wait()
 	resultJson, _ := json.Marshal(results)
@@ -655,8 +657,6 @@ func (s *BundleAPI) SandwichBestProfitSync(ctx context.Context, sbp SbpArgs) []m
 	}
 
 	for m := range channelResult {
-		resultJson, _ := json.Marshal(m)
-		log.Info("call_worker", "reqId", reqId, "result", string(resultJson))
 		results = append(results, m)
 	}
 
@@ -897,8 +897,7 @@ func worker(
 	reqId int64,
 	amountOutMin *big.Int,
 	statedb *state.StateDB,
-	amountIn *big.Int,
-	globalGasCap uint64) []map[string]interface{} {
+	amountIn *big.Int) map[string]interface{} {
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -908,8 +907,6 @@ func worker(
 	}()
 
 	evmContext := core.NewEVMBlockContext(head, s.chain, nil)
-
-	var results []map[string]interface{}
 
 	result := make(map[string]interface{})
 
@@ -922,9 +919,8 @@ func worker(
 		result["error"] = "frontCallErr"
 		result["reason"] = fErr.Error()
 		result["amountIn"] = amountIn.String()
-		results = append(results, result)
 		wg.Done()
-		return results
+		return result
 	}
 	// 受害者----------------------------------------------------------------------------------------
 	vmEnv := vm.NewEVM(evmContext, victimTxContext, statedb, s.chain.Config(), vm.Config{NoBaseFee: true})
@@ -932,8 +928,10 @@ func worker(
 		vmEnv.Cancel()
 	})
 	if err != nil {
+		result["error"] = "victimPoolSubmit"
+		result["reason"] = err.Error()
 		wg.Done()
-		return results
+		return result
 	}
 	victimTxCallResult, victimTxCallErr := core.ApplyMessage(vmEnv, victimTxMsg, gasPool)
 
@@ -943,12 +941,10 @@ func worker(
 		result["error"] = "victimTxCallErr"
 		result["reason"] = victimTxCallErr.Error()
 		result["amountIn"] = amountIn.String()
-		results = append(results, result)
-
 		resultJson, _ := json.Marshal(result)
 		log.Info("call_victimTx_2", "reqId", reqId, "result", string(resultJson))
 		wg.Done()
-		return results
+		return result
 	}
 	if len(victimTxCallResult.Revert()) > 0 {
 		revertErr := newRevertError(victimTxCallResult)
@@ -957,21 +953,19 @@ func worker(
 		result["error"] = "execution_victimTx_reverted"
 		result["reason"] = victimTxCallResult.Err.Error()
 		result["amountIn"] = amountIn.String()
-		results = append(results, result)
 		resultJson, _ := json.Marshal(result)
 		log.Info("call_victimTx_3", "reqId", reqId, "result", string(resultJson))
 		wg.Done()
-		return results
+		return result
 	}
 	if victimTxCallResult.Err != nil {
 		result["error"] = "execution_victimTx_callResult_err"
 		result["reason"] = victimTxCallResult.Err.Error()
 		result["amountIn"] = amountIn.String()
-		results = append(results, result)
 		resultJson, _ := json.Marshal(result)
 		log.Info("call_victimTx_4", "reqId", reqId, "result", string(resultJson))
 		wg.Done()
-		return results
+		return result
 	}
 
 	data := victimTxCallResult.Return()
@@ -990,18 +984,23 @@ func worker(
 		result["error"] = "backCallErr"
 		result["reason"] = bErr.Error()
 		result["amountIn"] = frontAmountOut.String()
-		results = append(results, result)
 		wg.Done()
-		return results
+		return result
 	}
-	result["tokenIn"] = sbp.TokenIn
-	result["tokenOut"] = sbp.TokenOut
-	result["amountIn"] = new(big.Int).Set(amountIn)
-	result["amountOut"] = new(big.Int).Set(backAmountOut)
-	result["profit"] = new(big.Int).Sub(backAmountOut, amountIn)
-	results = append(results, result)
+	profit := new(big.Int).Sub(backAmountOut, amountIn)
+
+	if profit.Int64() > 0 {
+		result["tokenIn"] = sbp.TokenIn
+		result["tokenOut"] = sbp.TokenOut
+		result["amountIn"] = new(big.Int).Set(amountIn)
+		result["amountOut"] = new(big.Int).Set(backAmountOut)
+		result["profit"] = new(big.Int).Sub(backAmountOut, amountIn)
+	} else {
+		result["error"] = "profit_too_low"
+		result["reason"] = errors.New("profit_too_low")
+	}
 	wg.Done()
-	return results
+	return result
 }
 
 func workerSync(
