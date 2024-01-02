@@ -517,19 +517,33 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) []map[s
 	var wg = new(sync.WaitGroup)
 	wg.Add(len(ladder))
 
+	maxProfit := big.NewInt(0)
+	finalResult := make(map[string]interface{})
+
 	//并发执行模拟调用，记录结果
 	for _, amountInReal := range ladder {
 		sdb := stateDB.Copy()
 		workerResults := worker(ctx, head, victimTxMsg, victimTxContext, wg, sbp, s, reqId, amountOutMin, sdb, amountInReal)
 		if workerResults["error"] == nil && workerResults["profit"] != nil {
-			results = append(results, workerResults)
+
+			profitString, ok := workerResults["profit"].(string)
+			if ok {
+				profit := big.NewInt(0)
+				profit.SetString(profitString, 10)
+				if profit.Int64() > maxProfit.Int64() {
+					maxProfit = profit
+					finalResult = workerResults
+				}
+			}
 		} else {
 			log.Info("call_SandwichBestProfit_error", "reqId", reqId, "amountInReal", amountInReal)
 		}
 	}
 	wg.Wait()
+	results = append(results, finalResult)
 	resultJson, _ := json.Marshal(results)
 	log.Info("call_SandwichBestProfit_5_", "reqId", reqId, "result", string(resultJson))
+
 	return results
 }
 
@@ -1000,6 +1014,8 @@ func worker(
 		result["reason"] = errors.New("profit_too_low")
 	}
 	wg.Done()
+	resultJson, _ := json.Marshal(result)
+	log.Info("call_worker", "reqId", reqId, "amountIn", amountIn, "result", string(resultJson))
 	return result
 }
 
