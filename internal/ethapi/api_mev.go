@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"math/big"
+	"strconv"
 	"sync"
 	"time"
 
@@ -411,12 +412,14 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) []map[s
 
 	var results []map[string]interface{}
 	now := time.Now()
-	reqId := now.UnixMilli()
+	um := now.UnixMilli()
 
-	defer timeCost(reqId, now)
+	reqId := strconv.FormatInt(um, 10)
+
+	defer timeCost(um, now)
 
 	req, _ := json.Marshal(sbp)
-	log.Info("call_SandwichBestProfit_1_", "reqId", reqId, "sbp", string(req))
+	log.Info("call_sbp_start", "reqId", reqId, "sbp", string(req))
 
 	timeout := s.b.RPCEVMTimeout()
 	var cancel context.CancelFunc
@@ -430,14 +433,14 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) []map[s
 	defer func(results *[]map[string]interface{}) {
 		if r := recover(); r != nil {
 			oldResultJson, _ := json.Marshal(results)
-			log.Info("call_SandwichBestProfit_old_result_", "reqId", reqId, "result", string(oldResultJson))
+			log.Info("call_sbp_old_result_", "reqId", reqId, "result", string(oldResultJson))
 			results = new([]map[string]interface{})
 			result := make(map[string]interface{})
 			result["error"] = "panic"
 			result["reason"] = r
 			*results = append(*results, result)
 			newResultJson, _ := json.Marshal(results)
-			log.Info("call_SandwichBestProfit_defer_result_", "reqId", reqId, "result", string(newResultJson))
+			log.Info("call_sbp_defer_result_", "reqId", reqId, "result", string(newResultJson))
 		}
 	}(&results)
 
@@ -479,7 +482,7 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) []map[s
 		result["reason"] = "GetPoolTransaction and GetTransaction all nil : " + victimTxHash.Hex()
 		results = append(results, result)
 		resultJson, _ := json.Marshal(result)
-		log.Info("call_SandwichBestProfit_2_", "reqId", reqId, "result", string(resultJson))
+		log.Info("call_sbp_2_", "reqId", reqId, "result", string(resultJson))
 		return results
 	}
 	number := rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNo))
@@ -487,7 +490,7 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) []map[s
 	stateDB, _, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
 	globalGasCap := s.b.RPCGasCap()
 
-	log.Info("call_SandwichBestProfit_3_", "reqId", reqId, "blockNo", blockNo, "globalGasCap", globalGasCap)
+	log.Info("call_sbp_3_", "reqId", reqId, "blockNo", blockNo, "globalGasCap", globalGasCap)
 
 	victimTxMsg, victimTxMsgErr := core.TransactionToMessage(victimTransaction, types.MakeSigner(s.b.ChainConfig(), head.Number, head.Time), head.BaseFee)
 
@@ -498,7 +501,7 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) []map[s
 		results = append(results, result)
 
 		resultJson, _ := json.Marshal(result)
-		log.Info("call_SandwichBestProfit_4_", "reqId", reqId, "result", string(resultJson))
+		log.Info("call_sbp_4_", "reqId", reqId, "result", string(resultJson))
 		return results
 	}
 	victimTxContext := core.NewEVMTxContext(victimTxMsg)
@@ -523,33 +526,35 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) []map[s
 	//并发执行模拟调用，记录结果
 	for index, amountInReal := range ladder {
 
-		log.Info("call_worker_result_start", "reqId", reqId, "index", index, "amountInReal", amountInReal)
+		reqAndIndex := reqId + "_" + strconv.Itoa(index)
+
+		log.Info("call_worker_result_start", "reqAndIndex", reqAndIndex, "amountInReal", amountInReal)
 		sdb := stateDB.Copy()
-		workerResults := worker(ctx, head, victimTxMsg, victimTxContext, wg, sbp, s, reqId, amountOutMin, sdb, amountInReal)
+		workerResults := worker(ctx, head, victimTxMsg, victimTxContext, wg, sbp, s, reqAndIndex, amountOutMin, sdb, amountInReal)
 		marshal, _ := json.Marshal(workerResults)
-		log.Info("call_worker_result_end", "reqId", reqId, "index", index, "amountInReal", amountInReal, "result", string(marshal))
+		log.Info("call_worker_result_end", "reqAndIndex", reqAndIndex, "amountInReal", amountInReal, "result", string(marshal))
 
 		if workerResults["error"] == nil && workerResults["profit"] != nil {
 
-			log.Info("call_worker_success", "reqId", reqId, "amountInReal", amountInReal)
+			log.Info("call_worker_success", "reqAndIndex", reqAndIndex, "amountInReal", amountInReal)
 			profit, ok := workerResults["profit"].(*big.Int)
 			if ok {
-				log.Info("call_worker_profit", "reqId", reqId, "amountInReal", amountInReal, "profit", profit)
+				log.Info("call_worker_profit", "reqAndIndex", reqAndIndex, "amountInReal", amountInReal, "profit", profit)
 				if profit.Int64() > maxProfit.Int64() {
 					maxProfit = profit
 					finalResult = workerResults
 				}
 			} else {
-				log.Info("call_worker_err", "reqId", reqId, "amountInReal", amountInReal)
+				log.Info("call_worker_err", "reqAndIndex", reqAndIndex, "amountInReal", amountInReal)
 			}
 		} else {
-			log.Info("call_SandwichBestProfit_error", "reqId", reqId, "amountInReal", amountInReal)
+			log.Info("call_sbp_worker_error", "reqAndIndex", reqAndIndex, "amountInReal", amountInReal)
 		}
 	}
 	wg.Wait()
 	results = append(results, finalResult)
 	resultJson, _ := json.Marshal(results)
-	log.Info("call_SandwichBestProfit_5_", "reqId", reqId, "result", string(resultJson))
+	log.Info("call_sbp_end", "reqId", reqId, "result", string(resultJson))
 
 	return results
 }
@@ -559,9 +564,11 @@ func (s *BundleAPI) SandwichBestProfitSync(ctx context.Context, sbp SbpArgs) []m
 
 	var results []map[string]interface{}
 	now := time.Now()
-	reqId := now.UnixMilli()
+	um := now.UnixMilli()
 
-	defer timeCost(reqId, now)
+	reqId := strconv.FormatInt(um, 10)
+
+	defer timeCost(um, now)
 
 	req, _ := json.Marshal(sbp)
 	log.Info("call_SandwichBestProfit_1_", "reqId", reqId, "sbp", string(req))
@@ -672,9 +679,10 @@ func (s *BundleAPI) SandwichBestProfitSync(ctx context.Context, sbp SbpArgs) []m
 	}()
 
 	//并发执行模拟调用，记录结果
-	for _, amountInReal := range ladder {
+	for index, amountInReal := range ladder {
 		sdb := stateDB.Copy()
-		go workerSync(ctx, channelResult, head, victimTxMsg, victimTxContext, wg, sbp, s, reqId, amountOutMin, sdb, amountInReal, globalGasCap)
+		reqAndIndex := reqId + "" + strconv.Itoa(index)
+		go workerSync(ctx, channelResult, head, victimTxMsg, victimTxContext, wg, sbp, s, reqAndIndex, amountOutMin, sdb, amountInReal, globalGasCap)
 	}
 
 	for m := range channelResult {
@@ -690,8 +698,11 @@ func (s *BundleAPI) SandwichBestProfitSync(ctx context.Context, sbp SbpArgs) []m
 func (s *BundleAPI) SandwichBestProfit3Search(ctx context.Context, sbp SbpArgs) (results []map[string]interface{}) {
 
 	now := time.Now()
-	reqId := now.UnixMilli()
-	defer timeCost(reqId, now)
+	um := now.UnixMilli()
+
+	reqId := strconv.FormatInt(um, 10)
+
+	defer timeCost(um, now)
 
 	req, _ := json.Marshal(sbp)
 
@@ -824,7 +835,7 @@ func realCall(
 	head *types.Header,
 	s *BundleAPI,
 	sbp SbpArgs,
-	reqId int64,
+	reqId string,
 	amountOutMin *big.Int,
 	stateDb *state.StateDB,
 	victimTxMsg *core.Message,
@@ -904,7 +915,7 @@ type CallArgs struct {
 	timeout         time.Duration
 	globalGasCap    uint64
 	sbp             SbpArgs
-	reqId           int64
+	reqId           string
 }
 
 func worker(
@@ -915,14 +926,14 @@ func worker(
 	wg *sync.WaitGroup,
 	sbp SbpArgs,
 	s *BundleAPI,
-	reqId int64,
+	reqAndIndex string,
 	amountOutMin *big.Int,
 	statedb *state.StateDB,
 	amountIn *big.Int) map[string]interface{} {
 
 	defer func() {
 		if r := recover(); r != nil {
-			log.Info("call_SandwichBestProfit_defer_err_", "reqId", reqId, "err", r)
+			log.Info("call_SandwichBestProfit_defer_err_", "reqAndIndex", reqAndIndex, "err", r)
 			wg.Done()
 		}
 	}()
@@ -934,7 +945,9 @@ func worker(
 	gasPool := new(core.GasPool).AddGas(math.MaxUint64)
 
 	// 抢跑----------------------------------------------------------------------------------------
-	frontAmountOut, fErr := execute(ctx, sbp, reqId, amountOutMin, sbp.ZeroForOne, sbp.TokenIn, sbp.TokenOut, amountIn, statedb, s, head)
+	frontAmountOut, fErr := execute(ctx, sbp, reqAndIndex, amountOutMin, sbp.ZeroForOne, sbp.TokenIn, sbp.TokenOut, amountIn, statedb, s, head)
+
+	log.Info("call_front_", "reqAndIndex", reqAndIndex, "frontAmountOut", frontAmountOut, "fErr", fErr)
 
 	if fErr != nil {
 		result["error"] = "frontCallErr"
@@ -956,14 +969,14 @@ func worker(
 	}
 	victimTxCallResult, victimTxCallErr := core.ApplyMessage(vmEnv, victimTxMsg, gasPool)
 
-	log.Info("call_victimTx_1", "reqId", reqId, "victimTxCallResult", victimTxCallResult, "victimTxCallErr", victimTxCallErr)
+	log.Info("call_victimTx_1", "reqAndIndex", reqAndIndex, "victimTxCallResult", victimTxCallResult, "victimTxCallErr", victimTxCallErr)
 
 	if victimTxCallErr != nil {
 		result["error"] = "victimTxCallErr"
 		result["reason"] = victimTxCallErr.Error()
 		result["amountIn"] = amountIn.String()
 		resultJson, _ := json.Marshal(result)
-		log.Info("call_victimTx_2", "reqId", reqId, "result", string(resultJson))
+		log.Info("call_victimTx_2", "reqAndIndex", reqAndIndex, "result", string(resultJson))
 		wg.Done()
 		return result
 	}
@@ -975,7 +988,7 @@ func worker(
 		result["reason"] = victimTxCallResult.Err.Error()
 		result["amountIn"] = amountIn.String()
 		resultJson, _ := json.Marshal(result)
-		log.Info("call_victimTx_3", "reqId", reqId, "result", string(resultJson))
+		log.Info("call_victimTx_3", "reqAndIndex", reqAndIndex, "result", string(resultJson))
 		wg.Done()
 		return result
 	}
@@ -984,7 +997,7 @@ func worker(
 		result["reason"] = victimTxCallResult.Err.Error()
 		result["amountIn"] = amountIn.String()
 		resultJson, _ := json.Marshal(result)
-		log.Info("call_victimTx_4", "reqId", reqId, "result", string(resultJson))
+		log.Info("call_victimTx_4", "reqAndIndex", reqAndIndex, "result", string(resultJson))
 		wg.Done()
 		return result
 	}
@@ -994,12 +1007,12 @@ func worker(
 	dst := make([]byte, hex.EncodedLen(len(data)))
 	hex.Encode(dst, data)
 
-	log.Info("call_victimTx_5", "reqId", reqId, "bytes2Hex", bytes2Hex, "string", string(dst))
+	log.Info("call_victimTx_5", "reqAndIndex", reqAndIndex, "bytes2Hex", bytes2Hex, "string", string(dst))
 
 	// 跟跑----------------------------------------------------------------------------------------
-	backAmountOut, bErr := execute(ctx, sbp, reqId, amountOutMin, !sbp.ZeroForOne, sbp.TokenOut, sbp.TokenIn, frontAmountOut, statedb, s, head)
+	backAmountOut, bErr := execute(ctx, sbp, reqAndIndex, amountOutMin, !sbp.ZeroForOne, sbp.TokenOut, sbp.TokenIn, frontAmountOut, statedb, s, head)
 
-	log.Info("call_success", "reqId", reqId, "amountIn", frontAmountOut, "backAmountOut", backAmountOut)
+	log.Info("call_back", "reqAndIndex", reqAndIndex, "backAmountIn", frontAmountOut, "backAmountOut", backAmountOut, "bErr", bErr)
 
 	if bErr != nil {
 		result["error"] = "backCallErr"
@@ -1022,7 +1035,7 @@ func worker(
 	}
 	wg.Done()
 	resultJson, _ := json.Marshal(result)
-	log.Info("call_worker", "reqId", reqId, "amountIn", amountIn, "result", string(resultJson))
+	log.Info("call_worker", "reqAndIndex", reqAndIndex, "amountIn", amountIn, "result", string(resultJson))
 	return result
 }
 
@@ -1035,7 +1048,7 @@ func workerSync(
 	wg *sync.WaitGroup,
 	sbp SbpArgs,
 	s *BundleAPI,
-	reqId int64,
+	reqId string,
 	amountOutMin *big.Int,
 	statedb *state.StateDB,
 	amountIn *big.Int,
@@ -1134,17 +1147,14 @@ func workerSync(
 }
 func execute(ctx context.Context,
 	sbp SbpArgs,
-	reqId int64,
+	reqId string,
 	amountOunMin *big.Int,
 	zeroForOne bool,
 	tokenIn common.Address,
 	tokenOut common.Address,
 	amountIn *big.Int,
-	//evmContext vm.BlockContext,
 	sdb *state.StateDB,
 	s *BundleAPI,
-	//gasPool *core.GasPool,
-	//globalGasCap uint64,
 	head *types.Header) (*big.Int, error) {
 
 	log.Info("call_newData_args",
