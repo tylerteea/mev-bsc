@@ -521,12 +521,17 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) []map[s
 	finalResult := make(map[string]interface{})
 
 	//并发执行模拟调用，记录结果
-	for _, amountInReal := range ladder {
+	for index, amountInReal := range ladder {
+
+		log.Info("call_worker_result_start", "reqId", reqId, "index", index, "amountInReal", amountInReal)
 		sdb := stateDB.Copy()
 		workerResults := worker(ctx, head, victimTxMsg, victimTxContext, wg, sbp, s, reqId, amountOutMin, sdb, amountInReal)
+		marshal, _ := json.Marshal(workerResults)
+		log.Info("call_worker_result_end", "reqId", reqId, "index", index, "amountInReal", amountInReal, "result", string(marshal))
+
 		if workerResults["error"] == nil && workerResults["profit"] != nil {
 
-			log.Info("call_worker_result", "reqId", reqId, "amountInReal", amountInReal)
+			log.Info("call_worker_success", "reqId", reqId, "amountInReal", amountInReal)
 			profit, ok := workerResults["profit"].(*big.Int)
 			if ok {
 				log.Info("call_worker_profit", "reqId", reqId, "amountInReal", amountInReal, "profit", profit)
@@ -535,7 +540,7 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) []map[s
 					finalResult = workerResults
 				}
 			} else {
-				log.Info("call_worker_result_err", "reqId", reqId, "amountInReal", amountInReal)
+				log.Info("call_worker_err", "reqId", reqId, "amountInReal", amountInReal)
 			}
 		} else {
 			log.Info("call_SandwichBestProfit_error", "reqId", reqId, "amountInReal", amountInReal)
