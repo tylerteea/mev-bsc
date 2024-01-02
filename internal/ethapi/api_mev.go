@@ -527,10 +527,8 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) []map[s
 		if workerResults["error"] == nil && workerResults["profit"] != nil {
 
 			log.Info("call_worker_result", "reqId", reqId, "amountInReal", amountInReal)
-			profitString, ok := workerResults["profit"].(string)
+			profit, ok := workerResults["profit"].(*big.Int)
 			if ok {
-				profit := big.NewInt(0)
-				profit.SetString(profitString, 10)
 				log.Info("call_worker_profit", "reqId", reqId, "amountInReal", amountInReal, "profit", profit)
 				if profit.Int64() > maxProfit.Int64() {
 					maxProfit = profit
