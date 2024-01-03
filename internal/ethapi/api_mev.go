@@ -1180,21 +1180,29 @@ func execute(ctx context.Context,
 	}
 	callResult, err := mevCall(sdb, head, s, ctx, callArgs, nil, nil)
 
-	var revertReason *revertError
-
-	if len(callResult.Revert()) > 0 {
-		revertReason = newRevertError(callResult)
-	}
-
 	log.Info("call_result",
 		"reqId", reqId,
 		"amountIn", amountIn,
 		"zeroForOne", zeroForOne,
 		"data", callResult,
-		"revert", common.Bytes2Hex(callResult.Revert()),
-		"revertReason", revertReason,
-		"returnData", common.Bytes2Hex(callResult.Return()),
 	)
+
+	if callResult != nil {
+		var revertReason *revertError
+
+		if len(callResult.Revert()) > 0 {
+			revertReason = newRevertError(callResult)
+		}
+		log.Info("call_result_not_nil",
+			"reqId", reqId,
+			"amountIn", amountIn,
+			"zeroForOne", zeroForOne,
+			"data", callResult,
+			"revert", common.Bytes2Hex(callResult.Revert()),
+			"revertReason", revertReason,
+			"returnData", common.Bytes2Hex(callResult.Return()),
+		)
+	}
 
 	if err != nil {
 		log.Info("call_applyMessage_err", "reqId", reqId, "error", err)
