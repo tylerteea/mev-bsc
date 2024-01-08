@@ -410,7 +410,6 @@ type SbpArgs struct {
 	Balance      *big.Int       `json:"balance"`
 	AmountIn     *big.Int       `json:"amountIn"`
 	AmountOutMin *big.Int       `json:"amountOutMin"`
-	BloxAmount   *big.Int       `json:"bloxAmount"`
 	Fee          int64          `json:"fee"`
 	Wallet       common.Address `json:"wallet"`
 	VictimTxHash common.Hash    `json:"vTxHash"`
@@ -1172,7 +1171,6 @@ func execute(ctx context.Context,
 	log.Info("call_newData_args",
 		"reqId", reqId,
 		"amountOunMin", amountOunMin,
-		"bloxAmount", sbp.BloxAmount,
 		"bloxAddress", sbp.BloxAddress,
 		"pair", sbp.Pair,
 		"tokenIn", tokenIn,
@@ -1180,7 +1178,7 @@ func execute(ctx context.Context,
 		"amountIn", amountIn,
 		"zeroForOne", zeroForOne,
 	)
-	data := newData(amountOunMin, sbp.BloxAmount, sbp.BloxAddress, sbp.Pair, tokenIn, tokenOut, big.NewInt(sbp.Fee), amountIn, zeroForOne)
+	data := newData(amountOunMin, sbp.BloxAddress, sbp.Pair, tokenIn, tokenOut, big.NewInt(sbp.Fee), amountIn, zeroForOne)
 
 	log.Info("call_newData_result", "reqId", reqId, "data_hex", common.Bytes2Hex(data))
 
@@ -1232,7 +1230,6 @@ func execute(ctx context.Context,
 
 func newData(
 	amountOutMin *big.Int,
-	bloxAmount *big.Int,
 	bloxAddress common.Address,
 	pairAddress common.Address,
 	tokenIn common.Address,
@@ -1256,8 +1253,6 @@ func newData(
 	} else {
 		params = append(params, []byte{0}...)
 	}
-	params = append(params, fillBytes(14, bloxAmount.Bytes())...)
-
 	return params
 }
 
