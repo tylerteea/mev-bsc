@@ -693,7 +693,7 @@ func (s *BundleAPI) SandwichBestProfitSync(ctx context.Context, sbp SbpArgs) []m
 	for index, amountInReal := range ladder {
 		sdb := stateDB.Copy()
 		reqAndIndex := reqId + "" + strconv.Itoa(index)
-		go workerSync(ctx, channelResult, head, victimTxMsg, victimTxContext, wg, sbp, s, reqAndIndex, amountOutMin, sdb, amountInReal, globalGasCap)
+		go workerSync(ctx, channelResult, head, victimTxMsg, victimTxContext, wg, sbp, s, reqAndIndex, amountOutMin, sdb, amountInReal)
 	}
 
 	for m := range channelResult {
@@ -1062,8 +1062,7 @@ func workerSync(
 	reqId string,
 	amountOutMin *big.Int,
 	statedb *state.StateDB,
-	amountIn *big.Int,
-	globalGasCap uint64) {
+	amountIn *big.Int) {
 
 	result := make(map[string]interface{})
 	defer func() {
