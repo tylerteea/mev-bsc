@@ -416,7 +416,7 @@ type SbpArgs struct {
 	DebugMode    bool           `json:"debugMode"`
 	ZeroForOne   bool           `json:"zeroForOne"`
 	Steps        *big.Int       `json:"steps"`
-	reqId        string         `json:"reqId"`
+	ReqId        string         `json:"reqId"`
 }
 
 // SandwichBestProfit profit calculate
@@ -427,8 +427,8 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[str
 	um := now.UnixMilli()
 
 	var reqId string
-	if sbp.reqId != "" {
-		reqId = sbp.reqId
+	if sbp.ReqId != "" {
+		reqId = sbp.ReqId
 	} else {
 		reqId = strconv.FormatInt(um, 10)
 	}
