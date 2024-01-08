@@ -416,16 +416,22 @@ type SbpArgs struct {
 	DebugMode    bool           `json:"debugMode"`
 	ZeroForOne   bool           `json:"zeroForOne"`
 	Steps        *big.Int       `json:"steps"`
+	reqId        string         `json:"reqId"`
 }
 
 // SandwichBestProfit profit calculate
-func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) []map[string]interface{} {
+func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[string]interface{} {
 
-	var results []map[string]interface{}
+	var result map[string]interface{}
 	now := time.Now()
 	um := now.UnixMilli()
 
-	reqId := strconv.FormatInt(um, 10)
+	var reqId string
+	if sbp.reqId != "" {
+		reqId = sbp.reqId
+	} else {
+		reqId = strconv.FormatInt(um, 10)
+	}
 
 	defer timeCost(um, now)
 
@@ -441,26 +447,21 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) []map[s
 	}
 
 	defer cancel()
-	defer func(results *[]map[string]interface{}) {
+	defer func(results *map[string]interface{}) {
 		if r := recover(); r != nil {
-			oldResultJson, _ := json.Marshal(results)
+			oldResultJson, _ := json.Marshal(result)
 			log.Info("call_sbp_old_result_", "reqId", reqId, "result", string(oldResultJson))
-			results = new([]map[string]interface{})
-			result := make(map[string]interface{})
 			result["error"] = "panic"
 			result["reason"] = r
-			*results = append(*results, result)
-			newResultJson, _ := json.Marshal(results)
+			newResultJson, _ := json.Marshal(result)
 			log.Info("call_sbp_defer_result_", "reqId", reqId, "result", string(newResultJson))
 		}
-	}(&results)
+	}(&result)
 
 	if sbp.Balance.Int64() == 0 {
-		result := make(map[string]interface{})
 		result["error"] = "args_err"
 		result["reason"] = "balance_is_0"
-		results = append(results, result)
-		return results
+		return result
 	}
 	balance := sbp.Balance
 
@@ -488,13 +489,11 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) []map[s
 	}
 	// 获取不到 直接返回
 	if victimTransaction == nil {
-		result := make(map[string]interface{})
 		result["error"] = "tx_is_nil"
 		result["reason"] = "GetPoolTransaction and GetTransaction all nil : " + victimTxHash.Hex()
-		results = append(results, result)
 		resultJson, _ := json.Marshal(result)
 		log.Info("call_sbp_2_", "reqId", reqId, "result", string(resultJson))
-		return results
+		return result
 	}
 	number := rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNo))
 
@@ -506,14 +505,11 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) []map[s
 	victimTxMsg, victimTxMsgErr := core.TransactionToMessage(victimTransaction, types.MakeSigner(s.b.ChainConfig(), head.Number, head.Time), head.BaseFee)
 
 	if victimTxMsgErr != nil {
-		result := make(map[string]interface{})
 		result["error"] = "victimTxMsgErr"
 		result["reason"] = victimTxMsgErr
-		results = append(results, result)
-
 		resultJson, _ := json.Marshal(result)
 		log.Info("call_sbp_4_", "reqId", reqId, "result", string(resultJson))
-		return results
+		return result
 	}
 	victimTxContext := core.NewEVMTxContext(victimTxMsg)
 
@@ -532,8 +528,6 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) []map[s
 	wg.Add(len(ladder))
 
 	maxProfit := big.NewInt(0)
-	finalResult := make(map[string]interface{})
-
 	//并发执行模拟调用，记录结果
 	for index, amountInReal := range ladder {
 
@@ -553,7 +547,7 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) []map[s
 				log.Info("call_worker_profit", "reqAndIndex", reqAndIndex, "amountInReal", amountInReal, "profit", profit)
 				if profit.Int64() > maxProfit.Int64() {
 					maxProfit = profit
-					finalResult = workerResults
+					result = workerResults
 				}
 			} else {
 				log.Info("call_worker_err", "reqAndIndex", reqAndIndex, "amountInReal", amountInReal)
@@ -563,11 +557,9 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) []map[s
 		}
 	}
 	wg.Wait()
-	results = append(results, finalResult)
-	resultJson, _ := json.Marshal(results)
+	resultJson, _ := json.Marshal(result)
 	log.Info("call_sbp_end", "reqId", reqId, "result", string(resultJson))
-
-	return results
+	return result
 }
 
 // SandwichBestProfitSync profit calculate
