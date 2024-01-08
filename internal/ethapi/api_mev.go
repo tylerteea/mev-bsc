@@ -61,6 +61,13 @@ type CallBundleArgs struct {
 // The sender is responsible for signing the transactions and using the correct
 // nonce and ensuring validity
 func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[string]interface{}, error) {
+
+	// todo
+	now := time.Now()
+	um := now.UnixMilli()
+	reqId := strconv.FormatInt(um, 10)
+	log.Info("call_bundle_start", "reqId", reqId)
+
 	if len(args.Txs) == 0 {
 		return nil, errors.New("bundle missing txs")
 	}
@@ -233,6 +240,11 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 	ret["stateBlockNumber"] = parent.Number.Int64()
 
 	ret["bundleHash"] = "0x" + common.Bytes2Hex(bundleHash.Sum(nil))
+
+	// todo
+	newResultJson, _ := json.Marshal(ret)
+	log.Info("call_bundle", "reqId", reqId, "ret", string(newResultJson))
+
 	return ret, nil
 }
 
