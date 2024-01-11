@@ -1030,6 +1030,7 @@ func worker(
 		result["tokenIn"] = sbp.TokenIn
 		result["tokenOut"] = sbp.TokenOut
 		result["amountIn"] = new(big.Int).Set(amountIn)
+		result["frontAmountOut"] = new(big.Int).Set(frontAmountOut)
 		result["amountOut"] = new(big.Int).Set(backAmountOut)
 		result["profit"] = new(big.Int).Sub(backAmountOut, amountIn)
 	} else {
