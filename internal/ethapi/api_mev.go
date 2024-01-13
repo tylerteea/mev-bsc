@@ -518,10 +518,15 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[str
 
 	//初始化整个执行ladder结构
 	var ladder []*big.Int
-	for amountIn.Cmp(balance) < 0 {
-		ladder = append(ladder, new(big.Int).Set(amountIn))
-		//累加
-		amountIn = new(big.Int).Add(amountIn, stepAmount)
+	//for amountIn.Cmp(balance) < 0 {
+	//	ladder = append(ladder, new(big.Int).Set(amountIn))
+	//	//累加
+	//	amountIn = new(big.Int).Add(amountIn, stepAmount)
+	//}
+	for balance.Cmp(amountIn) > 0 {
+		ladder = append(ladder, new(big.Int).Set(balance))
+		//递减
+		balance = new(big.Int).Sub(balance, stepAmount)
 	}
 
 	var wg = new(sync.WaitGroup)
