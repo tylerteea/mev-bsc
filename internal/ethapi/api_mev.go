@@ -433,7 +433,7 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[str
 		reqId = strconv.FormatInt(um, 10)
 	}
 
-	defer timeCost(um, now)
+	defer timeCost(reqId, now)
 
 	req, _ := json.Marshal(sbp)
 	log.Info("call_sbp_start", "reqId", reqId, "sbp", string(req))
@@ -576,7 +576,7 @@ func (s *BundleAPI) SandwichBestProfitSync(ctx context.Context, sbp SbpArgs) []m
 
 	reqId := strconv.FormatInt(um, 10)
 
-	defer timeCost(um, now)
+	defer timeCost(reqId, now)
 
 	req, _ := json.Marshal(sbp)
 	log.Info("call_SandwichBestProfit_1_", "reqId", reqId, "sbp", string(req))
@@ -710,7 +710,7 @@ func (s *BundleAPI) SandwichBestProfit3Search(ctx context.Context, sbp SbpArgs) 
 
 	reqId := strconv.FormatInt(um, 10)
 
-	defer timeCost(um, now)
+	defer timeCost(reqId, now)
 
 	req, _ := json.Marshal(sbp)
 
@@ -1035,6 +1035,7 @@ func worker(
 		result["tokenIn"] = sbp.TokenIn
 		result["tokenOut"] = sbp.TokenOut
 		result["amountIn"] = new(big.Int).Set(amountIn)
+		result["frontAmountOut"] = new(big.Int).Set(frontAmountOut)
 		result["amountOut"] = new(big.Int).Set(backAmountOut)
 		result["profit"] = new(big.Int).Sub(backAmountOut, amountIn)
 	} else {

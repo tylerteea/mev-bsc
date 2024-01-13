@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func timeCost(reqId int64, start time.Time) {
+func timeCost(reqId string, start time.Time) {
 	tc := time.Since(start)
 	log.Info("call_cost", "reqId", reqId, "ms", tc.Milliseconds())
 }
