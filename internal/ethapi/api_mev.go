@@ -423,6 +423,9 @@ type SbpArgs struct {
 func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[string]interface{} {
 
 	var result map[string]interface{}
+	result["error"] = "default"
+	result["reason"] = "default"
+
 	now := time.Now()
 	um := now.UnixMilli()
 
@@ -498,9 +501,6 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[str
 	number := rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNo))
 
 	stateDB, _, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
-	globalGasCap := s.b.RPCGasCap()
-
-	log.Info("call_sbp_3_", "reqId", reqId, "blockNo", blockNo, "globalGasCap", globalGasCap)
 
 	victimTxMsg, victimTxMsgErr := core.TransactionToMessage(victimTransaction, types.MakeSigner(s.b.ChainConfig(), head.Number, head.Time), head.BaseFee)
 
@@ -518,50 +518,30 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[str
 
 	//初始化整个执行ladder结构
 	var ladder []*big.Int
-	//for amountIn.Cmp(balance) < 0 {
-	//	ladder = append(ladder, new(big.Int).Set(amountIn))
-	//	//累加
-	//	amountIn = new(big.Int).Add(amountIn, stepAmount)
-	//}
 	for balance.Cmp(amountIn) > 0 {
 		ladder = append(ladder, new(big.Int).Set(balance))
 		//递减
 		balance = new(big.Int).Sub(balance, stepAmount)
 	}
 
-	var wg = new(sync.WaitGroup)
-	wg.Add(len(ladder))
-
 	maxProfit := big.NewInt(0)
 	//并发执行模拟调用，记录结果
 	for index, amountInReal := range ladder {
 
 		reqAndIndex := reqId + "_" + strconv.Itoa(index)
-
-		log.Info("call_worker_result_start", "reqAndIndex", reqAndIndex, "amountInReal", amountInReal)
 		sdb := stateDB.Copy()
-		workerResults := worker(ctx, head, victimTxMsg, victimTxContext, wg, sbp, s, reqAndIndex, amountOutMin, sdb, amountInReal)
+		workerResults := worker(ctx, head, victimTxMsg, victimTxContext, sbp, s, reqAndIndex, amountOutMin, sdb, amountInReal)
 		marshal, _ := json.Marshal(workerResults)
 		log.Info("call_worker_result_end", "reqAndIndex", reqAndIndex, "amountInReal", amountInReal, "result", string(marshal))
 
 		if workerResults["error"] == nil && workerResults["profit"] != nil {
-
-			log.Info("call_worker_success", "reqAndIndex", reqAndIndex, "amountInReal", amountInReal)
 			profit, ok := workerResults["profit"].(*big.Int)
-			if ok {
-				log.Info("call_worker_profit", "reqAndIndex", reqAndIndex, "amountInReal", amountInReal, "profit", profit)
-				if profit.Int64() > maxProfit.Int64() {
-					maxProfit = profit
-					result = workerResults
-				}
-			} else {
-				log.Info("call_worker_err", "reqAndIndex", reqAndIndex, "amountInReal", amountInReal)
+			if ok && profit.Int64() > maxProfit.Int64() {
+				maxProfit = profit
+				result = workerResults
 			}
-		} else {
-			log.Info("call_sbp_worker_error", "reqAndIndex", reqAndIndex, "amountInReal", amountInReal)
 		}
 	}
-	wg.Wait()
 	resultJson, _ := json.Marshal(result)
 	log.Info("call_sbp_end", "reqId", reqId, "result", string(resultJson))
 	return result
@@ -931,7 +911,6 @@ func worker(
 	head *types.Header,
 	victimTxMsg *core.Message,
 	victimTxContext vm.TxContext,
-	wg *sync.WaitGroup,
 	sbp SbpArgs,
 	s *BundleAPI,
 	reqAndIndex string,
@@ -942,29 +921,24 @@ func worker(
 	defer func() {
 		if r := recover(); r != nil {
 			log.Info("call_SandwichBestProfit_defer_err_", "reqAndIndex", reqAndIndex, "err", r)
-			wg.Done()
 		}
 	}()
 
-	evmContext := core.NewEVMBlockContext(head, s.chain, nil)
-
 	result := make(map[string]interface{})
-
-	gasPool := new(core.GasPool).AddGas(math.MaxUint64)
 
 	// 抢跑----------------------------------------------------------------------------------------
 	frontAmountOut, fErr := execute(ctx, sbp, reqAndIndex, amountOutMin, sbp.ZeroForOne, sbp.TokenIn, sbp.TokenOut, amountIn, statedb, s, head)
 
-	log.Info("call_front_", "reqAndIndex", reqAndIndex, "frontAmountOut", frontAmountOut, "fErr", fErr)
+	log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "amountIn", amountIn, "frontAmountOut", frontAmountOut, "fErr", fErr)
 
 	if fErr != nil {
 		result["error"] = "frontCallErr"
 		result["reason"] = fErr.Error()
 		result["amountIn"] = amountIn.String()
-		wg.Done()
 		return result
 	}
 	// 受害者----------------------------------------------------------------------------------------
+	evmContext := core.NewEVMBlockContext(head, s.chain, nil)
 	vmEnv := vm.NewEVM(evmContext, victimTxContext, statedb, s.chain.Config(), vm.Config{NoBaseFee: true})
 	err := gopool.Submit(func() {
 		vmEnv.Cancel()
@@ -972,9 +946,9 @@ func worker(
 	if err != nil {
 		result["error"] = "victimPoolSubmit"
 		result["reason"] = err.Error()
-		wg.Done()
 		return result
 	}
+	gasPool := new(core.GasPool).AddGas(math.MaxUint64)
 	victimTxCallResult, victimTxCallErr := core.ApplyMessage(vmEnv, victimTxMsg, gasPool)
 
 	log.Info("call_victimTx_1", "reqAndIndex", reqAndIndex, "victimTxCallResult", victimTxCallResult, "victimTxCallErr", victimTxCallErr)
@@ -983,68 +957,44 @@ func worker(
 		result["error"] = "victimTxCallErr"
 		result["reason"] = victimTxCallErr.Error()
 		result["amountIn"] = amountIn.String()
-		resultJson, _ := json.Marshal(result)
-		log.Info("call_victimTx_2", "reqAndIndex", reqAndIndex, "result", string(resultJson))
-		wg.Done()
 		return result
 	}
 	if len(victimTxCallResult.Revert()) > 0 {
-		revertErr := newRevertError(victimTxCallResult)
-		data, _ := json.Marshal(&revertErr)
-		_ = json.Unmarshal(data, &result)
 		result["error"] = "execution_victimTx_reverted"
 		result["reason"] = victimTxCallResult.Err.Error()
 		result["amountIn"] = amountIn.String()
-		resultJson, _ := json.Marshal(result)
-		log.Info("call_victimTx_3", "reqAndIndex", reqAndIndex, "result", string(resultJson))
-		wg.Done()
 		return result
 	}
 	if victimTxCallResult.Err != nil {
 		result["error"] = "execution_victimTx_callResult_err"
 		result["reason"] = victimTxCallResult.Err.Error()
 		result["amountIn"] = amountIn.String()
-		resultJson, _ := json.Marshal(result)
-		log.Info("call_victimTx_4", "reqAndIndex", reqAndIndex, "result", string(resultJson))
-		wg.Done()
 		return result
 	}
 
-	data := victimTxCallResult.Return()
-	bytes2Hex := common.Bytes2Hex(data)
-	dst := make([]byte, hex.EncodedLen(len(data)))
-	hex.Encode(dst, data)
-
-	log.Info("call_victimTx_5", "reqAndIndex", reqAndIndex, "bytes2Hex", bytes2Hex, "string", string(dst))
-
 	// 跟跑----------------------------------------------------------------------------------------
 	backAmountOut, bErr := execute(ctx, sbp, reqAndIndex, amountOutMin, !sbp.ZeroForOne, sbp.TokenOut, sbp.TokenIn, frontAmountOut, statedb, s, head)
-
-	log.Info("call_back", "reqAndIndex", reqAndIndex, "backAmountIn", frontAmountOut, "backAmountOut", backAmountOut, "bErr", bErr)
+	log.Info("call_execute_back", "reqAndIndex", reqAndIndex, "backAmountIn", frontAmountOut, "backAmountOut", backAmountOut, "bErr", bErr)
 
 	if bErr != nil {
 		result["error"] = "backCallErr"
 		result["reason"] = bErr.Error()
 		result["amountIn"] = frontAmountOut.String()
-		wg.Done()
 		return result
 	}
 	profit := new(big.Int).Sub(backAmountOut, amountIn)
 
-	if profit.Int64() > 0 {
-		result["tokenIn"] = sbp.TokenIn
-		result["tokenOut"] = sbp.TokenOut
-		result["amountIn"] = new(big.Int).Set(amountIn)
-		result["frontAmountOut"] = new(big.Int).Set(frontAmountOut)
-		result["amountOut"] = new(big.Int).Set(backAmountOut)
-		result["profit"] = new(big.Int).Sub(backAmountOut, amountIn)
-	} else {
+	result["tokenIn"] = sbp.TokenIn
+	result["tokenOut"] = sbp.TokenOut
+	result["amountIn"] = amountIn
+	result["frontAmountOut"] = frontAmountOut
+	result["amountOut"] = backAmountOut
+	result["profit"] = profit
+
+	if profit.Int64() <= 0 {
 		result["error"] = "profit_too_low"
 		result["reason"] = errors.New("profit_too_low")
 	}
-	wg.Done()
-	resultJson, _ := json.Marshal(result)
-	log.Info("call_worker", "reqAndIndex", reqAndIndex, "amountIn", amountIn, "result", string(resultJson))
 	return result
 }
 
@@ -1165,16 +1115,6 @@ func execute(ctx context.Context,
 	s *BundleAPI,
 	head *types.Header) (*big.Int, error) {
 
-	log.Info("call_newData_args",
-		"reqId", reqId,
-		"amountOunMin", amountOunMin,
-		"bloxAddress", sbp.BloxAddress,
-		"pair", sbp.Pair,
-		"tokenIn", tokenIn,
-		"fee", sbp.Fee,
-		"amountIn", amountIn,
-		"zeroForOne", zeroForOne,
-	)
 	data := newData(amountOunMin, sbp.BloxAddress, sbp.Pair, tokenIn, tokenOut, big.NewInt(sbp.Fee), amountIn, zeroForOne)
 
 	log.Info("call_newData_result", "reqId", reqId, "data_hex", common.Bytes2Hex(data))
@@ -1187,16 +1127,8 @@ func execute(ctx context.Context,
 	}
 	callResult, err := mevCall(sdb, head, s, ctx, callArgs, nil, nil)
 
-	log.Info("call_result",
-		"reqId", reqId,
-		"amountIn", amountIn,
-		"zeroForOne", zeroForOne,
-		"data", callResult,
-	)
-
 	if callResult != nil {
 		var revertReason *revertError
-
 		if len(callResult.Revert()) > 0 {
 			revertReason = newRevertError(callResult)
 		}
@@ -1210,18 +1142,13 @@ func execute(ctx context.Context,
 			"returnData", common.Bytes2Hex(callResult.Return()),
 		)
 	}
-	// tod
 	if err != nil {
-		log.Info("call_applyMessage_err", "reqId", reqId, "error", err)
 		return nil, err
 	}
 	if callResult.Err != nil {
-		log.Info("call_applyMessage_callResult_err", "reqId", reqId, "error", callResult.Err)
 		return nil, callResult.Err
 	}
 	amountOut := new(big.Int).SetBytes(callResult.Return())
-
-	log.Info("call_success", "reqId", reqId, "amountIn", amountIn, "zeroForOne", zeroForOne, "amountOut", amountOut)
 	return amountOut, nil
 }
 
@@ -1268,8 +1195,6 @@ func mevCall(state *state.StateDB, header *types.Header, s *BundleAPI, ctx conte
 	defer func(start time.Time) { log.Info("call_ExecutingEVMCallFinished", "runtime", time.Since(start)) }(time.Now())
 
 	result, err := doMevCall(ctx, s.b, args, state, header, overrides, blockOverrides, s.b.RPCEVMTimeout(), s.b.RPCGasCap())
-
-	log.Info("doMevCall", "result", result, "err", err)
 
 	if err != nil {
 		return nil, err
