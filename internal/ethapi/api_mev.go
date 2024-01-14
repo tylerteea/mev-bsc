@@ -543,7 +543,7 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[str
 		}
 	}
 	resultJson, _ := json.Marshal(result)
-	log.Info("call_sbp_end", "reqId", reqId, "result", string(resultJson))
+	log.Info("call_sbp_end", "reqId", reqId, "result", string(resultJson), "cost_time(ms)", time.Since(now).Milliseconds())
 	return result
 }
 
