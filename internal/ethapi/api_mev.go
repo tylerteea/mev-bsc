@@ -468,7 +468,7 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[str
 	}
 	balance := sbp.Balance
 
-	amountIn := sbp.AmountIn
+	minAmountIn := sbp.AmountIn
 	victimTxHash := sbp.VictimTxHash
 	amountOutMin := sbp.AmountOutMin
 
@@ -514,11 +514,11 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[str
 	victimTxContext := core.NewEVMTxContext(victimTxMsg)
 
 	//计算出每次步长
-	stepAmount := new(big.Int).Quo(new(big.Int).SetInt64(0).Sub(balance, amountIn), sbp.Steps)
+	stepAmount := new(big.Int).Quo(new(big.Int).SetInt64(0).Sub(balance, minAmountIn), sbp.Steps)
 
 	//初始化整个执行ladder结构
 	var ladder []*big.Int
-	for balance.Cmp(amountIn) > 0 {
+	for balance.Cmp(minAmountIn) > 0 {
 		ladder = append(ladder, new(big.Int).Set(balance))
 		//递减
 		balance = new(big.Int).Sub(balance, stepAmount)
