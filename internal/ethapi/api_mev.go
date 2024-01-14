@@ -422,7 +422,8 @@ type SbpArgs struct {
 // SandwichBestProfit profit calculate
 func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[string]interface{} {
 
-	var result map[string]interface{}
+	result := make(map[string]interface{})
+
 	result["error"] = "default"
 	result["reason"] = "default"
 
