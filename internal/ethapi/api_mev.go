@@ -63,10 +63,12 @@ type CallBundleArgs struct {
 func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[string]interface{}, error) {
 
 	// todo
-	//now := time.Now()
-	//um := now.UnixMilli()
-	//reqId := strconv.FormatInt(um, 10)
-	//log.Info("call_bundle_start", "reqId", reqId)
+	now := time.Now()
+	um := now.UnixMilli()
+	reqId := strconv.FormatInt(um, 10)
+	log.Info("call_bundle_start", "reqId", reqId)
+
+	log.Info("call_bundle", "reqId", reqId, "block", args.BlockNumber.Int64())
 
 	if len(args.Txs) == 0 {
 		return nil, errors.New("bundle missing txs")
@@ -242,8 +244,8 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 	ret["bundleHash"] = "0x" + common.Bytes2Hex(bundleHash.Sum(nil))
 
 	// todo
-	//newResultJson, _ := json.Marshal(ret)
-	//log.Info("call_bundle", "reqId", reqId, "ret", string(newResultJson))
+	newResultJson, _ := json.Marshal(ret)
+	log.Info("call_bundle", "reqId", reqId, "ret", string(newResultJson))
 
 	return ret, nil
 }
