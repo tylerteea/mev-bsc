@@ -62,18 +62,10 @@ type CallBundleArgs struct {
 // nonce and ensuring validity
 func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[string]interface{}, error) {
 
-	// todo
-	now := time.Now()
-	um := now.UnixMilli()
-	reqId := strconv.FormatInt(um, 10)
-	log.Info("call_bundle_start", "reqId", reqId, "block", args.BlockNumber.Int64())
-
 	if len(args.Txs) == 0 {
-		log.Info("call_bundle_1", "reqId", reqId, "block", args.BlockNumber.Int64())
 		return nil, errors.New("bundle missing txs")
 	}
 	if args.BlockNumber == 0 {
-		log.Info("call_bundle_2", "reqId", reqId, "block", args.BlockNumber.Int64())
 		return nil, errors.New("bundle missing blockNumber")
 	}
 
@@ -82,7 +74,6 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 	for _, encodedTx := range args.Txs {
 		tx := new(types.Transaction)
 		if err := tx.UnmarshalBinary(encodedTx); err != nil {
-			log.Info("call_bundle_3", "reqId", reqId, "block", args.BlockNumber.Int64())
 			return nil, err
 		}
 		txs = append(txs, tx)
@@ -96,11 +87,9 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 	timeout := time.Millisecond * time.Duration(timeoutMilliSeconds)
 	state, parent, err := s.b.StateAndHeaderByNumberOrHash(ctx, args.StateBlockNumberOrHash)
 	if state == nil || err != nil {
-		log.Info("call_bundle_4", "reqId", reqId, "block", args.BlockNumber.Int64())
 		return nil, err
 	}
 	if err := args.StateOverrides.Apply(state); err != nil {
-		log.Info("call_bundle_5", "reqId", reqId, "block", args.BlockNumber.Int64())
 		return nil, err
 	}
 	blockNumber := big.NewInt(int64(args.BlockNumber))
@@ -171,7 +160,6 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 	for _, tx := range txs {
 		// Check if the context was cancelled (eg. timed-out)
 		if err := ctx.Err(); err != nil {
-			log.Info("call_bundle_6", "reqId", reqId, "tx", tx.Hash().String())
 			return nil, err
 		}
 
@@ -182,14 +170,12 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 
 		receipt, result, err := core.ApplyTransactionWithResult(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, &header.GasUsed, vmconfig)
 		if err != nil {
-			log.Info("call_bundle_7", "reqId", reqId, "tx", tx.Hash().String())
 			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
 		}
 
 		txHash := tx.Hash().String()
 
 		if err != nil {
-			log.Info("call_bundle_8", "reqId", reqId, "tx", tx.Hash().String())
 			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
 		}
 		to := "0x"
@@ -206,7 +192,6 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 
 		gasPrice, err := tx.EffectiveGasTip(header.BaseFee)
 		if err != nil {
-			log.Info("call_bundle_9", "reqId", reqId, "tx", tx.Hash().String())
 			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
 		}
 		gasFeesTx := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), gasPrice)
@@ -236,7 +221,6 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 		jsonResult["gasPrice"] = new(big.Int).Div(coinbaseDiffTx, big.NewInt(int64(receipt.GasUsed))).String() // tx.GasPrice().String()
 		jsonResult["gasUsed"] = receipt.GasUsed
 		results = append(results, jsonResult)
-		log.Info("call_bundle_10", "reqId", reqId, "tx", tx.Hash().String())
 	}
 
 	ret := map[string]interface{}{}
@@ -252,8 +236,8 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 	ret["bundleHash"] = "0x" + common.Bytes2Hex(bundleHash.Sum(nil))
 
 	// todo
-	newResultJson, _ := json.Marshal(ret)
-	log.Info("call_bundle", "reqId", reqId, "ret", string(newResultJson))
+	//newResultJson, _ := json.Marshal(ret)
+	//log.Info("call_bundle", "reqId", reqId, "ret", string(newResultJson))
 
 	return ret, nil
 }
@@ -486,21 +470,6 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[str
 	// 根据受害人tx hash  从内存池得到tx msg
 	victimTransaction := s.b.GetPoolTransaction(victimTxHash)
 
-	//初始化数据
-	head := s.chain.CurrentHeader()
-	blockNo := head.Number.Uint64()
-
-	// 如果是测试阶段，可以使用已经上块的tx
-	if sbp.DebugMode {
-		if victimTransaction == nil {
-			tx, _, blockNumber, _, _ := s.b.GetTransaction(ctx, victimTxHash)
-			if tx != nil {
-				blockNo = blockNumber - 1
-				head = s.chain.GetHeaderByNumber(blockNo)
-				victimTransaction = tx
-			}
-		}
-	}
 	// 获取不到 直接返回
 	if victimTransaction == nil {
 		result["error"] = "tx_is_nil"
@@ -509,9 +478,10 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[str
 		log.Info("call_sbp_2_", "reqId", reqId, "result", string(resultJson))
 		return result
 	}
-	number := rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNo))
 
-	stateDB, _, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
+	number := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+
+	stateDB, head, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
 
 	victimTxMsg, victimTxMsgErr := core.TransactionToMessage(victimTransaction, types.MakeSigner(s.b.ChainConfig(), head.Number, head.Time), head.BaseFee)
 
