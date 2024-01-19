@@ -481,7 +481,7 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[str
 
 	number := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 
-	log.Info("call_sbp_2_", "reqId", reqId, "blockNumber", number.BlockNumber.Int64())
+	log.Info("call_sbp_3_", "reqId", reqId, "blockNumber", number.BlockNumber.Int64())
 
 	stateDB, head, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
 
