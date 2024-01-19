@@ -481,6 +481,8 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[str
 
 	number := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 
+	log.Info("call_sbp_2_", "reqId", reqId, "blockNumber", number.BlockNumber.Int64())
+
 	stateDB, head, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
 
 	victimTxMsg, victimTxMsgErr := core.TransactionToMessage(victimTransaction, types.MakeSigner(s.b.ChainConfig(), head.Number, head.Time), head.BaseFee)
@@ -524,7 +526,7 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[str
 		}
 	}
 	resultJson, _ := json.Marshal(result)
-	log.Info("call_sbp_end", "reqId", reqId, "result", string(resultJson), "cost_time(ms)", time.Since(now).Milliseconds())
+	log.Info("call_sbp_end", "reqId", reqId, "blockNumber", number.BlockNumber.Int64(), "result", string(resultJson), "cost_time(ms)", time.Since(now).Milliseconds())
 	return result
 }
 
@@ -960,7 +962,8 @@ func worker(
 	if bErr != nil {
 		result["error"] = "backCallErr"
 		result["reason"] = bErr.Error()
-		result["amountIn"] = frontAmountOut.String()
+		result["amountIn"] = amountIn.String()
+		result["frontAmountOut"] = frontAmountOut.String()
 		return result
 	}
 	profit := new(big.Int).Sub(backAmountOut, amountIn)
@@ -1074,7 +1077,8 @@ func workerSync(
 	if bErr != nil {
 		result["error"] = "backCallErr"
 		result["reason"] = bErr.Error()
-		result["amountIn"] = frontAmountOut.String()
+		result["amountIn"] = amountIn.String()
+		result["frontAmountOut"] = frontAmountOut.String()
 		return
 	}
 
@@ -1098,7 +1102,7 @@ func execute(ctx context.Context,
 
 	data := newData(amountOunMin, sbp.BloxAddress, sbp.Pair, tokenIn, tokenOut, big.NewInt(sbp.Fee), amountIn, zeroForOne)
 
-	log.Info("call_newData_result", "reqId", reqId, "data_hex", common.Bytes2Hex(data))
+	//log.Info("call_newData_result", "reqId", reqId, "data_hex", common.Bytes2Hex(data))
 
 	bytes := hexutil.Bytes(data)
 	callArgs := TransactionArgs{
@@ -1112,16 +1116,17 @@ func execute(ctx context.Context,
 		var revertReason *revertError
 		if len(callResult.Revert()) > 0 {
 			revertReason = newRevertError(callResult)
+			return nil, revertReason
 		}
-		log.Info("call_result_not_nil",
-			"reqId", reqId,
-			"amountIn", amountIn,
-			"zeroForOne", zeroForOne,
-			"data", callResult,
-			"revert", common.Bytes2Hex(callResult.Revert()),
-			"revertReason", revertReason,
-			"returnData", common.Bytes2Hex(callResult.Return()),
-		)
+		//log.Info("call_result_not_nil",
+		//	"reqId", reqId,
+		//	"amountIn", amountIn,
+		//	"zeroForOne", zeroForOne,
+		//	"data", callResult,
+		//	"revert", common.Bytes2Hex(callResult.Revert()),
+		//	"revertReason", revertReason,
+		//	"returnData", common.Bytes2Hex(callResult.Return()),
+		//)
 	}
 	if err != nil {
 		return nil, err
