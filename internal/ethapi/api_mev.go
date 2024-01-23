@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"math/big"
 	"strconv"
@@ -203,7 +204,8 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 			jsonResult["error"] = result.Err.Error()
 			revert := result.Revert()
 			if len(revert) > 0 {
-				jsonResult["revert"] = string(revert)
+				reason, _ := abi.UnpackRevert(revert)
+				jsonResult["revert"] = reason
 			}
 		} else {
 			dst := make([]byte, hex.EncodedLen(len(result.Return())))
