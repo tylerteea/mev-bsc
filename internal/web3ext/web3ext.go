@@ -622,13 +622,8 @@ web3._extend({
 			params: 1,
 		}),		
  		new web3._extend.Method({
-			name: 'SandwichBestProfit3Search',
-			call: 'eth_sandwichBestProfit3Search',
-			params: 1,
-		}),	
-		new web3._extend.Method({
-			name: 'SandwichBestProfitSync',
-			call: 'eth_sandwichBestProfitSync',
+			name: 'SandwichBestProfitMinimize',
+			call: 'eth_sandwichBestProfitMinimize',
 			params: 1,
 		}),
 		new web3._extend.Method({
