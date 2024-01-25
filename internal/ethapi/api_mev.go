@@ -928,6 +928,7 @@ func worker(
 
 	vmEnv := vm.NewEVM(evmContext, victimTxContext, statedb, s.chain.Config(), vm.Config{NoBaseFee: true})
 	err := gopool.Submit(func() {
+		<-ctx.Done()
 		vmEnv.Cancel()
 	})
 	if err != nil {
@@ -1222,7 +1223,6 @@ func doMevCall(ctx context.Context, b Backend, args TransactionArgs, state *stat
 	}
 	evm, vmError := b.GetEVM(ctx, msg, state, header, &vm.Config{NoBaseFee: true}, &blockCtx)
 
-	defer evm.Cancel()
 	gopool.Submit(func() {
 		<-ctx.Done()
 		evm.Cancel()
