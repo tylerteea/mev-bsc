@@ -238,8 +238,8 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 	ret["bundleHash"] = "0x" + common.Bytes2Hex(bundleHash.Sum(nil))
 
 	// todo
-	//newResultJson, _ := json.Marshal(ret)
-	//log.Info("call_bundle", "reqId", reqId, "ret", string(newResultJson))
+	newResultJson, _ := json.Marshal(ret)
+	log.Info("call_bundle_result", "ret", string(newResultJson))
 
 	return ret, nil
 }
