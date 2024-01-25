@@ -515,8 +515,8 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[str
 	for index, amountInReal := range ladder {
 
 		reqAndIndex := reqId + "_" + strconv.Itoa(index)
-		sdb := stateDB.Copy()
-		workerResults := worker(ctx, head, victimTxMsg, victimTxContext, sbp, s, reqAndIndex, amountOutMin, sdb, amountInReal)
+		//sdb := stateDB.Copy()
+		workerResults := worker(ctx, head, victimTxMsg, victimTxContext, sbp, s, reqAndIndex, amountOutMin, stateDB, amountInReal)
 		stateDB.RevertToSnapshot(revid)
 
 		marshal, _ := json.Marshal(workerResults)
