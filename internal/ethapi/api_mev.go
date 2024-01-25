@@ -510,12 +510,12 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[str
 	}
 	maxProfit := big.NewInt(0)
 
-	revid := stateDB.Snapshot()
 	//并发执行模拟调用，记录结果
 	for index, amountInReal := range ladder {
 
 		reqAndIndex := reqId + "_" + strconv.Itoa(index)
 		sdb := stateDB.Copy()
+		revid := sdb.Snapshot()
 		workerResults := worker(ctx, head, victimTxMsg, victimTxContext, sbp, s, reqAndIndex, amountOutMin, sdb, amountInReal)
 		sdb.RevertToSnapshot(revid)
 
