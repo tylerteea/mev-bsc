@@ -485,19 +485,6 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[str
 
 	log.Info("call_sbp_3_", "reqId", reqId, "blockNumber", number.BlockNumber.Int64())
 
-	stateDB, head, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
-
-	victimTxMsg, victimTxMsgErr := core.TransactionToMessage(victimTransaction, types.MakeSigner(s.b.ChainConfig(), head.Number, head.Time), head.BaseFee)
-
-	if victimTxMsgErr != nil {
-		result["error"] = "victimTxMsgErr"
-		result["reason"] = victimTxMsgErr
-		resultJson, _ := json.Marshal(result)
-		log.Info("call_sbp_4_", "reqId", reqId, "result", string(resultJson))
-		return result
-	}
-	victimTxContext := core.NewEVMTxContext(victimTxMsg)
-
 	//计算出每次步长
 	stepAmount := new(big.Int).Quo(new(big.Int).SetInt64(0).Sub(balance, minAmountIn), sbp.Steps)
 
@@ -510,15 +497,14 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[str
 	}
 	maxProfit := big.NewInt(0)
 
-	snapshotId := stateDB.Snapshot()
 	//并发执行模拟调用，记录结果
 	for index, amountInReal := range ladder {
 
 		reqAndIndex := reqId + "_" + strconv.Itoa(index)
-		sdb := stateDB.CopyDoPrefetch()
-		workerResults := worker(ctx, head, victimTxMsg, victimTxContext, sbp, s, reqAndIndex, amountOutMin, sdb, amountInReal)
 
-		stateDB.RevertToSnapshot(snapshotId)
+		stateDBNew, head, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
+		sdb := stateDBNew.Copy()
+		workerResults := worker(ctx, head, victimTransaction, sbp, s, reqAndIndex, amountOutMin, sdb, amountInReal)
 
 		marshal, _ := json.Marshal(workerResults)
 		log.Info("call_worker_result_end", "reqAndIndex", reqAndIndex, "amountInReal", amountInReal, "result", string(marshal))
@@ -898,8 +884,7 @@ type CallArgs struct {
 func worker(
 	ctx context.Context,
 	head *types.Header,
-	victimTxMsg *core.Message,
-	victimTxContext vm.TxContext,
+	victimTransaction *types.Transaction,
 	sbp SbpArgs,
 	s *BundleAPI,
 	reqAndIndex string,
@@ -927,7 +912,20 @@ func worker(
 		return result
 	}
 	// 受害者----------------------------------------------------------------------------------------
+
+	victimTxMsg, victimTxMsgErr := core.TransactionToMessage(victimTransaction, types.MakeSigner(s.b.ChainConfig(), head.Number, head.Time), head.BaseFee)
+
+	if victimTxMsgErr != nil {
+		result["error"] = "victimTxMsgErr"
+		result["reason"] = victimTxMsgErr
+		resultJson, _ := json.Marshal(result)
+		log.Info("call_sbp_4_", "reqAndIndex", reqAndIndex, "result", string(resultJson))
+		return result
+	}
+
 	evmContext := core.NewEVMBlockContext(head, s.chain, nil)
+	victimTxContext := core.NewEVMTxContext(victimTxMsg)
+
 	vmEnv := vm.NewEVM(evmContext, victimTxContext, statedb, s.chain.Config(), vm.Config{NoBaseFee: true})
 	err := gopool.Submit(func() {
 		vmEnv.Cancel()
