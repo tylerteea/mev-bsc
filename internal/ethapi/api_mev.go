@@ -609,11 +609,10 @@ func (s *BundleAPI) SandwichBestProfitMinimize(ctx context.Context, sbp SbpArgs)
 	bestInFunc = func(x []float64) float64 {
 		defer func() {
 			if err := recover(); err != nil {
-				log.Error(fmt.Sprintf("call_sandwichBestProfitMinimize bestInFunc x[0]:%v, err:%v", x[0], err))
+				log.Error(fmt.Sprintf("call_sandwichBestProfitMinimize_bestInFunc x[0]:%v, err:%v", x[0], err))
 			}
 		}()
 
-		// x[0]:token0的bestAmount
 		amountInFloat := x[0]
 
 		amountInInt := new(big.Int)
@@ -633,6 +632,7 @@ func (s *BundleAPI) SandwichBestProfitMinimize(ctx context.Context, sbp SbpArgs)
 
 		if workerResults["error"] == nil && workerResults["profit"] != nil {
 			profit, ok := workerResults["profit"].(*big.Int)
+			//if ok && profit.Int64() > 0 { // 让函数能够感知负值
 			if ok {
 				profitFloat, _ := new(big.Float).SetInt(profit).Float64()
 				return 0.0 - profitFloat
