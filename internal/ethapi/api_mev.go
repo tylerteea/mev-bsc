@@ -468,7 +468,6 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[str
 
 	minAmountIn := sbp.AmountIn
 	victimTxHash := sbp.VictimTxHash
-	amountOutMin := sbp.AmountOutMin
 
 	// 根据受害人tx hash  从内存池得到tx msg
 	victimTransaction := s.b.GetPoolTransaction(victimTxHash)
@@ -505,7 +504,7 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[str
 
 		stateDBNew, head, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
 		sdb := stateDBNew.Copy()
-		workerResults := worker(ctx, head, victimTransaction, sbp, s, reqAndIndex, amountOutMin, sdb, amountInReal)
+		workerResults := worker(ctx, head, victimTransaction, sbp, s, reqAndIndex, sdb, amountInReal)
 
 		marshal, _ := json.Marshal(workerResults)
 		log.Info("call_worker_result_end", "reqAndIndex", reqAndIndex, "amountInReal", amountInReal, "result", string(marshal))
@@ -575,7 +574,6 @@ func (s *BundleAPI) SandwichBestProfitMinimize(ctx context.Context, sbp SbpArgs)
 
 	minAmountIn := sbp.AmountIn
 	victimTxHash := sbp.VictimTxHash
-	amountOutMin := sbp.AmountOutMin
 
 	// 根据受害人tx hash  从内存池得到tx msg
 	victimTransaction := s.b.GetPoolTransaction(victimTxHash)
@@ -604,6 +602,8 @@ func (s *BundleAPI) SandwichBestProfitMinimize(ctx context.Context, sbp SbpArgs)
 		balance = new(big.Int).Sub(balance, stepAmount)
 	}
 
+	stateDBNew, head, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
+
 	var bestInFunc = func(x []float64) float64 { return 0 }
 
 	bestInFunc = func(x []float64) float64 {
@@ -623,10 +623,13 @@ func (s *BundleAPI) SandwichBestProfitMinimize(ctx context.Context, sbp SbpArgs)
 			return 0
 		}
 
-		workerResults := workerForMinimize(amountInInt)
+		stateDB := stateDBNew.Copy()
+		workerResults := worker(ctx, head, victimTransaction, sbp, s, reqId, stateDB, amountInInt)
+
+		reqIdMiniMize := reqId + amountInInt.String()
 
 		marshal, _ := json.Marshal(workerResults)
-		log.Info("call_worker_result_end", "reqId", reqId, "amountIn", amountInInt, "result", string(marshal))
+		log.Info("call_worker_minimize_result_end", "reqId", reqIdMiniMize, "amountIn", amountInInt, "result", string(marshal))
 
 		if workerResults["error"] == nil && workerResults["profit"] != nil {
 			profit, ok := workerResults["profit"].(*big.Int)
@@ -644,154 +647,53 @@ func (s *BundleAPI) SandwichBestProfitMinimize(ctx context.Context, sbp SbpArgs)
 
 	var meth = &optimize.NelderMead{} // 下山单纯形法
 	//var meth = &optimize.CmaEsChol{}
-	var p0 = []float64{0.1} // initial value for mu
+	var p0 = []float64{1000000000000000000} // initial value for mu : 1e18
 
 	var initValues = &optimize.Location{X: p0}
 
 	res, err := optimize.Minimize(p, initValues.X, &optimize.Settings{}, meth)
+
+	resJson, _ := json.Marshal(res)
+	log.Info("call_sbp_minimize_result", "reqId", reqId, "result", string(resJson))
+
 	if err != nil {
-
-	}
-
-	if res.X[0] < 0 {
-
+		result["error"] = "minimize_err"
+		result["reason"] = err.Error()
+		resultJson, _ := json.Marshal(result)
+		log.Info("call_sbp_minimize_err", "reqId", reqId, "result", string(resultJson))
+		return result
 	}
 
 	x := res.X[0]
-	quoteAmount := new(big.Int)
-	big.NewFloat(x).Int(quoteAmount)
+	quoteAmountIn := new(big.Int)
+	big.NewFloat(x).Int(quoteAmountIn)
 
-	maxProfit := big.NewInt(0)
+	if quoteAmountIn.Int64() > balance.Int64() || quoteAmountIn.Int64() < minAmountIn.Int64() {
+		result["error"] = "minimize_result_out_of_limit"
+		result["reason"] = quoteAmountIn
+		resultJson, _ := json.Marshal(result)
+		log.Info("call_sbp_minimize_out_of_limit", "reqId", reqId, "result", string(resultJson))
+		return result
+	}
 
-	//并发执行模拟调用，记录结果
-	for index, amountInReal := range ladder {
+	reqAndIndex := reqId + "_end"
 
-		reqAndIndex := reqId + "_" + strconv.Itoa(index)
+	sdb := stateDBNew.Copy()
+	workerResults := worker(ctx, head, victimTransaction, sbp, s, reqAndIndex, sdb, quoteAmountIn)
 
-		stateDBNew, head, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
-		sdb := stateDBNew.Copy()
-		workerResults := worker(ctx, head, victimTransaction, sbp, s, reqAndIndex, amountOutMin, sdb, amountInReal)
+	marshal, _ := json.Marshal(workerResults)
+	log.Info("call_worker_result_end", "reqId", reqAndIndex, "amountInReal", quoteAmountIn, "result", string(marshal))
 
-		marshal, _ := json.Marshal(workerResults)
-		log.Info("call_worker_result_end", "reqAndIndex", reqAndIndex, "amountInReal", amountInReal, "result", string(marshal))
-
-		if workerResults["error"] == nil && workerResults["profit"] != nil {
-			profit, ok := workerResults["profit"].(*big.Int)
-			if ok && profit.Int64() > maxProfit.Int64() {
-				maxProfit = profit
-				result = workerResults
-			}
+	if workerResults["error"] == nil && workerResults["profit"] != nil {
+		profit, ok := workerResults["profit"].(*big.Int)
+		if ok && profit.Int64() > 0 {
+			result = workerResults
 		}
 	}
 	resultJson, _ := json.Marshal(result)
 	log.Info("call_sbp_end", "reqId", reqId, "blockNumber", number.BlockNumber.Int64(), "result", string(resultJson), "cost_time(ms)", time.Since(now).Milliseconds())
 	return result
 }
-
-func workerForMinimize(
-
-	amountIn *big.Int) map[string]interface{} {
-
-	var ctx context.Context
-	var head *types.Header
-	var victimTransaction *types.Transaction
-	var sbp SbpArgs
-	var s *BundleAPI
-	var reqAndIndex string
-	var amountOutMin *big.Int
-	var statedb *state.StateDB
-
-	defer func() {
-		if r := recover(); r != nil {
-			log.Info("call_SandwichBestProfit_defer_err_", "reqAndIndex", reqAndIndex, "err", r)
-		}
-	}()
-
-	result := make(map[string]interface{})
-
-	// 抢跑----------------------------------------------------------------------------------------
-	frontAmountOut, fErr := execute(ctx, sbp, reqAndIndex, amountOutMin, sbp.ZeroForOne, sbp.TokenIn, sbp.TokenOut, amountIn, statedb, s, head)
-
-	//log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "amountIn", amountIn, "frontAmountOut", frontAmountOut, "fErr", fErr)
-
-	if fErr != nil {
-		result["error"] = "frontCallErr"
-		result["reason"] = fErr.Error()
-		result["amountIn"] = amountIn.String()
-		return result
-	}
-	// 受害者----------------------------------------------------------------------------------------
-
-	victimTxMsg, victimTxMsgErr := core.TransactionToMessage(victimTransaction, types.MakeSigner(s.b.ChainConfig(), head.Number, head.Time), head.BaseFee)
-
-	if victimTxMsgErr != nil {
-		result["error"] = "victimTxMsgErr"
-		result["reason"] = victimTxMsgErr
-		return result
-	}
-
-	evmContext := core.NewEVMBlockContext(head, s.chain, nil)
-	victimTxContext := core.NewEVMTxContext(victimTxMsg)
-
-	vmEnv := vm.NewEVM(evmContext, victimTxContext, statedb, s.chain.Config(), vm.Config{NoBaseFee: true})
-	err := gopool.Submit(func() {
-		<-ctx.Done()
-		vmEnv.Cancel()
-	})
-	if err != nil {
-		result["error"] = "victimPoolSubmit"
-		result["reason"] = err.Error()
-		return result
-	}
-	gasPool := new(core.GasPool).AddGas(math.MaxUint64)
-	victimTxCallResult, victimTxCallErr := core.ApplyMessage(vmEnv, victimTxMsg, gasPool)
-
-	if victimTxCallErr != nil {
-		result["error"] = "victimTxCallErr"
-		result["reason"] = victimTxCallErr.Error()
-		result["amountIn"] = amountIn.String()
-		return result
-	}
-	if len(victimTxCallResult.Revert()) > 0 {
-		result["error"] = "execution_victimTx_reverted"
-		result["reason"] = victimTxCallResult.Err.Error()
-		result["amountIn"] = amountIn.String()
-		return result
-	}
-	if victimTxCallResult.Err != nil {
-		result["error"] = "execution_victimTx_callResult_err"
-		result["reason"] = victimTxCallResult.Err.Error()
-		result["amountIn"] = amountIn.String()
-		return result
-	}
-
-	// 跟跑----------------------------------------------------------------------------------------
-	backAmountOut, bErr := execute(ctx, sbp, reqAndIndex, amountOutMin, !sbp.ZeroForOne, sbp.TokenOut, sbp.TokenIn, frontAmountOut, statedb, s, head)
-	//log.Info("call_execute_back", "reqAndIndex", reqAndIndex, "backAmountIn", frontAmountOut, "backAmountOut", backAmountOut, "bErr", bErr)
-
-	if bErr != nil {
-		result["error"] = "backCallErr"
-		result["reason"] = bErr.Error()
-		result["amountIn"] = amountIn.String()
-		result["frontAmountOut"] = frontAmountOut.String()
-		return result
-	}
-	profit := new(big.Int).Sub(backAmountOut, amountIn)
-
-	result["tokenIn"] = sbp.TokenIn
-	result["tokenOut"] = sbp.TokenOut
-	result["amountIn"] = amountIn
-	result["frontAmountOut"] = frontAmountOut
-	result["amountOut"] = backAmountOut
-	result["profit"] = profit
-
-	if profit.Int64() > 0 {
-		result["error"] = "profit_too_low"
-		result["reason"] = errors.New("profit_too_low")
-	}
-	return result
-}
-
 func worker(
 	ctx context.Context,
 	head *types.Header,
@@ -799,7 +701,6 @@ func worker(
 	sbp SbpArgs,
 	s *BundleAPI,
 	reqAndIndex string,
-	amountOutMin *big.Int,
 	statedb *state.StateDB,
 	amountIn *big.Int) map[string]interface{} {
 
@@ -812,7 +713,7 @@ func worker(
 	result := make(map[string]interface{})
 
 	// 抢跑----------------------------------------------------------------------------------------
-	frontAmountOut, fErr := execute(ctx, sbp, reqAndIndex, amountOutMin, sbp.ZeroForOne, sbp.TokenIn, sbp.TokenOut, amountIn, statedb, s, head)
+	frontAmountOut, fErr := execute(ctx, sbp, reqAndIndex, sbp.ZeroForOne, sbp.TokenIn, sbp.TokenOut, amountIn, statedb, s, head)
 
 	//log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "amountIn", amountIn, "frontAmountOut", frontAmountOut, "fErr", fErr)
 
@@ -868,7 +769,7 @@ func worker(
 	}
 
 	// 跟跑----------------------------------------------------------------------------------------
-	backAmountOut, bErr := execute(ctx, sbp, reqAndIndex, amountOutMin, !sbp.ZeroForOne, sbp.TokenOut, sbp.TokenIn, frontAmountOut, statedb, s, head)
+	backAmountOut, bErr := execute(ctx, sbp, reqAndIndex, !sbp.ZeroForOne, sbp.TokenOut, sbp.TokenIn, frontAmountOut, statedb, s, head)
 	//log.Info("call_execute_back", "reqAndIndex", reqAndIndex, "backAmountIn", frontAmountOut, "backAmountOut", backAmountOut, "bErr", bErr)
 
 	if bErr != nil {
@@ -897,7 +798,6 @@ func worker(
 func execute(ctx context.Context,
 	sbp SbpArgs,
 	reqId string,
-	amountOunMin *big.Int,
 	zeroForOne bool,
 	tokenIn common.Address,
 	tokenOut common.Address,
@@ -906,7 +806,7 @@ func execute(ctx context.Context,
 	s *BundleAPI,
 	head *types.Header) (*big.Int, error) {
 
-	data := newData(amountOunMin, sbp.BloxAddress, sbp.Pair, tokenIn, tokenOut, big.NewInt(sbp.Fee), amountIn, zeroForOne)
+	data := newData(sbp.AmountOutMin, sbp.BloxAddress, sbp.Pair, tokenIn, tokenOut, big.NewInt(sbp.Fee), amountIn, zeroForOne)
 
 	bytes := hexutil.Bytes(data)
 	callArgs := TransactionArgs{
