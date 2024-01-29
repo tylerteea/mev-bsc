@@ -651,7 +651,7 @@ func (s *BundleAPI) SandwichBestProfitMinimize(ctx context.Context, sbp SbpArgs)
 
 	var meth = &optimize.NelderMead{} // 下山单纯形法
 	//var meth = &optimize.CmaEsChol{}
-	var p0 = []float64{1} // initial value for mu : 1e18
+	var p0 = []float64{1.0} // initial value for mu : 1e18
 
 	var initValues = &optimize.Location{X: p0}
 
