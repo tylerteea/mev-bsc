@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
+	"math"
 	"math/big"
 	"strconv"
 	"time"
@@ -15,7 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/common/math"
+	//"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -603,6 +604,7 @@ func (s *BundleAPI) SandwichBestProfitMinimize(ctx context.Context, sbp SbpArgs)
 	}
 
 	stateDBNew, head, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
+	pow1018 := math.Pow10(18)
 
 	var bestInFunc = func(x []float64) float64 { return 0 }
 
@@ -615,8 +617,10 @@ func (s *BundleAPI) SandwichBestProfitMinimize(ctx context.Context, sbp SbpArgs)
 
 		amountInFloat := x[0]
 
+		amountIn := big.NewFloat(0).Mul(big.NewFloat(amountInFloat), big.NewFloat(pow1018))
+
 		amountInInt := new(big.Int)
-		new(big.Float).SetFloat64(amountInFloat).Int(amountInInt)
+		amountIn.Int(amountInInt)
 
 		if amountInInt.Int64() > balance.Int64() || amountInInt.Int64() < minAmountIn.Int64() {
 			return 0
@@ -647,7 +651,7 @@ func (s *BundleAPI) SandwichBestProfitMinimize(ctx context.Context, sbp SbpArgs)
 
 	var meth = &optimize.NelderMead{} // 下山单纯形法
 	//var meth = &optimize.CmaEsChol{}
-	var p0 = []float64{1000000000000000000} // initial value for mu : 1e18
+	var p0 = []float64{1} // initial value for mu : 1e18
 
 	var initValues = &optimize.Location{X: p0}
 
@@ -665,8 +669,9 @@ func (s *BundleAPI) SandwichBestProfitMinimize(ctx context.Context, sbp SbpArgs)
 	}
 
 	x := res.X[0]
+	maxProfitAmountIn := big.NewFloat(0).Mul(big.NewFloat(x), big.NewFloat(pow1018))
 	quoteAmountIn := new(big.Int)
-	big.NewFloat(x).Int(quoteAmountIn)
+	maxProfitAmountIn.Int(quoteAmountIn)
 
 	if quoteAmountIn.Int64() > balance.Int64() || quoteAmountIn.Int64() < minAmountIn.Int64() {
 		result["error"] = "minimize_result_out_of_limit"
