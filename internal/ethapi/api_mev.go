@@ -592,17 +592,6 @@ func (s *BundleAPI) SandwichBestProfitMinimize(ctx context.Context, sbp SbpArgs)
 
 	log.Info("call_sbp_3_", "reqId", reqId, "blockNumber", number.BlockNumber.Int64())
 
-	//计算出每次步长
-	stepAmount := new(big.Int).Quo(new(big.Int).SetInt64(0).Sub(balance, minAmountIn), sbp.Steps)
-
-	//初始化整个执行ladder结构
-	var ladder []*big.Int
-	for balance.Cmp(minAmountIn) > 0 {
-		ladder = append(ladder, new(big.Int).Set(balance))
-		//递减
-		balance = new(big.Int).Sub(balance, stepAmount)
-	}
-
 	stateDBNew, head, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
 	pow1018 := math.Pow10(18)
 
@@ -655,7 +644,19 @@ func (s *BundleAPI) SandwichBestProfitMinimize(ctx context.Context, sbp SbpArgs)
 
 	var initValues = &optimize.Location{X: p0}
 
-	res, err := optimize.Minimize(p, initValues.X, &optimize.Settings{}, meth)
+	settings := &optimize.Settings{
+		FuncEvaluations: 100,
+		Runtime:         10 * time.Millisecond,
+		Concurrent:      20,
+	}
+
+	settings.Converger = &optimize.FunctionConverge{
+		Absolute:   1e32,
+		Relative:   1e32,
+		Iterations: 25,
+	}
+
+	res, err := optimize.Minimize(p, initValues.X, settings, meth)
 
 	resJson, _ := json.Marshal(res)
 	log.Info("call_sbp_minimize_result", "reqId", reqId, "result", string(resJson))
