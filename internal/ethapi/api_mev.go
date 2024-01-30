@@ -611,8 +611,10 @@ func (s *BundleAPI) SandwichBestProfitMinimize(ctx context.Context, sbp SbpArgs)
 		amountInInt := new(big.Int)
 		amountIn.Int(amountInInt)
 
+		f, _ := amountIn.Float64()
+
 		if amountInInt.Int64() > balance.Int64() || amountInInt.Int64() < minAmountIn.Int64() {
-			return 0.0
+			return f
 		}
 
 		stateDB := stateDBNew.Copy()
@@ -625,13 +627,13 @@ func (s *BundleAPI) SandwichBestProfitMinimize(ctx context.Context, sbp SbpArgs)
 
 		if workerResults["error"] == nil && workerResults["profit"] != nil {
 			profit, ok := workerResults["profit"].(*big.Int)
-			if ok && profit.Int64() > 0 {
-				//if ok {// 让函数能够感知负值
+			//if ok && profit.Int64() > 0 {
+			if ok { // 让函数能够感知负值
 				profitFloat, _ := new(big.Float).SetInt(profit).Float64()
 				return 0.0 - profitFloat
 			}
 		}
-		return 0.0
+		return f
 	}
 
 	p := optimize.Problem{
@@ -639,21 +641,20 @@ func (s *BundleAPI) SandwichBestProfitMinimize(ctx context.Context, sbp SbpArgs)
 	}
 
 	var meth = &optimize.NelderMead{} // 下山单纯形法
-	//var meth = &optimize.CmaEsChol{}
-	var p0 = []float64{1.0} // initial value for mu : 1e18
+	var p0 = []float64{0.1}           // initial value for mu
 
 	var initValues = &optimize.Location{X: p0}
 
 	settings := &optimize.Settings{
 		FuncEvaluations: 100,
-		Runtime:         10 * time.Millisecond,
+		Runtime:         20 * time.Millisecond,
 		Concurrent:      20,
 	}
 
 	settings.Converger = &optimize.FunctionConverge{
 		Absolute:   1e32,
 		Relative:   1e32,
-		Iterations: 25,
+		Iterations: 30,
 	}
 
 	res, err := optimize.Minimize(p, initValues.X, settings, meth)
