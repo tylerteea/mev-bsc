@@ -612,7 +612,7 @@ func (s *BundleAPI) SandwichBestProfitMinimize(ctx context.Context, sbp SbpArgs)
 		amountIn.Int(amountInInt)
 
 		if amountInInt.Int64() > balance.Int64() || amountInInt.Int64() < minAmountIn.Int64() {
-			return 0
+			return 0.0
 		}
 
 		stateDB := stateDBNew.Copy()
@@ -625,13 +625,13 @@ func (s *BundleAPI) SandwichBestProfitMinimize(ctx context.Context, sbp SbpArgs)
 
 		if workerResults["error"] == nil && workerResults["profit"] != nil {
 			profit, ok := workerResults["profit"].(*big.Int)
-			//if ok && profit.Int64() > 0 { // 让函数能够感知负值
-			if ok {
+			if ok && profit.Int64() > 0 {
+				//if ok {// 让函数能够感知负值
 				profitFloat, _ := new(big.Float).SetInt(profit).Float64()
 				return 0.0 - profitFloat
 			}
 		}
-		return 0
+		return 0.0
 	}
 
 	p := optimize.Problem{
