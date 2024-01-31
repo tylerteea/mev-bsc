@@ -647,7 +647,7 @@ func (s *BundleAPI) SandwichBestProfitMinimize(ctx context.Context, sbp SbpArgs)
 
 	settings := &optimize.Settings{
 		FuncEvaluations: 100,
-		Runtime:         20 * time.Millisecond,
+		Runtime:         50 * time.Millisecond,
 		Concurrent:      20,
 	}
 
