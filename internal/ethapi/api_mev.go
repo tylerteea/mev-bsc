@@ -400,21 +400,25 @@ func RPCMarshalCompactLogs(receipts types.Receipts) []map[string]interface{} {
 
 // SbpArgs SandwichBestProfitArgs represents the arguments for a call.
 type SbpArgs struct {
-	Contract     common.Address `json:"contract"`
-	Pair         common.Address `json:"pair"`
-	TokenIn      common.Address `json:"tokenIn"`
-	TokenOut     common.Address `json:"tokenOut"`
-	BloxAddress  common.Address `json:"blox"`
-	Balance      *big.Int       `json:"balance"`
-	AmountIn     *big.Int       `json:"amountIn"`
-	AmountOutMin *big.Int       `json:"amountOutMin"`
-	Fee          int64          `json:"fee"`
-	Wallet       common.Address `json:"wallet"`
-	VictimTxHash common.Hash    `json:"vTxHash"`
-	DebugMode    bool           `json:"debugMode"`
-	ZeroForOne   bool           `json:"zeroForOne"`
-	Steps        *big.Int       `json:"steps"`
-	ReqId        string         `json:"reqId"`
+	Contract        common.Address `json:"contract"`
+	Pair            common.Address `json:"pair"`
+	TokenIn         common.Address `json:"tokenIn"`
+	TokenOut        common.Address `json:"tokenOut"`
+	BloxAddress     common.Address `json:"blox"`
+	Balance         *big.Int       `json:"balance"`
+	AmountIn        *big.Int       `json:"amountIn"`
+	AmountOutMin    *big.Int       `json:"amountOutMin"`
+	Fee             int64          `json:"fee"`
+	Wallet          common.Address `json:"wallet"`
+	VictimTxHash    common.Hash    `json:"vTxHash"`
+	DebugMode       bool           `json:"debugMode"`
+	ZeroForOne      bool           `json:"zeroForOne"`
+	Steps           *big.Int       `json:"steps"`
+	ReqId           string         `json:"reqId"`
+	FuncEvaluations int            `json:"funcEvaluations"`
+	RunTimeout      int            `json:"runTimeout"`
+	Iterations      int            `json:"iterations"`
+	Concurrent      int            `json:"concurrent"`
 }
 
 // SandwichBestProfit profit calculate
@@ -646,15 +650,15 @@ func (s *BundleAPI) SandwichBestProfitMinimize(ctx context.Context, sbp SbpArgs)
 	var initValues = &optimize.Location{X: p0}
 
 	settings := &optimize.Settings{
-		FuncEvaluations: 100,
-		Runtime:         50 * time.Millisecond,
-		Concurrent:      20,
+		FuncEvaluations: sbp.FuncEvaluations,
+		Runtime:         time.Duration(sbp.RunTimeout * 1000 * 1000),
+		Concurrent:      sbp.Concurrent,
 	}
 
 	settings.Converger = &optimize.FunctionConverge{
 		Absolute:   1e32,
 		Relative:   1e32,
-		Iterations: 30,
+		Iterations: sbp.Iterations,
 	}
 
 	res, err := optimize.Minimize(p, initValues.X, settings, meth)
