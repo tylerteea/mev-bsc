@@ -419,6 +419,7 @@ type SbpArgs struct {
 	RunTimeout      int            `json:"runTimeout"`
 	Iterations      int            `json:"iterations"`
 	Concurrent      int            `json:"concurrent"`
+	InitialValues   float64        `json:"initialValues"`
 }
 
 // SandwichBestProfit profit calculate
@@ -644,8 +645,8 @@ func (s *BundleAPI) SandwichBestProfitMinimize(ctx context.Context, sbp SbpArgs)
 		Func: bestInFunc,
 	}
 
-	var meth = &optimize.NelderMead{} // 下山单纯形法
-	var p0 = []float64{0.1}           // initial value for mu
+	var meth = &optimize.NelderMead{}     // 下山单纯形法
+	var p0 = []float64{sbp.InitialValues} // initial value for mu
 
 	var initValues = &optimize.Location{X: p0}
 
