@@ -14,7 +14,7 @@ func TestMinimize(t *testing.T) {
 	startTime := time.Now()
 
 	balance := 5.3
-	minAmountIn := 3.0
+	minAmountIn := 1.0
 
 	//var bestInFunc = func(x []float64) float64 { return 0 }
 
@@ -27,7 +27,7 @@ func TestMinimize(t *testing.T) {
 		amountInFloat := x[0]
 		if amountInFloat > balance || amountInFloat < minAmountIn {
 			println("尝试不在范围内的值", amountInFloat)
-			return 0.0
+			return amountInFloat
 		}
 		amountOutFloat := callFunc(amountInFloat)
 		if amountOutFloat > 0 {
@@ -37,7 +37,7 @@ func TestMinimize(t *testing.T) {
 			return 0.0 - amountOutFloat
 		}
 		println("default", amountInFloat, 0)
-		return 0.0
+		return amountInFloat
 	}
 
 	bestGrad := func(grad, x []float64) {
@@ -78,13 +78,13 @@ func TestMinimize(t *testing.T) {
 	//var meth = &optimize.Newton{}
 	//var meth = &optimize.ListSearch{}
 	//var meth = &optimize.CG{}
-	var p0 = []float64{3.5} // initial value for mu
+	var p0 = []float64{1.5} // initial value for mu
 
 	var initValues = &optimize.Location{X: p0}
 
 	settings := &optimize.Settings{
 		FuncEvaluations: 100,
-		Runtime:         10 * time.Millisecond,
+		Runtime:         50 * time.Millisecond,
 		Concurrent:      20,
 	}
 
