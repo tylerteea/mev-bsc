@@ -610,16 +610,23 @@ func (s *BundleAPI) SandwichBestProfitMinimize(ctx context.Context, sbp SbpArgs)
 		}()
 
 		amountInFloat := x[0]
+		if amountInFloat < 0 {
+			return 0.0
+		}
 
-		amountIn := big.NewFloat(0).Mul(big.NewFloat(amountInFloat), big.NewFloat(pow1018))
+		amountIn := new(big.Float).Mul(big.NewFloat(amountInFloat), big.NewFloat(pow1018))
 
 		amountInInt := new(big.Int)
 		amountIn.Int(amountInInt)
 
 		f, _ := amountIn.Float64()
 
-		if amountInInt.Int64() > balance.Int64() || amountInInt.Int64() < minAmountIn.Int64() {
+		if amountInInt.Int64() > balance.Int64() {
 			return f
+		}
+
+		if amountInInt.Int64() < minAmountIn.Int64() {
+			return 0.0
 		}
 
 		stateDB := stateDBNew.Copy()
