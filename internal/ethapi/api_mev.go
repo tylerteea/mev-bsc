@@ -420,112 +420,7 @@ type SbpArgs struct {
 	Iterations      int            `json:"iterations"`
 	Concurrent      int            `json:"concurrent"`
 	InitialValues   float64        `json:"initialValues"`
-}
-
-// SandwichBestProfit profit calculate
-func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[string]interface{} {
-
-	result := make(map[string]interface{})
-
-	result["error"] = "default"
-	result["reason"] = "default"
-
-	now := time.Now()
-	um := now.UnixMilli()
-
-	var reqId string
-	if sbp.ReqId != "" {
-		reqId = sbp.ReqId
-	} else {
-		reqId = strconv.FormatInt(um, 10)
-	}
-
-	defer timeCost(reqId, now)
-
-	req, _ := json.Marshal(sbp)
-	log.Info("call_sbp_start", "reqId", reqId, "sbp", string(req))
-
-	timeout := s.b.RPCEVMTimeout()
-	var cancel context.CancelFunc
-	if timeout > 0 {
-		ctx, cancel = context.WithTimeout(ctx, timeout)
-	} else {
-		ctx, cancel = context.WithCancel(ctx)
-	}
-
-	defer cancel()
-	defer func(results *map[string]interface{}) {
-		if r := recover(); r != nil {
-			oldResultJson, _ := json.Marshal(result)
-			log.Info("call_sbp_old_result_", "reqId", reqId, "result", string(oldResultJson))
-			result["error"] = "panic"
-			result["reason"] = r
-			newResultJson, _ := json.Marshal(result)
-			log.Info("call_sbp_defer_result_", "reqId", reqId, "result", string(newResultJson))
-		}
-	}(&result)
-
-	if sbp.Balance.Int64() == 0 {
-		result["error"] = "args_err"
-		result["reason"] = "balance_is_0"
-		return result
-	}
-	balance := sbp.Balance
-
-	minAmountIn := sbp.AmountIn
-	victimTxHash := sbp.VictimTxHash
-
-	// 根据受害人tx hash  从内存池得到tx msg
-	victimTransaction := s.b.GetPoolTransaction(victimTxHash)
-
-	// 获取不到 直接返回
-	if victimTransaction == nil {
-		result["error"] = "tx_is_nil"
-		result["reason"] = "GetPoolTransaction and GetTransaction all nil : " + victimTxHash.Hex()
-		resultJson, _ := json.Marshal(result)
-		log.Info("call_sbp_2_", "reqId", reqId, "result", string(resultJson))
-		return result
-	}
-
-	number := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
-
-	log.Info("call_sbp_3_", "reqId", reqId, "blockNumber", number.BlockNumber.Int64())
-
-	//计算出每次步长
-	stepAmount := new(big.Int).Quo(new(big.Int).SetInt64(0).Sub(balance, minAmountIn), sbp.Steps)
-
-	//初始化整个执行ladder结构
-	var ladder []*big.Int
-	for balance.Cmp(minAmountIn) > 0 {
-		ladder = append(ladder, new(big.Int).Set(balance))
-		//递减
-		balance = new(big.Int).Sub(balance, stepAmount)
-	}
-	maxProfit := big.NewInt(0)
-
-	//并发执行模拟调用，记录结果
-	for index, amountInReal := range ladder {
-
-		reqAndIndex := reqId + "_" + strconv.Itoa(index)
-
-		stateDBNew, head, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
-		sdb := stateDBNew.Copy()
-		workerResults := worker(ctx, head, victimTransaction, sbp, s, reqAndIndex, sdb, amountInReal)
-
-		marshal, _ := json.Marshal(workerResults)
-		log.Info("call_worker_result_end", "reqAndIndex", reqAndIndex, "amountInReal", amountInReal, "result", string(marshal))
-
-		if workerResults["error"] == nil && workerResults["profit"] != nil {
-			profit, ok := workerResults["profit"].(*big.Int)
-			if ok && profit.Int64() > maxProfit.Int64() {
-				maxProfit = profit
-				result = workerResults
-			}
-		}
-	}
-	resultJson, _ := json.Marshal(result)
-	log.Info("call_sbp_end", "reqId", reqId, "blockNumber", number.BlockNumber.Int64(), "result", string(resultJson), "cost_time(ms)", time.Since(now).Milliseconds())
-	return result
+	SubOne          bool           `json:"subOne"`
 }
 
 // SandwichBestProfitMinimize profit calculate
@@ -785,6 +680,10 @@ func worker(
 		result["reason"] = victimTxCallResult.Err.Error()
 		result["amountIn"] = amountIn.String()
 		return result
+	}
+
+	if sbp.SubOne {
+		frontAmountOut = new(big.Int).Sub(frontAmountOut, big.NewInt(1))
 	}
 
 	// 跟跑----------------------------------------------------------------------------------------

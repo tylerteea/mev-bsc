@@ -614,11 +614,6 @@ web3._extend({
 			call: 'eth_getBlockReceipts',
 			params: 1,
 		}),
-		new web3._extend.Method({
-			name: 'sandwichBestProfit',
-			call: 'eth_sandwichBestProfit',
-			params: 1,
-		}),		
  		new web3._extend.Method({
 			name: 'SandwichBestProfitMinimize',
 			call: 'eth_sandwichBestProfitMinimize',
