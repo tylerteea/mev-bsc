@@ -399,19 +399,47 @@ func RPCMarshalCompactLogs(receipts types.Receipts) []map[string]interface{} {
 }
 
 // SbpArgs SandwichBestProfitArgs represents the arguments for a call.
+type SbpSaleArgs struct {
+	Eoa             common.Address `json:"eoa"`
+	Contract        common.Address `json:"contract"`
+	Balance         *big.Int       `json:"balance"`
+	Token1          common.Address `json:"token1"`
+	Token2          common.Address `json:"token2"`
+	Token3          common.Address `json:"token3"`
+	PairOrPool1     common.Address `json:"pairOrPool1"`
+	ZeroForOne1     bool           `json:"zeroForOne1"`
+	Fee1            int64          `json:"fee1"`
+	PairOrPool2     common.Address `json:"pairOrPool2"`
+	ZeroForOne2     bool           `json:"zeroForOne2"`
+	Fee2            int64          `json:"fee2"`
+	AmountIn        *big.Int       `json:"amountIn"`
+	AmountOutMin    *big.Int       `json:"amountOutMin"`
+	BriberyAddress  common.Address `json:"briberyAddress"`
+	VictimTxHash    common.Hash    `json:"vTxHash"`
+	DebugMode       bool           `json:"debugMode"`
+	Steps           *big.Int       `json:"steps"`
+	ReqId           string         `json:"reqId"`
+	FuncEvaluations int            `json:"funcEvaluations"`
+	RunTimeout      int            `json:"runTimeout"`
+	Iterations      int            `json:"iterations"`
+	Concurrent      int            `json:"concurrent"`
+	InitialValues   float64        `json:"initialValues"`
+	SubOne          bool           `json:"subOne"`
+}
+
+// SbpArgs SandwichBestProfitArgs represents the arguments for a call.
 type SbpArgs struct {
+	Wallet          common.Address `json:"wallet"`
+	Balance         *big.Int       `json:"balance"`
 	Contract        common.Address `json:"contract"`
 	Pair            common.Address `json:"pair"`
 	TokenIn         common.Address `json:"tokenIn"`
 	TokenOut        common.Address `json:"tokenOut"`
 	BloxAddress     common.Address `json:"blox"`
-	Balance         *big.Int       `json:"balance"`
 	AmountIn        *big.Int       `json:"amountIn"`
 	AmountOutMin    *big.Int       `json:"amountOutMin"`
 	Fee             int64          `json:"fee"`
-	Wallet          common.Address `json:"wallet"`
 	VictimTxHash    common.Hash    `json:"vTxHash"`
-	DebugMode       bool           `json:"debugMode"`
 	ZeroForOne      bool           `json:"zeroForOne"`
 	Steps           *big.Int       `json:"steps"`
 	ReqId           string         `json:"reqId"`
