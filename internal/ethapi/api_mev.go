@@ -416,7 +416,6 @@ type SbpSaleArgs struct {
 	AmountOutMin    *big.Int       `json:"amountOutMin"`
 	BriberyAddress  common.Address `json:"briberyAddress"`
 	VictimTxHash    common.Hash    `json:"vTxHash"`
-	DebugMode       bool           `json:"debugMode"`
 	Steps           *big.Int       `json:"steps"`
 	ReqId           string         `json:"reqId"`
 	FuncEvaluations int            `json:"funcEvaluations"`
