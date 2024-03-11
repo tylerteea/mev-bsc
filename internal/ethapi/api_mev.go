@@ -16,7 +16,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	//"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -408,38 +407,15 @@ type SbpSaleArgs struct {
 	Token3          common.Address `json:"token3"`
 	PairOrPool1     common.Address `json:"pairOrPool1"`
 	ZeroForOne1     bool           `json:"zeroForOne1"`
-	Fee1            int64          `json:"fee1"`
+	Fee1            *big.Int       `json:"fee1"`
 	PairOrPool2     common.Address `json:"pairOrPool2"`
 	ZeroForOne2     bool           `json:"zeroForOne2"`
-	Fee2            int64          `json:"fee2"`
-	AmountIn        *big.Int       `json:"amountIn"`
+	Fee2            *big.Int       `json:"fee2"`
+	AmountInMin     *big.Int       `json:"amountInMin"`
 	AmountOutMin    *big.Int       `json:"amountOutMin"`
 	BriberyAddress  common.Address `json:"briberyAddress"`
 	VictimTxHash    common.Hash    `json:"vTxHash"`
-	Steps           *big.Int       `json:"steps"`
-	ReqId           string         `json:"reqId"`
-	FuncEvaluations int            `json:"funcEvaluations"`
-	RunTimeout      int            `json:"runTimeout"`
-	Iterations      int            `json:"iterations"`
-	Concurrent      int            `json:"concurrent"`
-	InitialValues   float64        `json:"initialValues"`
-	SubOne          bool           `json:"subOne"`
-}
-
-// SbpArgs SandwichBestProfitArgs represents the arguments for a call.
-type SbpArgs struct {
-	Wallet          common.Address `json:"wallet"`
-	Balance         *big.Int       `json:"balance"`
-	Contract        common.Address `json:"contract"`
-	Pair            common.Address `json:"pair"`
-	TokenIn         common.Address `json:"tokenIn"`
-	TokenOut        common.Address `json:"tokenOut"`
-	BloxAddress     common.Address `json:"blox"`
-	AmountIn        *big.Int       `json:"amountIn"`
-	AmountOutMin    *big.Int       `json:"amountOutMin"`
-	Fee             int64          `json:"fee"`
-	VictimTxHash    common.Hash    `json:"vTxHash"`
-	ZeroForOne      bool           `json:"zeroForOne"`
+	BuyOrSale       bool           `json:"buyOrSale"`
 	Steps           *big.Int       `json:"steps"`
 	ReqId           string         `json:"reqId"`
 	FuncEvaluations int            `json:"funcEvaluations"`
@@ -451,7 +427,7 @@ type SbpArgs struct {
 }
 
 // SandwichBestProfitMinimize profit calculate
-func (s *BundleAPI) SandwichBestProfitMinimize(ctx context.Context, sbp SbpArgs) map[string]interface{} {
+func (s *BundleAPI) SandwichBestProfitMinimize(ctx context.Context, sbp SbpSaleArgs) map[string]interface{} {
 
 	result := make(map[string]interface{})
 
@@ -500,7 +476,7 @@ func (s *BundleAPI) SandwichBestProfitMinimize(ctx context.Context, sbp SbpArgs)
 	}
 	balance := sbp.Balance
 
-	minAmountIn := sbp.AmountIn
+	minAmountIn := sbp.AmountInMin
 	victimTxHash := sbp.VictimTxHash
 
 	// 根据受害人tx hash  从内存池得到tx msg
@@ -639,7 +615,7 @@ func worker(
 	ctx context.Context,
 	head *types.Header,
 	victimTransaction *types.Transaction,
-	sbp SbpArgs,
+	sbp SbpSaleArgs,
 	s *BundleAPI,
 	reqAndIndex string,
 	statedb *state.StateDB,
@@ -654,7 +630,7 @@ func worker(
 	result := make(map[string]interface{})
 
 	// 抢跑----------------------------------------------------------------------------------------
-	frontAmountOut, fErr := execute(ctx, sbp, reqAndIndex, sbp.ZeroForOne, sbp.TokenIn, sbp.TokenOut, amountIn, statedb, s, head)
+	frontAmountOut, fErr := execute(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head)
 
 	//log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "amountIn", amountIn, "frontAmountOut", frontAmountOut, "fErr", fErr)
 
@@ -714,7 +690,7 @@ func worker(
 	}
 
 	// 跟跑----------------------------------------------------------------------------------------
-	backAmountOut, bErr := execute(ctx, sbp, reqAndIndex, !sbp.ZeroForOne, sbp.TokenOut, sbp.TokenIn, frontAmountOut, statedb, s, head)
+	backAmountOut, bErr := execute(ctx, reqAndIndex, false, sbp, frontAmountOut, statedb, s, head)
 	//log.Info("call_execute_back", "reqAndIndex", reqAndIndex, "backAmountIn", frontAmountOut, "backAmountOut", backAmountOut, "bErr", bErr)
 
 	if bErr != nil {
@@ -726,8 +702,6 @@ func worker(
 	}
 	profit := new(big.Int).Sub(backAmountOut, amountIn)
 
-	result["tokenIn"] = sbp.TokenIn
-	result["tokenOut"] = sbp.TokenOut
 	result["amountIn"] = amountIn
 	result["frontAmountOut"] = frontAmountOut
 	result["amountOut"] = backAmountOut
@@ -740,22 +714,38 @@ func worker(
 	return result
 }
 
-func execute(ctx context.Context,
-	sbp SbpArgs,
+func execute(
+	ctx context.Context,
 	reqId string,
-	zeroForOne bool,
-	tokenIn common.Address,
-	tokenOut common.Address,
+	isFront bool,
+	sbp SbpSaleArgs,
 	amountIn *big.Int,
 	sdb *state.StateDB,
 	s *BundleAPI,
 	head *types.Header) (*big.Int, error) {
 
-	data := newData(sbp.AmountOutMin, sbp.BloxAddress, sbp.Pair, tokenIn, tokenOut, big.NewInt(sbp.Fee), amountIn, zeroForOne)
+	var data []byte
+	if isFront {
+
+		if sbp.BuyOrSale {
+			data = newData(sbp.AmountOutMin, sbp.BriberyAddress, sbp.PairOrPool2, sbp.Token2, sbp.Token3, sbp.Fee2, amountIn, sbp.ZeroForOne2)
+		} else {
+			data = newDataSale(sbp.Token1, sbp.Token2, sbp.Token3, sbp.PairOrPool1, sbp.Fee1, sbp.ZeroForOne1, sbp.PairOrPool2, sbp.Fee2, sbp.ZeroForOne2, amountIn, sbp.BriberyAddress, sbp.AmountOutMin)
+		}
+
+	} else {
+
+		if sbp.BuyOrSale {
+			data = newData(sbp.AmountOutMin, sbp.BriberyAddress, sbp.PairOrPool2, sbp.Token3, sbp.Token2, sbp.Fee2, amountIn, !sbp.ZeroForOne2)
+		} else {
+			data = newDataSale(sbp.Token3, sbp.Token2, sbp.Token1, sbp.PairOrPool2, sbp.Fee2, !sbp.ZeroForOne2, sbp.PairOrPool1, sbp.Fee1, !sbp.ZeroForOne1, amountIn, sbp.BriberyAddress, sbp.AmountOutMin)
+
+		}
+	}
 
 	bytes := hexutil.Bytes(data)
 	callArgs := TransactionArgs{
-		From: &sbp.Wallet,
+		From: &sbp.Eoa,
 		To:   &sbp.Contract,
 		Data: &bytes,
 	}
@@ -776,6 +766,40 @@ func execute(ctx context.Context,
 	}
 	amountOut := new(big.Int).SetBytes(callResult.Return())
 	return amountOut, nil
+}
+
+func newDataSale(
+	token1 common.Address,
+	token2 common.Address,
+	token3 common.Address,
+	pairOrPool1 common.Address,
+	fee1 *big.Int,
+	zeroForOne1 bool,
+
+	pairOrPool2 common.Address,
+	fee2 *big.Int,
+	zeroForOne2 bool,
+	amountIn *big.Int,
+	briberyAddress common.Address,
+	amountOutMin *big.Int,
+) []byte {
+	params := make([]byte, 0)
+	params = append(params, []byte{0xa9, 0x24, 0x83, 0xf0}...)
+	params = append(params, fillBytes(14, amountIn.Bytes())...)
+	//params = append(params, pairOrPool.Bytes()...)
+	//params = append(params, tokenIn.Bytes()...)
+	//params = append(params, tokenOut.Bytes()...)
+	//params = append(params, briberyAddress.Bytes()...)
+	//params = append(params, fillBytes(14, amountOutMin.Bytes())...)
+	//if version == V2 {
+	//	params = append(params, fillBytes(2, fee.Bytes())...)
+	//}
+	//if zeroForOne {
+	//	params = append(params, []byte{1}...)
+	//} else {
+	//	params = append(params, []byte{0}...)
+	//}
+	return params
 }
 
 func newData(
