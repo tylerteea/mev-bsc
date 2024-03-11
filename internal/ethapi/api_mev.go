@@ -27,6 +27,11 @@ import (
 	"gonum.org/v1/gonum/optimize"
 )
 
+const (
+	V2 = int(2)
+	V3 = int(3)
+)
+
 // --------------------------------------------------------Call Bundle--------------------------------------------------------
 
 // BundleAPI offers an API for accepting bundled transactions
@@ -411,6 +416,7 @@ type SbpSaleArgs struct {
 	PairOrPool2     common.Address `json:"pairOrPool2"`
 	ZeroForOne2     bool           `json:"zeroForOne2"`
 	Fee2            *big.Int       `json:"fee2"`
+	Version2        int            `json:"version2"`
 	AmountInMin     *big.Int       `json:"amountInMin"`
 	AmountOutMin    *big.Int       `json:"amountOutMin"`
 	BriberyAddress  common.Address `json:"briberyAddress"`
@@ -728,7 +734,7 @@ func execute(
 	if isFront {
 
 		if sbp.BuyOrSale {
-			data = newData(sbp.AmountOutMin, sbp.BriberyAddress, sbp.PairOrPool2, sbp.Token2, sbp.Token3, sbp.Fee2, amountIn, sbp.ZeroForOne2)
+			data = newData(sbp.Version2, sbp.AmountOutMin, sbp.BriberyAddress, sbp.PairOrPool2, sbp.Token2, sbp.Token3, sbp.Fee2, amountIn, sbp.ZeroForOne2)
 		} else {
 			data = newDataSale(sbp.Token1, sbp.Token2, sbp.Token3, sbp.PairOrPool1, sbp.Fee1, sbp.ZeroForOne1, sbp.PairOrPool2, sbp.Fee2, sbp.ZeroForOne2, amountIn, sbp.BriberyAddress, sbp.AmountOutMin)
 		}
@@ -736,7 +742,7 @@ func execute(
 	} else {
 
 		if sbp.BuyOrSale {
-			data = newData(sbp.AmountOutMin, sbp.BriberyAddress, sbp.PairOrPool2, sbp.Token3, sbp.Token2, sbp.Fee2, amountIn, !sbp.ZeroForOne2)
+			data = newData(sbp.Version2, sbp.AmountOutMin, sbp.BriberyAddress, sbp.PairOrPool2, sbp.Token3, sbp.Token2, sbp.Fee2, amountIn, !sbp.ZeroForOne2)
 		} else {
 			data = newDataSale(sbp.Token3, sbp.Token2, sbp.Token1, sbp.PairOrPool2, sbp.Fee2, !sbp.ZeroForOne2, sbp.PairOrPool1, sbp.Fee1, !sbp.ZeroForOne1, amountIn, sbp.BriberyAddress, sbp.AmountOutMin)
 
@@ -803,6 +809,7 @@ func newDataSale(
 }
 
 func newData(
+	version2 int,
 	amountOutMin *big.Int,
 	bloxAddress common.Address,
 	pairAddress common.Address,
@@ -822,6 +829,9 @@ func newData(
 	params = append(params, bloxAddress.Bytes()...)
 	params = append(params, fillBytes(14, amountOutMin.Bytes())...)
 	params = append(params, fillBytes(2, fee.Bytes())...)
+	if version2 == V2 {
+		params = append(params, fillBytes(2, fee.Bytes())...)
+	}
 	if zeroForOne {
 		params = append(params, []byte{1}...)
 	} else {
