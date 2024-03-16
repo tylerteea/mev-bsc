@@ -734,18 +734,17 @@ func execute(
 	if isFront {
 
 		if sbp.BuyOrSale {
-			data = newData(sbp.Version2, sbp.AmountOutMin, sbp.BriberyAddress, sbp.PairOrPool2, sbp.Token2, sbp.Token3, sbp.Fee2, amountIn, sbp.ZeroForOne2)
+			data = encodeParams(sbp.Version2, sbp.Token2, sbp.Token3, sbp.PairOrPool2, sbp.Fee2, sbp.ZeroForOne2, amountIn, sbp.BriberyAddress, sbp.AmountOutMin)
 		} else {
-			data = newDataSale(sbp.Token1, sbp.Token2, sbp.Token3, sbp.PairOrPool1, sbp.Fee1, sbp.ZeroForOne1, sbp.PairOrPool2, sbp.Fee2, sbp.ZeroForOne2, amountIn, sbp.BriberyAddress, sbp.AmountOutMin)
+			data = encodeParamsSale(sbp.Token1, sbp.Token2, sbp.Token3, sbp.PairOrPool1, sbp.Fee1, sbp.ZeroForOne1, sbp.PairOrPool2, sbp.Fee2, sbp.ZeroForOne2, amountIn, sbp.BriberyAddress, sbp.AmountOutMin)
 		}
 
 	} else {
 
 		if sbp.BuyOrSale {
-			data = newData(sbp.Version2, sbp.AmountOutMin, sbp.BriberyAddress, sbp.PairOrPool2, sbp.Token3, sbp.Token2, sbp.Fee2, amountIn, !sbp.ZeroForOne2)
+			data = encodeParams(sbp.Version2, sbp.Token3, sbp.Token2, sbp.PairOrPool2, sbp.Fee2, !sbp.ZeroForOne2, amountIn, sbp.BriberyAddress, sbp.AmountOutMin)
 		} else {
-			data = newDataSale(sbp.Token3, sbp.Token2, sbp.Token1, sbp.PairOrPool2, sbp.Fee2, !sbp.ZeroForOne2, sbp.PairOrPool1, sbp.Fee1, !sbp.ZeroForOne1, amountIn, sbp.BriberyAddress, sbp.AmountOutMin)
-
+			data = encodeParamsSale(sbp.Token3, sbp.Token2, sbp.Token1, sbp.PairOrPool2, sbp.Fee2, !sbp.ZeroForOne2, sbp.PairOrPool1, sbp.Fee1, !sbp.ZeroForOne1, amountIn, sbp.BriberyAddress, sbp.AmountOutMin)
 		}
 	}
 
@@ -774,7 +773,7 @@ func execute(
 	return amountOut, nil
 }
 
-func newDataSale(
+func encodeParamsSale(
 	token1 common.Address,
 	token2 common.Address,
 	token3 common.Address,
@@ -790,46 +789,55 @@ func newDataSale(
 	amountOutMin *big.Int,
 ) []byte {
 	params := make([]byte, 0)
-	params = append(params, []byte{0xa9, 0x24, 0x83, 0xf0}...)
+	params = append(params, []byte{0x00, 0x00, 0x00, 0x00}...)
 	params = append(params, fillBytes(14, amountIn.Bytes())...)
-	//params = append(params, pairOrPool.Bytes()...)
-	//params = append(params, tokenIn.Bytes()...)
-	//params = append(params, tokenOut.Bytes()...)
-	//params = append(params, briberyAddress.Bytes()...)
-	//params = append(params, fillBytes(14, amountOutMin.Bytes())...)
-	//if version == V2 {
-	//	params = append(params, fillBytes(2, fee.Bytes())...)
-	//}
-	//if zeroForOne {
-	//	params = append(params, []byte{1}...)
-	//} else {
-	//	params = append(params, []byte{0}...)
-	//}
+	params = append(params, token1.Bytes()...)
+	params = append(params, token2.Bytes()...)
+	params = append(params, token3.Bytes()...)
+	params = append(params, pairOrPool1.Bytes()...)
+	params = append(params, fillBytes(2, fee1.Bytes())...)
+	if zeroForOne1 {
+		params = append(params, []byte{1}...)
+	} else {
+		params = append(params, []byte{0}...)
+	}
+	params = append(params, pairOrPool2.Bytes()...)
+	params = append(params, fillBytes(2, fee2.Bytes())...)
+	if zeroForOne2 {
+		params = append(params, []byte{1}...)
+	} else {
+		params = append(params, []byte{0}...)
+	}
+	params = append(params, fillBytes(14, amountOutMin.Bytes())...)
+	params = append(params, briberyAddress.Bytes()...)
 	return params
 }
 
-func newData(
-	version2 int,
-	amountOutMin *big.Int,
-	bloxAddress common.Address,
-	pairAddress common.Address,
+func encodeParams(
+	version int,
 	tokenIn common.Address,
 	tokenOut common.Address,
-	fee *big.Int,
-	amountIn *big.Int,
-	zeroForOne bool,
-) []byte {
+	pairOrPool common.Address,
 
+	fee *big.Int,
+	zeroForOne bool,
+	amountIn *big.Int,
+	briberyAddress common.Address,
+	amountOutMin *big.Int,
+) []byte {
 	params := make([]byte, 0)
-	params = append(params, []byte{0xa9, 0x24, 0x83, 0xf0}...)
+	if version == V2 {
+		params = append(params, []byte{0xa9, 0x24, 0x83, 0xf0}...)
+	} else {
+		params = append(params, []byte{0x2f, 0xb4, 0x2d, 0x70}...)
+	}
 	params = append(params, fillBytes(14, amountIn.Bytes())...)
-	params = append(params, pairAddress.Bytes()...)
+	params = append(params, pairOrPool.Bytes()...)
 	params = append(params, tokenIn.Bytes()...)
 	params = append(params, tokenOut.Bytes()...)
-	params = append(params, bloxAddress.Bytes()...)
+	params = append(params, briberyAddress.Bytes()...)
 	params = append(params, fillBytes(14, amountOutMin.Bytes())...)
-	params = append(params, fillBytes(2, fee.Bytes())...)
-	if version2 == V2 {
+	if version == V2 {
 		params = append(params, fillBytes(2, fee.Bytes())...)
 	}
 	if zeroForOne {
