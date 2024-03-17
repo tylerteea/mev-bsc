@@ -698,7 +698,7 @@ func worker(
 	// 抢跑----------------------------------------------------------------------------------------
 	frontAmountOut, fErr := execute(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head)
 
-	//log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "amountIn", amountIn, "frontAmountOut", frontAmountOut, "fErr", fErr)
+	log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "amountIn", amountIn, "frontAmountOut", frontAmountOut, "fErr", fErr)
 
 	if fErr != nil {
 		result["error"] = "frontCallErr"
@@ -757,7 +757,7 @@ func worker(
 
 	// 跟跑----------------------------------------------------------------------------------------
 	backAmountOut, bErr := execute(ctx, reqAndIndex, false, sbp, frontAmountOut, statedb, s, head)
-	//log.Info("call_execute_back", "reqAndIndex", reqAndIndex, "backAmountIn", frontAmountOut, "backAmountOut", backAmountOut, "bErr", bErr)
+	log.Info("call_execute_back", "reqAndIndex", reqAndIndex, "backAmountIn", frontAmountOut, "backAmountOut", backAmountOut, "bErr", bErr)
 
 	if bErr != nil {
 		result["error"] = "backCallErr"
@@ -791,8 +791,10 @@ func execute(
 	head *types.Header) (*big.Int, error) {
 
 	var data []byte
-	if isFront {
 
+	log.Info("call_execute1", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
+
+	if isFront {
 		if sbp.BuyOrSale {
 			data = encodeParams(sbp.Version2, sbp.Token2, sbp.Token3, sbp.PairOrPool2, sbp.Fee2, sbp.ZeroForOne2, amountIn, sbp.BriberyAddress, sbp.AmountOutMin)
 		} else {
@@ -808,6 +810,8 @@ func execute(
 		}
 	}
 
+	log.Info("call_execute2", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
+
 	bytes := hexutil.Bytes(data)
 	callArgs := TransactionArgs{
 		From: &sbp.Eoa,
@@ -815,6 +819,9 @@ func execute(
 		Data: &bytes,
 	}
 	callResult, err := mevCall(sdb, head, s, ctx, callArgs, nil, nil)
+	log.Info("call_execute3", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err)
+	marshal, err := json.Marshal(callResult)
+	log.Info("call_execute4", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err, "result", string(marshal))
 
 	if callResult != nil {
 		var revertReason *revertError
