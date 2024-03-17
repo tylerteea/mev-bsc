@@ -402,7 +402,32 @@ func RPCMarshalCompactLogs(receipts types.Receipts) []map[string]interface{} {
 	return logs
 }
 
-// SbpArgs SandwichBestProfitArgs represents the arguments for a call.
+// SbpBuyArgs SandwichBestProfitArgs represents the arguments for a call.
+type SbpBuyArgs struct {
+	Eoa             common.Address `json:"eoa"`
+	Contract        common.Address `json:"contract"`
+	Balance         *big.Int       `json:"balance"`
+	Token2          common.Address `json:"token2"`
+	Token3          common.Address `json:"token3"`
+	PairOrPool2     common.Address `json:"pairOrPool2"`
+	ZeroForOne2     bool           `json:"zeroForOne2"`
+	Fee2            *big.Int       `json:"fee2"`
+	Version2        int            `json:"version2"`
+	AmountInMin     *big.Int       `json:"amountInMin"`
+	AmountOutMin    *big.Int       `json:"amountOutMin"`
+	BriberyAddress  common.Address `json:"briberyAddress"`
+	VictimTxHash    common.Hash    `json:"vTxHash"`
+	BuyOrSale       bool           `json:"buyOrSale"`
+	Steps           *big.Int       `json:"steps"`
+	ReqId           string         `json:"reqId"`
+	FuncEvaluations int            `json:"funcEvaluations"`
+	RunTimeout      int            `json:"runTimeout"`
+	Iterations      int            `json:"iterations"`
+	Concurrent      int            `json:"concurrent"`
+	InitialValues   float64        `json:"initialValues"`
+	SubOne          bool           `json:"subOne"`
+}
+
 type SbpSaleArgs struct {
 	Eoa             common.Address `json:"eoa"`
 	Contract        common.Address `json:"contract"`
@@ -432,8 +457,43 @@ type SbpSaleArgs struct {
 	SubOne          bool           `json:"subOne"`
 }
 
-// SandwichBestProfitMinimize profit calculate
-func (s *BundleAPI) SandwichBestProfitMinimize(ctx context.Context, sbp SbpSaleArgs) map[string]interface{} {
+// SandwichBestProfitMinimizeBuy profit calculate
+func (s *BundleAPI) SandwichBestProfitMinimizeBuy(ctx context.Context, sbp SbpBuyArgs) map[string]interface{} {
+
+	sbpSaleArgs := SbpSaleArgs{
+		Eoa:             sbp.Eoa,
+		Contract:        sbp.Contract,
+		Balance:         sbp.Balance,
+		Token1:          common.Address{},
+		Token2:          sbp.Token2,
+		Token3:          sbp.Token3,
+		PairOrPool1:     common.Address{},
+		ZeroForOne1:     false,
+		Fee1:            nil,
+		PairOrPool2:     sbp.PairOrPool2,
+		ZeroForOne2:     sbp.ZeroForOne2,
+		Fee2:            sbp.Fee2,
+		Version2:        sbp.Version2,
+		AmountInMin:     sbp.AmountInMin,
+		AmountOutMin:    sbp.AmountOutMin,
+		BriberyAddress:  sbp.BriberyAddress,
+		VictimTxHash:    sbp.VictimTxHash,
+		BuyOrSale:       sbp.BuyOrSale,
+		Steps:           sbp.Steps,
+		ReqId:           sbp.ReqId,
+		FuncEvaluations: sbp.FuncEvaluations,
+		RunTimeout:      sbp.RunTimeout,
+		Iterations:      sbp.Iterations,
+		Concurrent:      sbp.Concurrent,
+		InitialValues:   sbp.InitialValues,
+		SubOne:          sbp.SubOne,
+	}
+
+	return s.SandwichBestProfitMinimizeSale(ctx, sbpSaleArgs)
+}
+
+// SandwichBestProfitMinimizeSale profit calculate
+func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpSaleArgs) map[string]interface{} {
 
 	result := make(map[string]interface{})
 
