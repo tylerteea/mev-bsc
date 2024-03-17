@@ -407,12 +407,12 @@ type SbpSaleArgs struct {
 	Eoa             common.Address `json:"eoa"`
 	Contract        common.Address `json:"contract"`
 	Balance         *big.Int       `json:"balance"`
-	Token1          common.Address `json:"token1"`
+	Token1          common.Address `json:"token1,omitempty"`
 	Token2          common.Address `json:"token2"`
 	Token3          common.Address `json:"token3"`
-	PairOrPool1     common.Address `json:"pairOrPool1"`
-	ZeroForOne1     bool           `json:"zeroForOne1"`
-	Fee1            *big.Int       `json:"fee1"`
+	PairOrPool1     common.Address `json:"pairOrPool1,omitempty"`
+	ZeroForOne1     bool           `json:"zeroForOne1,omitempty"`
+	Fee1            *big.Int       `json:"fee1,omitempty"`
 	PairOrPool2     common.Address `json:"pairOrPool2"`
 	ZeroForOne2     bool           `json:"zeroForOne2"`
 	Fee2            *big.Int       `json:"fee2"`
