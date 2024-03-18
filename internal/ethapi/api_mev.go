@@ -795,6 +795,7 @@ func execute(
 	log.Info("call_execute1", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
 
 	if isFront {
+
 		if sbp.BuyOrSale {
 			data = encodeParams(sbp.Version2, sbp.Token2, sbp.Token3, sbp.PairOrPool2, sbp.Fee2, sbp.ZeroForOne2, amountIn, sbp.BriberyAddress, sbp.AmountOutMin)
 		} else {
@@ -810,7 +811,7 @@ func execute(
 		}
 	}
 
-	log.Info("call_execute2", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
+	log.Info("call_execute2", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "data_hex", common.Bytes2Hex(data))
 
 	bytes := hexutil.Bytes(data)
 	callArgs := TransactionArgs{
