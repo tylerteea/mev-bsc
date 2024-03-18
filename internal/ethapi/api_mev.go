@@ -819,7 +819,7 @@ func execute(
 		Data: &bytes,
 	}
 	callResult, err := mevCall(sdb, head, s, ctx, callArgs, nil, nil)
-	log.Info("call_execute3", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err)
+	log.Info("call_execute3", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err, "callResult", callResult)
 
 	if callResult != nil {
 
@@ -829,6 +829,16 @@ func execute(
 		if len(callResult.Revert()) > 0 {
 
 			revertReason = newRevertError(callResult)
+
+			log.Info("call_result_not_nil_44",
+				"reqId", reqId,
+				"amountIn", amountIn,
+				"data", callResult,
+				"revert", common.Bytes2Hex(callResult.Revert()),
+				"revertReason", revertReason,
+				"returnData", common.Bytes2Hex(callResult.Return()),
+			)
+
 			log.Info("call_execute5", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "revertReason", revertReason.reason)
 			return nil, revertReason
 		}
