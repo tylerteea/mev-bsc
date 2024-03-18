@@ -820,23 +820,29 @@ func execute(
 	}
 	callResult, err := mevCall(sdb, head, s, ctx, callArgs, nil, nil)
 	log.Info("call_execute3", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err)
-	marshal, err := json.Marshal(callResult)
-	log.Info("call_execute4", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err, "result", string(marshal))
 
 	if callResult != nil {
+
+		log.Info("call_execute4", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "result", string(callResult.ReturnData))
+
 		var revertReason *revertError
 		if len(callResult.Revert()) > 0 {
+
 			revertReason = newRevertError(callResult)
+			log.Info("call_execute5", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "revertReason", revertReason.reason)
 			return nil, revertReason
 		}
 	}
 	if err != nil {
+		log.Info("call_execute6", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err)
 		return nil, err
 	}
 	if callResult.Err != nil {
+		log.Info("call_execute7", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", callResult.Err)
 		return nil, callResult.Err
 	}
 	amountOut := new(big.Int).SetBytes(callResult.Return())
+	log.Info("call_execute8", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "amountOut", amountOut.String())
 	return amountOut, nil
 }
 
