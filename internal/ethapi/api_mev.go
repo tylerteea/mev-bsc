@@ -562,6 +562,9 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 	log.Info("call_sbp_3_", "reqId", reqId, "blockNumber", number.BlockNumber.Int64())
 
 	stateDBNew, head, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
+
+	log.Info("call_sbp_4_", "reqId", reqId, "blockNumber", number.BlockNumber.Int64(), "number", head.Number, "hash", head.Hash(), "parentHash", head.ParentHash)
+
 	pow1018 := math.Pow10(18)
 
 	var bestInFunc = func(x []float64) float64 { return 0 }
@@ -878,15 +881,15 @@ func encodeParamsSale(
 	params = append(params, token1.Bytes()...)
 	params = append(params, token2.Bytes()...)
 	params = append(params, token3.Bytes()...)
-	params = append(params, pairOrPool1.Bytes()...)
 	params = append(params, fillBytes(2, fee1.Bytes())...)
+	params = append(params, pairOrPool1.Bytes()...)
 	if zeroForOne1 {
 		params = append(params, []byte{1}...)
 	} else {
 		params = append(params, []byte{0}...)
 	}
-	params = append(params, pairOrPool2.Bytes()...)
 	params = append(params, fillBytes(2, fee2.Bytes())...)
+	params = append(params, pairOrPool2.Bytes()...)
 	if zeroForOne2 {
 		params = append(params, []byte{1}...)
 	} else {
