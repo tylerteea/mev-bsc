@@ -208,7 +208,10 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 		bundleHash.Write(tx.Hash().Bytes())
 		if result.Err != nil {
 			jsonResult["error"] = result.Err.Error()
-			jsonResult["result_data"] = result
+			jsonResult["Revert_data"] = string(result.Revert())
+			jsonResult["Unwrap_data"] = result.Unwrap()
+			jsonResult["Return_data"] = result.Return()
+
 			revert := result.Revert()
 			if len(revert) > 0 {
 				reason, _ := abi.UnpackRevert(revert)
