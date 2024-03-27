@@ -587,7 +587,7 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 
 		amountInFloat := x[0]
 		if amountInFloat < 0 {
-			log.Info("call_sbp_5_", "reqId", reqId)
+			log.Info("call_sbp_5_", "reqId", reqId, "amountInFloat", amountInFloat)
 			return 0.0
 		}
 
@@ -599,7 +599,7 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 		f, _ := amountIn.Float64()
 
 		if amountInInt.Int64() > balance.Int64() {
-			log.Info("call_sbp_6_", "reqId", reqId)
+			log.Info("call_sbp_6_", "reqId", reqId, "amountInInt", amountInInt.String(), "balance", balance.String(), "f", f)
 			return f
 		}
 
