@@ -405,6 +405,25 @@ func (p *Peer) handle(msg Msg) error {
 	return nil
 }
 
+func countMatchingProtocolsBsc(protocols []Protocol, caps []Cap) int {
+	n := 0
+	isBsc := false
+	for _, cap := range caps {
+		if "bsc" == cap.Name {
+			isBsc = true
+		}
+		for _, proto := range protocols {
+			if proto.Name == cap.Name && proto.Version == cap.Version {
+				n++
+			}
+		}
+	}
+	if !isBsc {
+		return 0
+	}
+	return n
+}
+
 func countMatchingProtocols(protocols []Protocol, caps []Cap) int {
 	n := 0
 	for _, cap := range caps {
