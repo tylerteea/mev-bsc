@@ -544,7 +544,7 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 		}
 	}(&result)
 
-	if sbp.Balance.Int64() == 0 {
+	if sbp.Balance.Cmp(big.NewInt(0)) == 0 {
 		result["error"] = "args_err"
 		result["reason"] = "balance_is_0"
 		return result
@@ -587,7 +587,6 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 
 		amountInFloat := x[0]
 		if amountInFloat < 0 {
-			log.Info("call_sbp_5_", "reqId", reqId, "amountInFloat", amountInFloat)
 			return 0.0
 		}
 
@@ -598,19 +597,16 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 
 		f, _ := amountIn.Float64()
 
-		if amountInInt.Int64() > balance.Int64() {
-			log.Info("call_sbp_6_", "reqId", reqId, "amountInInt", amountInInt.Int64(), "balance", balance.Int64(), "f", f)
+		if amountInInt.Cmp(balance) > 0 {
 			return f
 		}
 
-		if amountInInt.Int64() < minAmountIn.Int64() {
-			log.Info("call_sbp_7_", "reqId", reqId)
+		if amountInInt.Cmp(minAmountIn) < 0 {
 			return 0.0
 		}
-		log.Info("call_sbp_8_", "reqId", reqId)
+
 		stateDB := stateDBNew.Copy()
 		workerResults := worker(ctx, head, victimTransaction, sbp, s, reqId, stateDB, amountInInt)
-		log.Info("call_sbp_9_", "reqId", reqId)
 
 		reqIdMiniMize := reqId + amountInInt.String()
 
@@ -619,7 +615,7 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 
 		if workerResults["error"] == nil && workerResults["profit"] != nil {
 			profit, ok := workerResults["profit"].(*big.Int)
-			//if ok && profit.Int64() > 0 {
+			//if ok && profit > 0 {
 			if ok { // 让函数能够感知负值
 				profitFloat, _ := new(big.Float).SetInt(profit).Float64()
 				return 0.0 - profitFloat
@@ -667,7 +663,7 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 	quoteAmountIn := new(big.Int)
 	maxProfitAmountIn.Int(quoteAmountIn)
 
-	if quoteAmountIn.Int64() > balance.Int64() || quoteAmountIn.Int64() < minAmountIn.Int64() {
+	if quoteAmountIn.Cmp(balance) > 0 || quoteAmountIn.Cmp(minAmountIn) < 0 {
 		result["error"] = "minimize_result_out_of_limit"
 		result["reason"] = quoteAmountIn
 		resultJson, _ := json.Marshal(result)
@@ -685,7 +681,7 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 
 	if workerResults["error"] == nil && workerResults["profit"] != nil {
 		profit, ok := workerResults["profit"].(*big.Int)
-		if ok && profit.Int64() > 0 {
+		if ok && profit.Cmp(big.NewInt(0)) > 0 {
 			result = workerResults
 		}
 	}
@@ -789,7 +785,7 @@ func worker(
 	result["amountOut"] = backAmountOut
 	result["profit"] = profit
 
-	if profit.Int64() <= 0 {
+	if profit.Cmp(big.NewInt(0)) <= 0 {
 		result["error"] = "profit_too_low"
 		result["reason"] = errors.New("profit_too_low")
 	}
