@@ -599,7 +599,7 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 		f, _ := amountIn.Float64()
 
 		if amountInInt.Int64() > balance.Int64() {
-			log.Info("call_sbp_6_", "reqId", reqId, "amountInInt", amountInInt.String(), "balance", balance.String(), "f", f)
+			log.Info("call_sbp_6_", "reqId", reqId, "amountInInt", amountInInt.Int64(), "balance", balance.Int64(), "f", f)
 			return f
 		}
 
