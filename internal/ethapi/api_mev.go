@@ -587,6 +587,7 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 
 		amountInFloat := x[0]
 		if amountInFloat < 0 {
+			log.Info("call_sbp_5_", "reqId", reqId)
 			return 0.0
 		}
 
@@ -598,15 +599,18 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 		f, _ := amountIn.Float64()
 
 		if amountInInt.Int64() > balance.Int64() {
+			log.Info("call_sbp_6_", "reqId", reqId)
 			return f
 		}
 
 		if amountInInt.Int64() < minAmountIn.Int64() {
+			log.Info("call_sbp_7_", "reqId", reqId)
 			return 0.0
 		}
-
+		log.Info("call_sbp_8_", "reqId", reqId)
 		stateDB := stateDBNew.Copy()
 		workerResults := worker(ctx, head, victimTransaction, sbp, s, reqId, stateDB, amountInInt)
+		log.Info("call_sbp_9_", "reqId", reqId)
 
 		reqIdMiniMize := reqId + amountInInt.String()
 
