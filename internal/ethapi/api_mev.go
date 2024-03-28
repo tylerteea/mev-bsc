@@ -515,9 +515,8 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 
 	log.Info("call_sbp_init", "reqId", reqId)
 
-	defer timeCost(reqId, now)
-
 	if sbp.LogEnable {
+		defer timeCost(reqId, now)
 		req, _ := json.Marshal(sbp)
 		log.Info("call_sbp_start", "reqId", reqId, "sbp", string(req))
 	}
