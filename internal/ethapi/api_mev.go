@@ -513,8 +513,6 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 		reqId = strconv.FormatInt(um, 10)
 	}
 
-	log.Info("call_sbp_init", "reqId", reqId)
-
 	if sbp.LogEnable {
 		defer timeCost(reqId, now)
 		req, _ := json.Marshal(sbp)
@@ -699,7 +697,6 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 		resultJson, _ := json.Marshal(result)
 		log.Info("call_sbp_end", "reqId", reqId, "blockNumber", number.BlockNumber.Int64(), "result", string(resultJson), "cost_time(ms)", time.Since(now).Milliseconds())
 	}
-	log.Info("call_sbp_close", "reqId", reqId)
 	return result
 }
 func worker(
