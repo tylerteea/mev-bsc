@@ -208,19 +208,10 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 		bundleHash.Write(tx.Hash().Bytes())
 		if result.Err != nil {
 			jsonResult["error"] = result.Err.Error()
-			jsonResult["Revert_data"] = string(result.Revert())
-			jsonResult["Unwrap_data"] = result.Unwrap()
-			jsonResult["Return_data"] = result.Return()
-
 			revert := result.Revert()
 			if len(revert) > 0 {
 				reason, _ := abi.UnpackRevert(revert)
 				jsonResult["revert"] = reason
-			}
-			if len(result.Return()) > 0 {
-				dst := make([]byte, hex.EncodedLen(len(result.Return())))
-				hex.Encode(dst, result.Return())
-				jsonResult["return_data"] = "0x" + string(dst)
 			}
 		} else {
 			dst := make([]byte, hex.EncodedLen(len(result.Return())))
@@ -252,9 +243,9 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 
 	ret["bundleHash"] = "0x" + common.Bytes2Hex(bundleHash.Sum(nil))
 
-	// todo
-	newResultJson, _ := json.Marshal(ret)
-	log.Info("call_bundle_result", "ret", string(newResultJson))
+	//// todo
+	//newResultJson, _ := json.Marshal(ret)
+	//log.Info("call_bundle_result", "ret", string(newResultJson))
 
 	return ret, nil
 }
