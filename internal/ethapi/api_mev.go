@@ -977,7 +977,7 @@ func fillBytes(l int, rawData []byte) []byte {
 
 func mevCall(state *state.StateDB, header *types.Header, s *BundleAPI, ctx context.Context, args TransactionArgs, overrides *StateOverride, blockOverrides *BlockOverrides) (*core.ExecutionResult, error) {
 
-	defer func(start time.Time) { log.Info("call_ExecutingEVMCallFinished", "runtime", time.Since(start)) }(time.Now())
+	//defer func(start time.Time) { log.Info("call_ExecutingEVMCallFinished", "runtime", time.Since(start)) }(time.Now())
 
 	result, err := doMevCall(ctx, s.b, args, state, header, overrides, blockOverrides, s.b.RPCEVMTimeout(), s.b.RPCGasCap())
 
