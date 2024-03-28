@@ -435,6 +435,7 @@ type SbpBuyArgs struct {
 	Concurrent      int            `json:"concurrent"`
 	InitialValues   float64        `json:"initialValues"`
 	SubOne          bool           `json:"subOne"`
+	LogEnable       bool           `json:"logEnable"`
 }
 
 type SbpSaleArgs struct {
@@ -464,6 +465,7 @@ type SbpSaleArgs struct {
 	Concurrent      int            `json:"concurrent"`
 	InitialValues   float64        `json:"initialValues"`
 	SubOne          bool           `json:"subOne"`
+	LogEnable       bool           `json:"logEnable"`
 }
 
 // SandwichBestProfitMinimizeBuy profit calculate
@@ -496,6 +498,7 @@ func (s *BundleAPI) SandwichBestProfitMinimizeBuy(ctx context.Context, sbp SbpBu
 		Concurrent:      sbp.Concurrent,
 		InitialValues:   sbp.InitialValues,
 		SubOne:          sbp.SubOne,
+		LogEnable:       sbp.LogEnable,
 	}
 
 	return s.SandwichBestProfitMinimizeSale(ctx, sbpSaleArgs)
@@ -519,10 +522,14 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 		reqId = strconv.FormatInt(um, 10)
 	}
 
+	log.Info("call_sbp_init", "reqId", reqId)
+
 	defer timeCost(reqId, now)
 
-	req, _ := json.Marshal(sbp)
-	log.Info("call_sbp_start", "reqId", reqId, "sbp", string(req))
+	if sbp.LogEnable {
+		req, _ := json.Marshal(sbp)
+		log.Info("call_sbp_start", "reqId", reqId, "sbp", string(req))
+	}
 
 	timeout := s.b.RPCEVMTimeout()
 	var cancel context.CancelFunc
@@ -535,12 +542,16 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 	defer cancel()
 	defer func(results *map[string]interface{}) {
 		if r := recover(); r != nil {
-			oldResultJson, _ := json.Marshal(result)
-			log.Info("call_sbp_old_result_", "reqId", reqId, "result", string(oldResultJson))
+			if sbp.LogEnable {
+				oldResultJson, _ := json.Marshal(result)
+				log.Info("call_sbp_old_result_", "reqId", reqId, "result", string(oldResultJson))
+			}
 			result["error"] = "panic"
 			result["reason"] = r
-			newResultJson, _ := json.Marshal(result)
-			log.Info("call_sbp_defer_result_", "reqId", reqId, "result", string(newResultJson))
+			if sbp.LogEnable {
+				newResultJson, _ := json.Marshal(result)
+				log.Info("call_sbp_defer_result_", "reqId", reqId, "result", string(newResultJson))
+			}
 		}
 	}(&result)
 
@@ -561,19 +572,20 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 	if victimTransaction == nil {
 		result["error"] = "tx_is_nil"
 		result["reason"] = "GetPoolTransaction and GetTransaction all nil : " + victimTxHash.Hex()
-		resultJson, _ := json.Marshal(result)
-		log.Info("call_sbp_2_", "reqId", reqId, "result", string(resultJson))
+		if sbp.LogEnable {
+			resultJson, _ := json.Marshal(result)
+			log.Info("call_sbp_2_", "reqId", reqId, "result", string(resultJson))
+		}
 		return result
 	}
 
 	number := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 
-	log.Info("call_sbp_3_", "reqId", reqId, "blockNumber", number.BlockNumber.Int64())
-
 	stateDBNew, head, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
 
-	log.Info("call_sbp_4_", "reqId", reqId, "blockNumber", number.BlockNumber.Int64(), "number", head.Number, "hash", head.Hash(), "parentHash", head.ParentHash)
-
+	if sbp.LogEnable {
+		log.Info("call_sbp_4_", "reqId", reqId, "blockNumber", number.BlockNumber.Int64(), "number", head.Number, "hash", head.Hash(), "parentHash", head.ParentHash)
+	}
 	pow1018 := math.Pow10(18)
 
 	var bestInFunc = func(x []float64) float64 { return 0 }
@@ -610,9 +622,10 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 
 		reqIdMiniMize := reqId + amountInInt.String()
 
-		marshal, _ := json.Marshal(workerResults)
-		log.Info("call_worker_minimize_result_end", "reqId", reqIdMiniMize, "amountIn", amountInInt, "result", string(marshal))
-
+		if sbp.LogEnable {
+			marshal, _ := json.Marshal(workerResults)
+			log.Info("call_worker_minimize_result_end", "reqId", reqIdMiniMize, "amountIn", amountInInt, "result", string(marshal))
+		}
 		if workerResults["error"] == nil && workerResults["profit"] != nil {
 			profit, ok := workerResults["profit"].(*big.Int)
 			//if ok && profit > 0 {
@@ -647,14 +660,17 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 
 	res, err := optimize.Minimize(p, initValues.X, settings, meth)
 
-	resJson, _ := json.Marshal(res)
-	log.Info("call_sbp_minimize_result", "reqId", reqId, "result", string(resJson))
-
+	if sbp.LogEnable {
+		resJson, _ := json.Marshal(res)
+		log.Info("call_sbp_minimize_result", "reqId", reqId, "result", string(resJson))
+	}
 	if err != nil {
 		result["error"] = "minimize_err"
 		result["reason"] = err.Error()
-		resultJson, _ := json.Marshal(result)
-		log.Info("call_sbp_minimize_err", "reqId", reqId, "result", string(resultJson))
+		if sbp.LogEnable {
+			resultJson, _ := json.Marshal(result)
+			log.Info("call_sbp_minimize_err", "reqId", reqId, "result", string(resultJson))
+		}
 		return result
 	}
 
@@ -666,8 +682,10 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 	if quoteAmountIn.Cmp(balance) > 0 || quoteAmountIn.Cmp(minAmountIn) < 0 {
 		result["error"] = "minimize_result_out_of_limit"
 		result["reason"] = quoteAmountIn
-		resultJson, _ := json.Marshal(result)
-		log.Info("call_sbp_minimize_out_of_limit", "reqId", reqId, "result", string(resultJson))
+		if sbp.LogEnable {
+			resultJson, _ := json.Marshal(result)
+			log.Info("call_sbp_minimize_out_of_limit", "reqId", reqId, "result", string(resultJson))
+		}
 		return result
 	}
 
@@ -676,8 +694,10 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 	sdb := stateDBNew.Copy()
 	workerResults := worker(ctx, head, victimTransaction, sbp, s, reqAndIndex, sdb, quoteAmountIn)
 
-	marshal, _ := json.Marshal(workerResults)
-	log.Info("call_worker_result_end", "reqId", reqAndIndex, "amountInReal", quoteAmountIn, "result", string(marshal))
+	if sbp.LogEnable {
+		marshal, _ := json.Marshal(workerResults)
+		log.Info("call_worker_result_end", "reqId", reqAndIndex, "amountInReal", quoteAmountIn, "result", string(marshal))
+	}
 
 	if workerResults["error"] == nil && workerResults["profit"] != nil {
 		profit, ok := workerResults["profit"].(*big.Int)
@@ -685,8 +705,11 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 			result = workerResults
 		}
 	}
-	resultJson, _ := json.Marshal(result)
-	log.Info("call_sbp_end", "reqId", reqId, "blockNumber", number.BlockNumber.Int64(), "result", string(resultJson), "cost_time(ms)", time.Since(now).Milliseconds())
+	if sbp.LogEnable {
+		resultJson, _ := json.Marshal(result)
+		log.Info("call_sbp_end", "reqId", reqId, "blockNumber", number.BlockNumber.Int64(), "result", string(resultJson), "cost_time(ms)", time.Since(now).Milliseconds())
+	}
+	log.Info("call_sbp_close", "reqId", reqId)
 	return result
 }
 func worker(
@@ -709,9 +732,9 @@ func worker(
 
 	// 抢跑----------------------------------------------------------------------------------------
 	frontAmountOut, fErr := execute(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head)
-
-	log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "amountIn", amountIn, "frontAmountOut", frontAmountOut, "fErr", fErr)
-
+	if sbp.LogEnable {
+		log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "amountIn", amountIn, "frontAmountOut", frontAmountOut, "fErr", fErr)
+	}
 	if fErr != nil {
 		result["error"] = "frontCallErr"
 		result["reason"] = fErr.Error()
@@ -769,8 +792,9 @@ func worker(
 
 	// 跟跑----------------------------------------------------------------------------------------
 	backAmountOut, bErr := execute(ctx, reqAndIndex, false, sbp, frontAmountOut, statedb, s, head)
-	log.Info("call_execute_back", "reqAndIndex", reqAndIndex, "backAmountIn", frontAmountOut, "backAmountOut", backAmountOut, "bErr", bErr)
-
+	if sbp.LogEnable {
+		log.Info("call_execute_back", "reqAndIndex", reqAndIndex, "backAmountIn", frontAmountOut, "backAmountOut", backAmountOut, "bErr", bErr)
+	}
 	if bErr != nil {
 		result["error"] = "backCallErr"
 		result["reason"] = bErr.Error()
@@ -804,8 +828,9 @@ func execute(
 
 	var data []byte
 
-	log.Info("call_execute1", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
-
+	if sbp.LogEnable {
+		log.Info("call_execute1", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
+	}
 	if isFront {
 
 		if sbp.BuyOrSale {
@@ -823,8 +848,9 @@ func execute(
 		}
 	}
 
-	log.Info("call_execute2", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "data_hex", common.Bytes2Hex(data))
-
+	if sbp.LogEnable {
+		log.Info("call_execute2", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "data_hex", common.Bytes2Hex(data))
+	}
 	bytes := hexutil.Bytes(data)
 	callArgs := TransactionArgs{
 		From: &sbp.Eoa,
@@ -832,40 +858,48 @@ func execute(
 		Data: &bytes,
 	}
 	callResult, err := mevCall(sdb, head, s, ctx, callArgs, nil, nil)
-	log.Info("call_execute3", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err, "callResult", callResult)
-
+	if sbp.LogEnable {
+		log.Info("call_execute3", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err, "callResult", callResult)
+	}
 	if callResult != nil {
 
-		log.Info("call_execute4", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "result", string(callResult.ReturnData))
-
+		if sbp.LogEnable {
+			log.Info("call_execute4", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "result", string(callResult.ReturnData))
+		}
 		var revertReason *revertError
 		if len(callResult.Revert()) > 0 {
 
 			revertReason = newRevertError(callResult)
-
-			log.Info("call_result_not_nil_44",
-				"reqId", reqId,
-				"amountIn", amountIn,
-				"data", callResult,
-				"revert", common.Bytes2Hex(callResult.Revert()),
-				"revertReason", revertReason,
-				"returnData", common.Bytes2Hex(callResult.Return()),
-			)
-
-			log.Info("call_execute5", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "revertReason", revertReason.reason)
+			if sbp.LogEnable {
+				log.Info("call_result_not_nil_44",
+					"reqId", reqId,
+					"amountIn", amountIn,
+					"data", callResult,
+					"revert", common.Bytes2Hex(callResult.Revert()),
+					"revertReason", revertReason,
+					"returnData", common.Bytes2Hex(callResult.Return()),
+				)
+				log.Info("call_execute5", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "revertReason", revertReason.reason)
+			}
 			return nil, revertReason
 		}
 	}
 	if err != nil {
-		log.Info("call_execute6", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err)
+		if sbp.LogEnable {
+			log.Info("call_execute6", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err)
+		}
 		return nil, err
 	}
 	if callResult.Err != nil {
-		log.Info("call_execute7", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", callResult.Err)
+		if sbp.LogEnable {
+			log.Info("call_execute7", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", callResult.Err)
+		}
 		return nil, callResult.Err
 	}
 	amountOut := new(big.Int).SetBytes(callResult.Return())
-	log.Info("call_execute8", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "amountOut", amountOut.String())
+	if sbp.LogEnable {
+		log.Info("call_execute8", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "amountOut", amountOut.String())
+	}
 	return amountOut, nil
 }
 
