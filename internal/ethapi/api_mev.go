@@ -11,6 +11,7 @@ import (
 	"math"
 	"math/big"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -430,24 +431,27 @@ type SbpBuyArgs struct {
 }
 
 type SbpSaleArgs struct {
-	Eoa             common.Address `json:"eoa"`
-	Contract        common.Address `json:"contract"`
-	Balance         *big.Int       `json:"balance"`
-	Token1          common.Address `json:"token1,omitempty"`
-	Token2          common.Address `json:"token2"`
-	Token3          common.Address `json:"token3"`
-	PairOrPool1     common.Address `json:"pairOrPool1,omitempty"`
-	ZeroForOne1     bool           `json:"zeroForOne1,omitempty"`
-	Fee1            *big.Int       `json:"fee1,omitempty"`
-	PairOrPool2     common.Address `json:"pairOrPool2"`
-	ZeroForOne2     bool           `json:"zeroForOne2"`
-	Fee2            *big.Int       `json:"fee2"`
-	Version2        int            `json:"version2"`
+	Eoa      common.Address `json:"eoa"`
+	Contract common.Address `json:"contract"`
+	Balance  *big.Int       `json:"balance"`
+
+	Token1      common.Address `json:"token1,omitempty"`
+	Token2      common.Address `json:"token2"`
+	Token3      common.Address `json:"token3"`
+	PairOrPool1 common.Address `json:"pairOrPool1,omitempty"`
+	ZeroForOne1 bool           `json:"zeroForOne1,omitempty"`
+	Fee1        *big.Int       `json:"fee1,omitempty"`
+	PairOrPool2 common.Address `json:"pairOrPool2"`
+	ZeroForOne2 bool           `json:"zeroForOne2"`
+	Fee2        *big.Int       `json:"fee2"`
+	Version2    int            `json:"version2"`
+	BuyOrSale   bool           `json:"buyOrSale"`
+	SubOne      bool           `json:"subOne"`
+
 	AmountInMin     *big.Int       `json:"amountInMin"`
 	AmountOutMin    *big.Int       `json:"amountOutMin"`
 	BriberyAddress  common.Address `json:"briberyAddress"`
 	VictimTxHash    common.Hash    `json:"vTxHash"`
-	BuyOrSale       bool           `json:"buyOrSale"`
 	Steps           *big.Int       `json:"steps"`
 	ReqId           string         `json:"reqId"`
 	FuncEvaluations int            `json:"funcEvaluations"`
@@ -455,8 +459,189 @@ type SbpSaleArgs struct {
 	Iterations      int            `json:"iterations"`
 	Concurrent      int            `json:"concurrent"`
 	InitialValues   float64        `json:"initialValues"`
-	SubOne          bool           `json:"subOne"`
 	LogEnable       bool           `json:"logEnable"`
+}
+
+type SbpBatchArgs struct {
+	// 账户及合约参数
+	Eoa            common.Address `json:"eoa"`
+	Contract       common.Address `json:"contract"`
+	Balance        *big.Int       `json:"balance"`
+	AmountInMin    *big.Int       `json:"amountInMin"`
+	AmountOutMin   *big.Int       `json:"amountOutMin"`
+	BriberyAddress common.Address `json:"briberyAddress"`
+	VictimTxHash   common.Hash    `json:"vTxHash"`
+
+	// minimize参数
+	Steps           *big.Int `json:"steps"`
+	ReqId           string   `json:"reqId"`
+	FuncEvaluations int      `json:"funcEvaluations"`
+	RunTimeout      int      `json:"runTimeout"`
+	Iterations      int      `json:"iterations"`
+	Concurrent      int      `json:"concurrent"`
+	InitialValues   float64  `json:"initialValues"`
+	LogEnable       bool     `json:"logEnable"`
+
+	// 三明治pair参数
+	SbpPairs []*SbpPairArgs `json:"sbpPairArgs"`
+}
+
+// SbpPairArgs 三明治pair参数
+type SbpPairArgs struct {
+	Token1      common.Address `json:"token1,omitempty"`
+	Token2      common.Address `json:"token2"`
+	Token3      common.Address `json:"token3"`
+	PairOrPool1 common.Address `json:"pairOrPool1,omitempty"`
+	ZeroForOne1 bool           `json:"zeroForOne1,omitempty"`
+	Fee1        *big.Int       `json:"fee1,omitempty"`
+	PairOrPool2 common.Address `json:"pairOrPool2"`
+	ZeroForOne2 bool           `json:"zeroForOne2"`
+	Fee2        *big.Int       `json:"fee2"`
+	Version2    int            `json:"version2"`
+	BuyOrSale   bool           `json:"buyOrSale"`
+	SubOne      bool           `json:"subOne"`
+}
+
+// SandwichBestProfitBatch profit calculate
+func (s *BundleAPI) SandwichBestProfitBatch(ctx context.Context, sbp SbpBatchArgs) map[string]interface{} {
+
+	result := make(map[string]interface{})
+
+	result["error"] = "default"
+	result["reason"] = "default"
+
+	timeout := s.b.RPCEVMTimeout()
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+	} else {
+		ctx, cancel = context.WithCancel(ctx)
+	}
+
+	defer cancel()
+	defer func(results *map[string]interface{}) {
+		if r := recover(); r != nil {
+			if sbp.LogEnable {
+				oldResultJson, _ := json.Marshal(result)
+				log.Info("call_sbp_old_result_", "reqId", sbp.ReqId, "result", string(oldResultJson))
+			}
+			result["error"] = "panic"
+			result["reason"] = r
+			if sbp.LogEnable {
+				newResultJson, _ := json.Marshal(result)
+				log.Info("call_sbp_defer_result_", "reqId", sbp.ReqId, "result", string(newResultJson))
+			}
+		}
+	}(&result)
+
+	sbpPairs := sbp.SbpPairs
+
+	if sbpPairs == nil {
+		result["error"] = "args_SbpPair"
+		result["reason"] = "args_SbpPair"
+		return result
+	}
+
+	wg := new(sync.WaitGroup)
+	wg.Add(len(sbpPairs))
+
+	channelResult := make(chan map[string]interface{})
+
+	go func() {
+		defer close(channelResult) // 等待wg 执行完后关闭channel
+		wg.Wait()
+	}()
+
+	for _, sbpPair := range sbpPairs {
+		go bestProfit(ctx, channelResult, wg, sbp, sbpPair, s)
+	}
+
+	maxProfit := big.NewInt(0)
+
+	for singleResult := range channelResult {
+
+		if singleResult["error"] == nil && singleResult["profit"] != nil {
+			profit, ok := singleResult["profit"].(*big.Int)
+
+			if ok && profit.Cmp(big.NewInt(0)) > 0 {
+				if profit.Cmp(maxProfit) > 0 {
+					maxProfit = profit
+					result = singleResult
+				}
+			}
+		}
+	}
+	if maxProfit.Cmp(big.NewInt(0)) <= 0 {
+		result["error"] = "profit_too_low"
+		result["reason"] = "profit_too_low"
+	}
+
+	if sbp.LogEnable {
+		resultJson, _ := json.Marshal(result)
+		log.Info("call_sbp_batch_end", "reqId", sbp.ReqId, "result", string(resultJson))
+	}
+
+	return result
+}
+
+func bestProfit(ctx context.Context, channelResult chan map[string]interface{}, wg *sync.WaitGroup, sbp SbpBatchArgs, sbpPair *SbpPairArgs, s *BundleAPI) {
+
+	result := make(map[string]interface{})
+
+	defer func() {
+		if r := recover(); r != nil {
+			channelResult <- result
+			wg.Done()
+		} else {
+			channelResult <- result
+			wg.Done()
+		}
+	}()
+
+	reqId := sbp.ReqId
+
+	if sbpPair.BuyOrSale {
+		reqId = reqId + "_buy_" + sbpPair.PairOrPool2.String()
+	} else {
+		reqId = reqId + "_sale_" + sbpPair.PairOrPool1.String()
+	}
+
+	sbpSaleArgs := SbpSaleArgs{
+
+		// 账户及合约公共参数
+		Eoa:            sbp.Eoa,
+		Contract:       sbp.Contract,
+		Balance:        sbp.Balance,
+		AmountInMin:    sbp.AmountInMin,
+		AmountOutMin:   sbp.AmountOutMin,
+		BriberyAddress: sbp.BriberyAddress,
+		VictimTxHash:   sbp.VictimTxHash,
+
+		// minimize公共参数
+		Steps:           sbp.Steps,
+		ReqId:           reqId, // 使用新生成的id
+		FuncEvaluations: sbp.FuncEvaluations,
+		RunTimeout:      sbp.RunTimeout,
+		Iterations:      sbp.Iterations,
+		Concurrent:      sbp.Concurrent,
+		InitialValues:   sbp.InitialValues,
+		LogEnable:       sbp.LogEnable,
+
+		// 三明治pair参数
+		Token1:      sbpPair.Token1,
+		Token2:      sbpPair.Token2,
+		Token3:      sbpPair.Token3,
+		PairOrPool1: sbpPair.PairOrPool1,
+		ZeroForOne1: sbpPair.ZeroForOne1,
+		Fee1:        sbpPair.Fee1,
+		PairOrPool2: sbpPair.PairOrPool2,
+		ZeroForOne2: sbpPair.ZeroForOne2,
+		Fee2:        sbpPair.Fee2,
+		Version2:    sbpPair.Version2,
+		SubOne:      sbpPair.SubOne,
+		BuyOrSale:   sbpPair.BuyOrSale,
+	}
+	result = s.SandwichBestProfitMinimizeSale(ctx, sbpSaleArgs)
 }
 
 // SandwichBestProfitMinimizeBuy profit calculate
