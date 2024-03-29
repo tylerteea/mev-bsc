@@ -642,6 +642,7 @@ func bestProfit(ctx context.Context, channelResult chan map[string]interface{}, 
 		BuyOrSale:   sbpPair.BuyOrSale,
 	}
 	result = s.SandwichBestProfitMinimizeSale(ctx, sbpSaleArgs)
+	result["pairIndex"] = sbpPair.PairIndex
 }
 
 // SandwichBestProfitMinimizeBuy profit calculate
