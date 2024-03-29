@@ -487,6 +487,7 @@ type SbpBatchArgs struct {
 
 // SbpPairArgs 三明治pair参数
 type SbpPairArgs struct {
+	PairIndex   int            `json:"pairIndex"`
 	Token1      common.Address `json:"token1,omitempty"`
 	Token2      common.Address `json:"token2"`
 	Token3      common.Address `json:"token3"`
