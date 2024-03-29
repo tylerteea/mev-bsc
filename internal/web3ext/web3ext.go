@@ -624,6 +624,11 @@ web3._extend({
 			call: 'eth_sandwichBestProfitMinimizeBuy',
 			params: 1,
 		}),
+ 		new web3._extend.Method({
+			name: 'SandwichBestProfitBatch',
+			call: 'eth_sandwichBestProfitBatch',
+			params: 1,
+		}),
 		new web3._extend.Method({
 			name: 'callBundle',
 			call: 'eth_callBundle',
