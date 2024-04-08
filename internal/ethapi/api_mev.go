@@ -914,6 +914,18 @@ func worker(
 		result["amountIn"] = amountIn.String()
 		return result
 	}
+
+	if sbp.SubOne {
+		frontAmountOut = new(big.Int).Sub(frontAmountOut, big.NewInt(1))
+	}
+
+	if frontAmountOut.Cmp(big.NewInt(0)) == 0 {
+		result["error"] = "frontAmountOutZero"
+		result["reason"] = "frontAmountOutZero"
+		result["amountIn"] = amountIn.String()
+		return result
+	}
+
 	// 受害者----------------------------------------------------------------------------------------
 
 	victimTxMsg, victimTxMsgErr := core.TransactionToMessage(victimTransaction, types.MakeSigner(s.b.ChainConfig(), head.Number, head.Time), head.BaseFee)
@@ -959,16 +971,12 @@ func worker(
 		return result
 	}
 
-	if sbp.SubOne {
-		frontAmountOut = new(big.Int).Sub(frontAmountOut, big.NewInt(1))
-	}
-
 	// 跟跑----------------------------------------------------------------------------------------
 	backAmountOut, bErr := execute(ctx, reqAndIndex, false, sbp, frontAmountOut, statedb, s, head)
 	if sbp.LogEnable {
 		log.Info("call_execute_back", "reqAndIndex", reqAndIndex, "backAmountIn", frontAmountOut, "backAmountOut", backAmountOut, "bErr", bErr)
 	}
-	if bErr != nil {
+	if bErr != nil || backAmountOut.Cmp(big.NewInt(0)) == 0 {
 		result["error"] = "backCallErr"
 		result["reason"] = bErr.Error()
 		result["amountIn"] = amountIn.String()
