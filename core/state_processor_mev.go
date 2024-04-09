@@ -20,17 +20,6 @@ func ApplyTransactionWithResult(config *params.ChainConfig, bc ChainContext, aut
 	return applyTransactionWithResult(msg, config, bc, author, gp, statedb, header, tx, usedGas, vmenv)
 }
 
-func ApplyTransactionWithResultNoSign(from common.Address, config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, cfg vm.Config) (*types.Receipt, *ExecutionResult, error) {
-	msg, err := TransactionToMessageNoSignCheck(from, tx, types.MakeSigner(config, header.Number, header.Time), header.BaseFee)
-	if err != nil {
-		return nil, nil, err
-	}
-	// Create a new context to be used in the EVM environment
-	blockContext := NewEVMBlockContext(header, bc, author)
-	vmenv := vm.NewEVM(blockContext, vm.TxContext{}, statedb, config, cfg)
-	return applyTransactionWithResult(msg, config, bc, author, gp, statedb, header, tx, usedGas, vmenv)
-}
-
 // apply transaction returning result, for callBundle
 func applyTransactionWithResult(msg *Message, config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, evm *vm.EVM) (*types.Receipt, *ExecutionResult, error) {
 	// Create a new context to be used in the EVM environment.
