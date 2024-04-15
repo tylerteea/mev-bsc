@@ -774,10 +774,18 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 		}()
 
 		amountInFloat := x[0]
+		if sbp.LogEnable {
+			log.Info("call_sbp_5", "reqId", reqId, "amountInFloat", amountInFloat)
+		}
 		if amountInFloat < 0 {
+			if sbp.LogEnable {
+				log.Info("call_sbp_6", "reqId", reqId, "amountInFloat", amountInFloat)
+			}
 			return 0.0
 		}
-
+		if sbp.LogEnable {
+			log.Info("call_sbp_7", "reqId", reqId, "amountInFloat", amountInFloat)
+		}
 		amountIn := new(big.Float).Mul(big.NewFloat(amountInFloat), big.NewFloat(pow1018))
 
 		amountInInt := new(big.Int)
@@ -786,10 +794,16 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 		f, _ := amountIn.Float64()
 
 		if amountInInt.Cmp(balance) > 0 {
+			if sbp.LogEnable {
+				log.Info("call_sbp_8", "reqId", reqId, "amountInFloat", amountInFloat)
+			}
 			return f
 		}
 
 		if amountInInt.Cmp(minAmountIn) < 0 {
+			if sbp.LogEnable {
+				log.Info("call_sbp_9", "reqId", reqId, "amountInFloat", amountInFloat)
+			}
 			return 0.0
 		}
 
@@ -806,9 +820,18 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 			profit, ok := workerResults["profit"].(*big.Int)
 			//if ok && profit > 0 {
 			if ok { // 让函数能够感知负值
+				if sbp.LogEnable {
+					log.Info("call_sbp_10", "reqId", reqId, "amountInFloat", amountInFloat)
+				}
 				profitFloat, _ := new(big.Float).SetInt(profit).Float64()
 				return 0.0 - profitFloat
 			}
+			if sbp.LogEnable {
+				log.Info("call_sbp_11", "reqId", reqId, "amountInFloat", amountInFloat)
+			}
+		}
+		if sbp.LogEnable {
+			log.Info("call_sbp_12", "reqId", reqId, "amountInFloat", amountInFloat)
 		}
 		return f
 	}
