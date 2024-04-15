@@ -807,8 +807,14 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 			return 0.0
 		}
 
+		startTime := time.Now()
 		stateDB := stateDBNew.Copy()
 		workerResults := worker(ctx, head, victimTransaction, sbp, s, reqId, stateDB, amountInInt)
+		costTime := time.Since(startTime).Milliseconds()
+
+		if sbp.LogEnable {
+			log.Info("call_sbp_99", "reqId", reqId, "amountInFloat", amountInFloat, "cost_time", costTime)
+		}
 
 		reqIdMiniMize := reqId + amountInInt.String()
 
