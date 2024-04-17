@@ -935,9 +935,12 @@ func worker(
 	result := make(map[string]interface{})
 
 	// 抢跑----------------------------------------------------------------------------------------
+	startTime := time.Now()
 	frontAmountOut, fErr := execute(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head)
+	costTime := time.Since(startTime).Milliseconds()
+
 	if sbp.LogEnable {
-		log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "amountIn", amountIn, "frontAmountOut", frontAmountOut, "fErr", fErr)
+		log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "amountIn", amountIn, "frontAmountOut", frontAmountOut, "fErr", fErr, "cost_time", costTime)
 	}
 	if fErr != nil {
 		result["error"] = "frontCallErr"
@@ -958,7 +961,7 @@ func worker(
 	}
 
 	// 受害者----------------------------------------------------------------------------------------
-
+	victimStartTime := time.Now()
 	victimTxMsg, victimTxMsgErr := core.TransactionToMessage(victimTransaction, types.MakeSigner(s.b.ChainConfig(), head.Number, head.Time), head.BaseFee)
 
 	if victimTxMsgErr != nil {
@@ -983,6 +986,12 @@ func worker(
 	gasPool := new(core.GasPool).AddGas(math.MaxUint64)
 	victimTxCallResult, victimTxCallErr := core.ApplyMessage(vmEnv, victimTxMsg, gasPool)
 
+	victimCostTime := time.Since(victimStartTime).Milliseconds()
+
+	if sbp.LogEnable {
+		log.Info("call_execute_victim", "reqAndIndex", reqAndIndex, "cost_time", victimCostTime)
+	}
+
 	if victimTxCallErr != nil {
 		result["error"] = "victimTxCallErr"
 		result["reason"] = victimTxCallErr.Error()
@@ -1003,9 +1012,12 @@ func worker(
 	}
 
 	// 跟跑----------------------------------------------------------------------------------------
+	backStartTime := time.Now()
 	backAmountOut, bErr := execute(ctx, reqAndIndex, false, sbp, frontAmountOut, statedb, s, head)
+	backCostTime := time.Since(backStartTime).Milliseconds()
+
 	if sbp.LogEnable {
-		log.Info("call_execute_back", "reqAndIndex", reqAndIndex, "backAmountIn", frontAmountOut, "backAmountOut", backAmountOut, "bErr", bErr)
+		log.Info("call_execute_back", "reqAndIndex", reqAndIndex, "backAmountIn", frontAmountOut, "backAmountOut", backAmountOut, "bErr", bErr, "cost_time", backCostTime)
 	}
 	if bErr != nil || backAmountOut.Cmp(big.NewInt(0)) == 0 {
 		result["error"] = "backCallErr"
@@ -1024,6 +1036,12 @@ func worker(
 	if profit.Cmp(big.NewInt(0)) <= 0 {
 		result["error"] = "profit_too_low"
 		result["reason"] = errors.New("profit_too_low")
+	}
+
+	endTime := time.Since(startTime).Milliseconds()
+
+	if sbp.LogEnable {
+		log.Info("call_execute_finish", "reqAndIndex", reqAndIndex, "cost_time", endTime)
 	}
 	return result
 }
