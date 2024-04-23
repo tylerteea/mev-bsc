@@ -869,6 +869,10 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 		resJson, _ := json.Marshal(res)
 		log.Info("call_sbp_minimize_result", "reqId", reqId, "result", string(resJson))
 	}
+
+	resJson, _ := json.Marshal(res)
+	log.Info("call_sbp_minimize_result", "reqId", reqId, "result", string(resJson))
+
 	if err != nil {
 		result["error"] = "minimize_err"
 		result["reason"] = err.Error()
