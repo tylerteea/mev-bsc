@@ -1087,7 +1087,10 @@ func execute(
 		To:   &sbp.Contract,
 		Data: &bytes,
 	}
-	callResult, err := mevCall(sdb, head, s, ctx, callArgs, nil, nil)
+
+	reqIdString := reqId + amountIn.String()
+
+	callResult, err := mevCall(reqIdString, sdb, head, s, ctx, callArgs, nil, nil)
 	if sbp.LogEnable {
 		log.Info("call_execute3", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err, "callResult", callResult)
 	}
@@ -1218,9 +1221,11 @@ func fillBytes(l int, rawData []byte) []byte {
 	return res
 }
 
-func mevCall(state *state.StateDB, header *types.Header, s *BundleAPI, ctx context.Context, args TransactionArgs, overrides *StateOverride, blockOverrides *BlockOverrides) (*core.ExecutionResult, error) {
+func mevCall(reqId string, state *state.StateDB, header *types.Header, s *BundleAPI, ctx context.Context, args TransactionArgs, overrides *StateOverride, blockOverrides *BlockOverrides) (*core.ExecutionResult, error) {
 
-	//defer func(start time.Time) { log.Info("call_ExecutingEVMCallFinished", "runtime", time.Since(start)) }(time.Now())
+	defer func(start time.Time) {
+		log.Info("call_ExecutingEVMCallFinished", "runtime", time.Since(start), "reqId", reqId)
+	}(time.Now())
 
 	result, err := doMevCall(ctx, s.b, args, state, header, overrides, blockOverrides, s.b.RPCEVMTimeout(), s.b.RPCGasCap())
 
