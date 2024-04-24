@@ -419,7 +419,7 @@ func countMatchingProtocolsBsc(protocols []Protocol, caps []Cap) int {
 		}
 	}
 	if !isBsc {
-		//return 0
+		return 0
 	}
 	return n
 }
