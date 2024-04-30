@@ -1231,8 +1231,8 @@ func mevCall(reqId string, state *state.StateDB, header *types.Header, s *Bundle
 	defer func(start time.Time) {
 		log.Info("call_ExecutingEVMCallFinished", "runtime", time.Since(start), "reqId", reqId)
 	}(time.Now())
-
-	result, err := doMevCall(ctx, s.b, args, state, header, overrides, blockOverrides, s.b.RPCEVMTimeout(), s.b.RPCGasCap())
+	//result, err := doMevCall(ctx, s.b, args, state, header, overrides, blockOverrides, s.b.RPCEVMTimeout(), s.b.RPCGasCap())
+	result, err := doMevCall(ctx, s.b, args, state, header, overrides, blockOverrides, 50*time.Millisecond, s.b.RPCGasCap())
 
 	if err != nil {
 		return nil, err
