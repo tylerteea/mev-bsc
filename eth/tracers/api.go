@@ -1100,6 +1100,7 @@ func (api *API) traceTx(ctx context.Context, message *core.Message, txctx *Conte
 			return nil, err
 		}
 	}
+	log.Info("打印TraceCall_timeout", "timeout", timeout.String())
 	deadlineCtx, cancel := context.WithTimeout(ctx, timeout)
 	go func() {
 		<-deadlineCtx.Done()
