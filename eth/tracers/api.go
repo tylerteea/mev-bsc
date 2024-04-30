@@ -1004,8 +1004,6 @@ func (api *API) TraceTransaction(ctx context.Context, hash common.Hash, config *
 // top of the provided block and returns them as a JSON object.
 func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, config *TraceCallConfig) (interface{}, error) {
 	// Try to retrieve the specified block
-	marshal, _ := json.Marshal(config)
-	log.Info("打印TraceCall", "config", marshal)
 	var (
 		err   error
 		block *types.Block
@@ -1100,7 +1098,6 @@ func (api *API) traceTx(ctx context.Context, message *core.Message, txctx *Conte
 			return nil, err
 		}
 	}
-	log.Info("打印TraceCall_timeout", "timeout", timeout.String())
 	deadlineCtx, cancel := context.WithTimeout(ctx, timeout)
 	go func() {
 		<-deadlineCtx.Done()
