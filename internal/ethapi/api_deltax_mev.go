@@ -433,12 +433,14 @@ func (s *BundleAPI) GetNowValidators(ctx context.Context, number *rpc.BlockNumbe
 		if blockNum.Cmp(nowEpoch) > 0 && header.Number.Cmp(nowEpoch) < 0 {
 			result["error"] = "blockNum_out_of_epoch_limit"
 			result["reason"] = "当前header属于上个epoch，但blockNum属于下个epoch,无法预测此种情况"
+			result["number"] = blockNum
 			return result
 		}
 
 		if new(big.Int).Sub(blockNum, header.Number).Cmp(epochNum) > 0 {
 			result["error"] = "blockNum_great_header_200"
 			result["reason"] = "请求的块号比最新header大200块"
+			result["number"] = blockNum
 			return result
 		}
 	} else {
