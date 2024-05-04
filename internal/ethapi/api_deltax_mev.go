@@ -410,7 +410,7 @@ func (s *BundleAPI) GetNowValidators(ctx context.Context, number *rpc.BlockNumbe
 
 	result := make(map[string]interface{})
 
-	result["number"] = number
+	result["number"] = number.Int64()
 
 	result["error"] = "default"
 	result["reason"] = "default"
@@ -453,7 +453,7 @@ func (s *BundleAPI) GetBuilder(ctx context.Context, number *rpc.BlockNumber) map
 
 	result := make(map[string]interface{})
 
-	result["number"] = number
+	result["number"] = number.Int64()
 
 	result["error"] = "default"
 	result["reason"] = "default"
@@ -490,8 +490,10 @@ func (s *BundleAPI) GetBuilder(ctx context.Context, number *rpc.BlockNumber) map
 
 	builderMap := make(map[uint64]interface{})
 
+	j := uint64(0)
 	for i := offset; i < uint64(lengthValidators); i++ {
-		builderMap[offset] = validators[offset]
+		builderMap[header.Number.Uint64()+j] = validators[offset]
+		j++
 	}
 
 	result["error"] = ""
