@@ -511,9 +511,9 @@ func (s *BundleAPI) GetBuilder(ctx context.Context, number *rpc.BlockNumber) map
 	}
 
 	builderMap := make(map[uint64]interface{})
-	for i := uint64(0); i < targetEpoch.Uint64(); i++ {
-		offset := (numHeader.Number.Uint64() + i + 1) % uint64(len(validators))
-		builderMap[numHeader.Number.Uint64()+i] = validators[offset]
+	for i := blockNum.Uint64(); i < targetEpoch.Uint64(); i++ {
+		offset := (i + 1) % uint64(len(validators))
+		builderMap[i] = validators[offset]
 	}
 
 	result["error"] = ""
