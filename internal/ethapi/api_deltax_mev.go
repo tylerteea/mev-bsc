@@ -419,12 +419,16 @@ func (s *BundleAPI) GetNowValidators(ctx context.Context, number *rpc.BlockNumbe
 	result["reason"] = "default"
 
 	if parliaAPI == nil {
+
+		log.Info("初始化parliaAPI", "number", number)
+
 		apis := s.b.Engine().APIs(s.chain)
 		for _, api := range apis {
 			if api.Namespace == "parlia" {
 				parliaApiTmp, ok := api.Service.(*parlia.API)
 				if ok {
 					parliaAPI = parliaApiTmp
+					log.Info("parliaAPI初始成功", "number", number)
 				}
 			}
 		}
