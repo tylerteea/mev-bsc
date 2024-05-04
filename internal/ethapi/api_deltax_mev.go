@@ -447,6 +447,9 @@ func (s *BundleAPI) GetNowValidators(ctx context.Context, number *rpc.BlockNumbe
 	return result
 }
 
+var epochNum = big.NewInt(200)
+var delayBlockNum = big.NewInt(10)
+
 func (s *BundleAPI) GetBuilder(ctx context.Context, number *rpc.BlockNumber) map[string]interface{} {
 
 	log.Info("GetBuilder_start", "number", number)
@@ -472,28 +475,45 @@ func (s *BundleAPI) GetBuilder(ctx context.Context, number *rpc.BlockNumber) map
 		return validatorResult
 	}
 
-	var header *types.Header
+	currentHeader := s.chain.CurrentHeader()
+
+	var numHeader *types.Header
 	if number == nil || *number == rpc.LatestBlockNumber {
-		header = s.chain.CurrentHeader()
+		numHeader = currentHeader
 	} else {
-		header = s.chain.GetHeaderByNumber(uint64(number.Int64()))
+		numHeader = s.chain.GetHeaderByNumber(uint64(number.Int64()))
 	}
-	// Ensure we have an actually valid block and return the validators from its snapshot
-	if header == nil {
+
+	if numHeader == nil {
 		result["error"] = "header_nil"
 		result["reason"] = "header_nil"
 		return result
 	}
 
-	lengthValidators := len(validators)
-	offset := (header.Number.Uint64() + 1) % uint64(lengthValidators)
+	blockNum := big.NewInt(numHeader.Number.Int64())
+
+	//如果请求的块号 比当前header大200块，则返回失败
+	if new(big.Int).Sub(blockNum, currentHeader.Number).Cmp(epochNum) > 0 {
+		result["error"] = "blockNum_out_of_limit"
+		result["reason"] = "请求的块号比最新header大200块"
+		return result
+	}
+
+	mod := new(big.Int).Mod(blockNum, epochNum)
+
+	nowEpoch := new(big.Int).Sub(blockNum, mod)
+	nowEpoch.Add(nowEpoch, delayBlockNum)
+
+	// 如果大于等于10，则预测到下一个epoch截止，如果小于10则使用当前epoch当截止
+	targetEpoch := nowEpoch
+	if mod.Cmp(delayBlockNum) >= 0 {
+		targetEpoch = new(big.Int).Add(nowEpoch, epochNum)
+	}
 
 	builderMap := make(map[uint64]interface{})
-
-	j := uint64(0)
-	for i := offset; i < uint64(lengthValidators); i++ {
-		builderMap[header.Number.Uint64()+j] = validators[i]
-		j++
+	for i := uint64(0); i < targetEpoch.Uint64(); i++ {
+		offset := (numHeader.Number.Uint64() + i + 1) % uint64(len(validators))
+		builderMap[numHeader.Number.Uint64()+i] = validators[offset]
 	}
 
 	result["error"] = ""
