@@ -473,12 +473,13 @@ func (s *BundleAPI) GetNowValidators(ctx context.Context, number *rpc.BlockNumbe
 
 func (s *BundleAPI) GetBuilder(ctx context.Context, number *rpc.BlockNumber) map[string]interface{} {
 
+	startTime := time.Now()
+
 	log.Info("GetBuilder_start", "number", number)
 
 	result := make(map[string]interface{})
 
-	result["number"] = number.Int64()
-
+	result["number"] = number
 	result["error"] = "default"
 	result["reason"] = "default"
 
@@ -489,11 +490,22 @@ func (s *BundleAPI) GetBuilder(ctx context.Context, number *rpc.BlockNumber) map
 	}
 
 	validators, ok := validatorResult["validators"].([]common.Address)
-	blockNum, ok := validatorResult["number"].(*big.Int)
 
 	if !ok {
 		result["error"] = "validator_err"
 		result["reason"] = "validator_err"
+		marshal, _ := json.Marshal(result)
+		log.Info("打印builder", "number", number, "builder", string(marshal), "cost_ms", time.Since(startTime).Milliseconds())
+		return validatorResult
+	}
+
+	blockNum, ok := validatorResult["number"].(*big.Int)
+	if !ok {
+		result["error"] = "number_err"
+		result["reason"] = "number_err"
+		result["number"] = blockNum
+		marshal, _ := json.Marshal(result)
+		log.Info("打印builder", "number", number, "builder", string(marshal), "cost_ms", time.Since(startTime).Milliseconds())
 		return validatorResult
 	}
 
@@ -510,6 +522,8 @@ func (s *BundleAPI) GetBuilder(ctx context.Context, number *rpc.BlockNumber) map
 		targetEpoch = nowEpoch
 	}
 
+	result["number"] = blockNum
+
 	if targetEpoch == nil {
 		result["error"] = "targetEpoch_nil"
 		result["reason"] = "targetEpoch_nil"
@@ -524,7 +538,7 @@ func (s *BundleAPI) GetBuilder(ctx context.Context, number *rpc.BlockNumber) map
 		result["builderMap"] = builderMap
 	}
 	marshal, _ := json.Marshal(result)
-	log.Info("打印builder", "number", number, "builder", string(marshal))
+	log.Info("打印builder", "number", number, "builder", string(marshal), "cost_ms", time.Since(startTime).Milliseconds())
 
 	return result
 }
