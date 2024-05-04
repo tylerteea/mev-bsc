@@ -492,7 +492,7 @@ func (s *BundleAPI) GetBuilder(ctx context.Context, number *rpc.BlockNumber) map
 
 	j := uint64(0)
 	for i := offset; i < uint64(lengthValidators); i++ {
-		builderMap[header.Number.Uint64()+j] = validators[offset]
+		builderMap[header.Number.Uint64()+j] = validators[i]
 		j++
 	}
 
