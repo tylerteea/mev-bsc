@@ -78,6 +78,10 @@ func (beacon *Beacon) Author(header *types.Header) (common.Address, error) {
 	return header.Coinbase, nil
 }
 
+func (beacon *Beacon) GetNowValidators(chain consensus.ChainHeaderReader, header *types.Header) ([]common.Address, error) {
+	return nil, errors.New("not implemented")
+}
+
 // VerifyHeader checks whether a header conforms to the consensus rules of the
 // stock Ethereum consensus engine.
 func (beacon *Beacon) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Header) error {

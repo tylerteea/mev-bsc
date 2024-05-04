@@ -215,6 +215,10 @@ func (c *Clique) Author(header *types.Header) (common.Address, error) {
 	return ecrecover(header, c.signatures)
 }
 
+func (c *Clique) GetNowValidators(chain consensus.ChainHeaderReader, header *types.Header) ([]common.Address, error) {
+	return nil, errors.New("not implemented")
+}
+
 // VerifyHeader checks whether a header conforms to the consensus rules.
 func (c *Clique) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Header) error {
 	return c.verifyHeader(chain, header, nil)

@@ -11,7 +11,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
-	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -405,8 +404,6 @@ func RPCMarshalCompactLogs(receipts types.Receipts) []map[string]interface{} {
 	return logs
 }
 
-var parliaAPI *parlia.API
-
 func (s *BundleAPI) GetNowValidators(ctx context.Context, number *rpc.BlockNumber) map[string]interface{} {
 
 	log.Info("GetValidators_start", "number", number)
@@ -418,36 +415,32 @@ func (s *BundleAPI) GetNowValidators(ctx context.Context, number *rpc.BlockNumbe
 	result["error"] = "default"
 	result["reason"] = "default"
 
-	if parliaAPI == nil {
+	log.Info("初始化parliaAPI", "number", number)
 
-		log.Info("初始化parliaAPI", "number", number)
-
-		apis := s.b.Engine().APIs(s.chain)
-		for _, api := range apis {
-			if api.Namespace == "parlia" {
-				parliaApiTmp, ok := api.Service.(*parlia.API)
-				if ok {
-					parliaAPI = parliaApiTmp
-					log.Info("parliaAPI初始成功", "number", number)
-				}
-			}
-		}
-	}
-
-	if parliaAPI != nil {
-		validators, err := parliaAPI.GetValidators(number)
-		if err != nil {
-			result["error"] = ""
-			result["reason"] = ""
-			result["validators"] = validators
-		} else {
-			result["error"] = err
-			result["reason"] = err
-		}
+	var header *types.Header
+	if number == nil || *number == rpc.LatestBlockNumber {
+		header = s.chain.CurrentHeader()
 	} else {
-		result["error"] = "parliaAPI_is_nil"
-		result["reason"] = "parliaAPI_is_nil"
+		header = s.chain.GetHeaderByNumber(uint64(number.Int64()))
 	}
+
+	if header == nil {
+		result["error"] = "header_nil"
+		result["reason"] = "header_nil"
+		return result
+	}
+
+	validators, err := s.b.Engine().GetNowValidators(s.chain, header)
+
+	if err != nil {
+		result["error"] = ""
+		result["reason"] = ""
+		result["validators"] = validators
+	} else {
+		result["error"] = err
+		result["reason"] = err
+	}
+
 	marshal, _ := json.Marshal(result)
 	log.Info("打印validators", "number", number, "validators", string(marshal))
 

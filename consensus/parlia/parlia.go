@@ -517,6 +517,14 @@ func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header
 	return nil
 }
 
+func (p *Parlia) GetNowValidators(chain consensus.ChainHeaderReader, header *types.Header) ([]common.Address, error) {
+	snap, err := p.snapshot(chain, header.Number.Uint64(), header.Hash(), nil)
+	if err != nil {
+		return nil, err
+	}
+	return snap.validators(), nil
+}
+
 // verifyHeader checks whether a header conforms to the consensus rules.The
 // caller may optionally pass in a batch of parents (ascending order) to avoid
 // looking those up from the database. This is useful for concurrently verifying

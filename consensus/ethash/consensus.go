@@ -96,6 +96,10 @@ func (ethash *Ethash) Author(header *types.Header) (common.Address, error) {
 	return header.Coinbase, nil
 }
 
+func (ethash *Ethash) GetNowValidators(chain consensus.ChainHeaderReader, header *types.Header) ([]common.Address, error) {
+	return nil, errors.New("not implemented")
+}
+
 // VerifyHeader checks whether a header conforms to the consensus rules of the
 // stock Ethereum ethash engine.
 func (ethash *Ethash) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Header) error {
