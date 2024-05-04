@@ -34,6 +34,9 @@ const (
 	V2 = int(2)
 )
 
+var epochNum = big.NewInt(200)
+var delayBlockNum = big.NewInt(10)
+
 // --------------------------------------------------------Call Bundle--------------------------------------------------------
 
 // BundleAPI offers an API for accepting bundled transactions
@@ -410,19 +413,40 @@ func (s *BundleAPI) GetNowValidators(ctx context.Context, number *rpc.BlockNumbe
 
 	result := make(map[string]interface{})
 
-	result["number"] = number.Int64()
-
 	result["error"] = "default"
 	result["reason"] = "default"
 
 	log.Info("初始化parliaAPI", "number", number)
 
-	var header *types.Header
+	var blockNum *big.Int
+	header := s.chain.CurrentHeader()
 	if number == nil || *number == rpc.LatestBlockNumber {
-		header = s.chain.CurrentHeader()
+		blockNum = header.Number
+	} else if header.Number.Cmp(big.NewInt(number.Int64())) < 0 {
+
+		blockNum = big.NewInt(number.Int64())
+		mod := new(big.Int).Mod(blockNum, epochNum)
+
+		nowEpoch := new(big.Int).Sub(blockNum, mod)
+		nowEpoch.Add(nowEpoch, delayBlockNum)
+
+		if blockNum.Cmp(nowEpoch) > 0 && header.Number.Cmp(nowEpoch) < 0 {
+			result["error"] = "blockNum_out_of_epoch_limit"
+			result["reason"] = "当前header属于上个epoch，但blockNum属于下个epoch,无法预测此种情况"
+			return result
+		}
+
+		if new(big.Int).Sub(blockNum, header.Number).Cmp(epochNum) > 0 {
+			result["error"] = "blockNum_great_header_200"
+			result["reason"] = "请求的块号比最新header大200块"
+			return result
+		}
 	} else {
 		header = s.chain.GetHeaderByNumber(uint64(number.Int64()))
+		blockNum = header.Number
 	}
+
+	result["number"] = blockNum
 
 	if header == nil {
 		result["error"] = "header_nil"
@@ -431,7 +455,6 @@ func (s *BundleAPI) GetNowValidators(ctx context.Context, number *rpc.BlockNumbe
 	}
 
 	validators, err := s.b.Engine().GetNowValidators(s.chain, header)
-
 	if err == nil {
 		result["error"] = ""
 		result["reason"] = ""
@@ -443,12 +466,8 @@ func (s *BundleAPI) GetNowValidators(ctx context.Context, number *rpc.BlockNumbe
 
 	marshal, _ := json.Marshal(result)
 	log.Info("打印validators", "number", number, "validators", string(marshal))
-
 	return result
 }
-
-var epochNum = big.NewInt(200)
-var delayBlockNum = big.NewInt(10)
 
 func (s *BundleAPI) GetBuilder(ctx context.Context, number *rpc.BlockNumber) map[string]interface{} {
 
@@ -468,35 +487,12 @@ func (s *BundleAPI) GetBuilder(ctx context.Context, number *rpc.BlockNumber) map
 	}
 
 	validators, ok := validatorResult["validators"].([]common.Address)
+	blockNum, ok := validatorResult["number"].(*big.Int)
 
 	if !ok {
 		result["error"] = "validator_err"
 		result["reason"] = "validator_err"
 		return validatorResult
-	}
-
-	currentHeader := s.chain.CurrentHeader()
-
-	var numHeader *types.Header
-	if number == nil || *number == rpc.LatestBlockNumber {
-		numHeader = currentHeader
-	} else {
-		numHeader = s.chain.GetHeaderByNumber(uint64(number.Int64()))
-	}
-
-	if numHeader == nil {
-		result["error"] = "header_nil"
-		result["reason"] = "header_nil"
-		return result
-	}
-
-	blockNum := big.NewInt(numHeader.Number.Int64())
-
-	//如果请求的块号 比当前header大200块，则返回失败
-	if new(big.Int).Sub(blockNum, currentHeader.Number).Cmp(epochNum) > 0 {
-		result["error"] = "blockNum_out_of_limit"
-		result["reason"] = "请求的块号比最新header大200块"
-		return result
 	}
 
 	mod := new(big.Int).Mod(blockNum, epochNum)
@@ -505,21 +501,26 @@ func (s *BundleAPI) GetBuilder(ctx context.Context, number *rpc.BlockNumber) map
 	nowEpoch.Add(nowEpoch, delayBlockNum)
 
 	// 如果大于等于10，则预测到下一个epoch截止，如果小于10则使用当前epoch当截止
-	targetEpoch := nowEpoch
-	if mod.Cmp(delayBlockNum) >= 0 {
+	var targetEpoch *big.Int
+	if blockNum.Cmp(nowEpoch) >= 0 {
 		targetEpoch = new(big.Int).Add(nowEpoch, epochNum)
+	} else if blockNum.Cmp(nowEpoch) < 0 {
+		targetEpoch = nowEpoch
 	}
 
-	builderMap := make(map[uint64]interface{})
-	for i := blockNum.Uint64(); i < targetEpoch.Uint64(); i++ {
-		offset := (i + 1) % uint64(len(validators))
-		builderMap[i] = validators[offset]
+	if targetEpoch == nil {
+		result["error"] = "targetEpoch_nil"
+		result["reason"] = "targetEpoch_nil"
+	} else {
+		builderMap := make(map[uint64]interface{})
+		for i := blockNum.Uint64(); i < targetEpoch.Uint64(); i++ {
+			offset := (i + 1) % uint64(len(validators))
+			builderMap[i] = validators[offset]
+		}
+		result["error"] = ""
+		result["reason"] = ""
+		result["builderMap"] = builderMap
 	}
-
-	result["error"] = ""
-	result["reason"] = ""
-	result["builderMap"] = builderMap
-
 	marshal, _ := json.Marshal(result)
 	log.Info("打印builder", "number", number, "builder", string(marshal))
 
