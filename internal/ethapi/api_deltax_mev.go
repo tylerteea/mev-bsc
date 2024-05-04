@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
+	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -402,6 +403,108 @@ func RPCMarshalCompactLogs(receipts types.Receipts) []map[string]interface{} {
 		}
 	}
 	return logs
+}
+
+var parliaAPI *parlia.API
+
+func (s *BundleAPI) GetNowValidators(ctx context.Context, number *rpc.BlockNumber) map[string]interface{} {
+
+	log.Info("GetValidators_start", "number", number)
+
+	result := make(map[string]interface{})
+
+	result["number"] = number
+
+	result["error"] = "default"
+	result["reason"] = "default"
+
+	if parliaAPI == nil {
+		apis := s.b.Engine().APIs(s.chain)
+		for _, api := range apis {
+			if api.Namespace == "parlia" {
+				parliaApiTmp, ok := api.Service.(*parlia.API)
+				if ok {
+					parliaAPI = parliaApiTmp
+				}
+			}
+		}
+	}
+
+	if parliaAPI != nil {
+		validators, err := parliaAPI.GetValidators(number)
+		if err != nil {
+			result["error"] = ""
+			result["reason"] = ""
+			result["validators"] = validators
+		} else {
+			result["error"] = err
+			result["reason"] = err
+		}
+	} else {
+		result["error"] = "parliaAPI_is_nil"
+		result["reason"] = "parliaAPI_is_nil"
+	}
+	marshal, _ := json.Marshal(result)
+	log.Info("打印validators", "number", number, "validators", string(marshal))
+
+	return result
+}
+
+func (s *BundleAPI) GetBuilder(ctx context.Context, number *rpc.BlockNumber) map[string]interface{} {
+
+	log.Info("GetBuilder_start", "number", number)
+
+	result := make(map[string]interface{})
+
+	result["number"] = number
+
+	result["error"] = "default"
+	result["reason"] = "default"
+
+	validatorResult := s.GetNowValidators(ctx, number)
+
+	if validatorResult == nil || validatorResult["error"] != "" {
+		return validatorResult
+	}
+
+	validators, ok := validatorResult["validators"].([]common.Address)
+
+	if !ok {
+		result["error"] = "validator_err"
+		result["reason"] = "validator_err"
+		return validatorResult
+	}
+
+	var header *types.Header
+	if number == nil || *number == rpc.LatestBlockNumber {
+		header = s.chain.CurrentHeader()
+	} else {
+		header = s.chain.GetHeaderByNumber(uint64(number.Int64()))
+	}
+	// Ensure we have an actually valid block and return the validators from its snapshot
+	if header == nil {
+		result["error"] = "header_nil"
+		result["reason"] = "header_nil"
+		return result
+	}
+
+	lengthValidators := len(validators)
+	offset := (header.Number.Uint64() + 1) % uint64(lengthValidators)
+
+	builderMap := make(map[uint64]interface{})
+
+	for i := offset; i < uint64(lengthValidators); i++ {
+		builderMap[offset] = validators[offset]
+	}
+
+	result["error"] = ""
+	result["reason"] = ""
+	result["builderMap"] = builderMap
+
+	marshal, _ := json.Marshal(result)
+	log.Info("打印builder", "number", number, "builder", string(marshal))
+
+	return result
 }
 
 // SbpBuyArgs SandwichBestProfitArgs represents the arguments for a call.
