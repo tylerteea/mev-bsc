@@ -430,7 +430,7 @@ func (s *BundleAPI) GetNowValidators(ctx context.Context, number *rpc.BlockNumbe
 		nowEpoch := new(big.Int).Sub(blockNum, mod)
 		nowEpoch.Add(nowEpoch, delayBlockNum)
 
-		if blockNum.Cmp(nowEpoch) > 0 && header.Number.Cmp(nowEpoch) < 0 {
+		if blockNum.Cmp(nowEpoch) >= 0 && header.Number.Cmp(nowEpoch) < 0 {
 			result["error"] = "blockNum_out_of_epoch_limit"
 			result["reason"] = "当前header属于上个epoch，但blockNum属于下个epoch,无法预测此种情况"
 			result["number"] = blockNum
