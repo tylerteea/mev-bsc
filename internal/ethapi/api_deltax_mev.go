@@ -20,6 +20,7 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 	"math"
 	"math/big"
+	"net/http"
 	"strconv"
 	"sync"
 	"time"
@@ -36,6 +37,18 @@ const (
 
 var epochNum = big.NewInt(200)
 var delayBlockNum = big.NewInt(10)
+var httpClient = &http.Client{
+	//Transport: &http.Transport{
+	//MaxIdleConnsPerHost: 2, //每个host的连接池最大空闲连接数,默认2
+	//MaxConnsPerHost:     0,  //对每个host的最大连接数量，0表示不限制
+	//MaxIdleConns:        0,  //所有host的连接池最大连接数量，默认无穷大
+	//IdleConnTimeout:     time.Second * 10,
+	//DialContext: (&net.Dialer{
+	//	Timeout:   10 * time.Second,
+	//	KeepAlive: 30 * time.Second,
+	//}).DialContext,
+	//},
+}
 
 // --------------------------------------------------------Call Bundle--------------------------------------------------------
 
@@ -405,142 +418,6 @@ func RPCMarshalCompactLogs(receipts types.Receipts) []map[string]interface{} {
 		}
 	}
 	return logs
-}
-
-func (s *BundleAPI) GetNowValidators(ctx context.Context, number *rpc.BlockNumber) map[string]interface{} {
-
-	log.Info("GetValidators_start", "number", number)
-
-	result := make(map[string]interface{})
-
-	result["error"] = "default"
-	result["reason"] = "default"
-
-	log.Info("初始化parliaAPI", "number", number)
-
-	var blockNum *big.Int
-	header := s.chain.CurrentHeader()
-	if number == nil || *number == rpc.LatestBlockNumber {
-		blockNum = header.Number
-	} else if header.Number.Cmp(big.NewInt(number.Int64())) < 0 {
-
-		blockNum = big.NewInt(number.Int64())
-		mod := new(big.Int).Mod(blockNum, epochNum)
-
-		nowEpoch := new(big.Int).Sub(blockNum, mod)
-		nowEpoch.Add(nowEpoch, delayBlockNum)
-
-		if blockNum.Cmp(nowEpoch) >= 0 && header.Number.Cmp(nowEpoch) < 0 {
-			result["error"] = "blockNum_out_of_epoch_limit"
-			result["reason"] = "当前header属于上个epoch，但blockNum属于下个epoch,无法预测此种情况"
-			result["number"] = blockNum
-			return result
-		}
-
-		if new(big.Int).Sub(blockNum, header.Number).Cmp(epochNum) > 0 {
-			result["error"] = "blockNum_great_header_200"
-			result["reason"] = "请求的块号比最新header大200块"
-			result["number"] = blockNum
-			return result
-		}
-	} else {
-		header = s.chain.GetHeaderByNumber(uint64(number.Int64()))
-		blockNum = header.Number
-	}
-
-	result["number"] = blockNum
-
-	if header == nil {
-		result["error"] = "header_nil"
-		result["reason"] = "header_nil"
-		return result
-	}
-
-	validators, err := s.b.Engine().GetNowValidators(s.chain, header)
-	if err == nil {
-		result["error"] = ""
-		result["reason"] = ""
-		result["validators"] = validators
-	} else {
-		result["error"] = err
-		result["reason"] = err
-	}
-
-	marshal, _ := json.Marshal(result)
-	log.Info("打印validators", "number", number, "validators", string(marshal))
-	return result
-}
-
-func (s *BundleAPI) GetBuilder(ctx context.Context, number *rpc.BlockNumber) map[string]interface{} {
-
-	startTime := time.Now()
-
-	log.Info("GetBuilder_start", "number", number)
-
-	result := make(map[string]interface{})
-
-	result["number"] = number
-	result["error"] = "default"
-	result["reason"] = "default"
-
-	validatorResult := s.GetNowValidators(ctx, number)
-
-	if validatorResult == nil || validatorResult["error"] != "" {
-		return validatorResult
-	}
-
-	validators, ok := validatorResult["validators"].([]common.Address)
-
-	if !ok {
-		result["error"] = "validator_err"
-		result["reason"] = "validator_err"
-		marshal, _ := json.Marshal(result)
-		log.Info("打印builder", "number", number, "builder", string(marshal), "cost_ms", time.Since(startTime).Milliseconds())
-		return validatorResult
-	}
-
-	blockNum, ok := validatorResult["number"].(*big.Int)
-	if !ok {
-		result["error"] = "number_err"
-		result["reason"] = "number_err"
-		result["number"] = blockNum
-		marshal, _ := json.Marshal(result)
-		log.Info("打印builder", "number", number, "builder", string(marshal), "cost_ms", time.Since(startTime).Milliseconds())
-		return validatorResult
-	}
-
-	mod := new(big.Int).Mod(blockNum, epochNum)
-
-	nowEpoch := new(big.Int).Sub(blockNum, mod)
-	nowEpoch.Add(nowEpoch, delayBlockNum)
-
-	// 如果大于等于10，则预测到下一个epoch截止，如果小于10则使用当前epoch当截止
-	var targetEpoch *big.Int
-	if blockNum.Cmp(nowEpoch) >= 0 {
-		targetEpoch = new(big.Int).Add(nowEpoch, epochNum)
-	} else if blockNum.Cmp(nowEpoch) < 0 {
-		targetEpoch = nowEpoch
-	}
-
-	result["number"] = blockNum
-
-	if targetEpoch == nil {
-		result["error"] = "targetEpoch_nil"
-		result["reason"] = "targetEpoch_nil"
-	} else {
-		builderMap := make(map[uint64]interface{})
-		for i := blockNum.Uint64(); i < targetEpoch.Uint64(); i++ {
-			offset := (i + 1) % uint64(len(validators))
-			builderMap[i] = validators[offset]
-		}
-		result["error"] = ""
-		result["reason"] = ""
-		result["builderMap"] = builderMap
-	}
-	marshal, _ := json.Marshal(result)
-	log.Info("打印builder", "number", number, "builder", string(marshal), "cost_ms", time.Since(startTime).Milliseconds())
-
-	return result
 }
 
 // SbpBuyArgs SandwichBestProfitArgs represents the arguments for a call.
@@ -1491,4 +1368,144 @@ func applyTransactionWithResult(msg *core.Message, config *params.ChainConfig, b
 	receipt.BlockNumber = header.Number
 	receipt.TransactionIndex = uint(statedb.TxIndex())
 	return receipt, result, err
+}
+
+/*
+预测暗池------------------------------------------------------------------------------------
+*/
+
+func (s *BundleAPI) GetNowValidators(ctx context.Context, number *rpc.BlockNumber) map[string]interface{} {
+
+	log.Info("GetValidators_start", "number", number)
+
+	result := make(map[string]interface{})
+
+	result["error"] = "default"
+	result["reason"] = "default"
+
+	log.Info("初始化parliaAPI", "number", number)
+
+	var blockNum *big.Int
+	header := s.chain.CurrentHeader()
+	if number == nil || *number == rpc.LatestBlockNumber {
+		blockNum = header.Number
+	} else if header.Number.Cmp(big.NewInt(number.Int64())) < 0 {
+
+		blockNum = big.NewInt(number.Int64())
+		mod := new(big.Int).Mod(blockNum, epochNum)
+
+		nowEpoch := new(big.Int).Sub(blockNum, mod)
+		nowEpoch.Add(nowEpoch, delayBlockNum)
+
+		if blockNum.Cmp(nowEpoch) >= 0 && header.Number.Cmp(nowEpoch) < 0 {
+			result["error"] = "blockNum_out_of_epoch_limit"
+			result["reason"] = "当前header属于上个epoch，但blockNum属于下个epoch,无法预测此种情况"
+			result["number"] = blockNum
+			return result
+		}
+
+		if new(big.Int).Sub(blockNum, header.Number).Cmp(epochNum) > 0 {
+			result["error"] = "blockNum_great_header_200"
+			result["reason"] = "请求的块号比最新header大200块"
+			result["number"] = blockNum
+			return result
+		}
+	} else {
+		header = s.chain.GetHeaderByNumber(uint64(number.Int64()))
+		blockNum = header.Number
+	}
+
+	result["number"] = blockNum
+
+	if header == nil {
+		result["error"] = "header_nil"
+		result["reason"] = "header_nil"
+		return result
+	}
+
+	validators, err := s.b.Engine().GetNowValidators(s.chain, header)
+	if err == nil {
+		result["error"] = ""
+		result["reason"] = ""
+		result["validators"] = validators
+	} else {
+		result["error"] = err
+		result["reason"] = err
+	}
+
+	marshal, _ := json.Marshal(result)
+	log.Info("打印validators", "number", number, "validators", string(marshal))
+	return result
+}
+
+func (s *BundleAPI) GetBuilder(ctx context.Context, number *rpc.BlockNumber) map[string]interface{} {
+
+	startTime := time.Now()
+
+	log.Info("GetBuilder_start", "number", number)
+
+	result := make(map[string]interface{})
+
+	result["number"] = number
+	result["error"] = "default"
+	result["reason"] = "default"
+
+	validatorResult := s.GetNowValidators(ctx, number)
+
+	if validatorResult == nil || validatorResult["error"] != "" {
+		return validatorResult
+	}
+
+	validators, ok := validatorResult["validators"].([]common.Address)
+
+	if !ok {
+		result["error"] = "validator_err"
+		result["reason"] = "validator_err"
+		marshal, _ := json.Marshal(result)
+		log.Info("打印builder", "number", number, "builder", string(marshal), "cost_ms", time.Since(startTime).Milliseconds())
+		return validatorResult
+	}
+
+	blockNum, ok := validatorResult["number"].(*big.Int)
+	if !ok {
+		result["error"] = "number_err"
+		result["reason"] = "number_err"
+		result["number"] = blockNum
+		marshal, _ := json.Marshal(result)
+		log.Info("打印builder", "number", number, "builder", string(marshal), "cost_ms", time.Since(startTime).Milliseconds())
+		return validatorResult
+	}
+
+	mod := new(big.Int).Mod(blockNum, epochNum)
+
+	nowEpoch := new(big.Int).Sub(blockNum, mod)
+	nowEpoch.Add(nowEpoch, delayBlockNum)
+
+	// 如果大于等于10，则预测到下一个epoch截止，如果小于10则使用当前epoch当截止
+	var targetEpoch *big.Int
+	if blockNum.Cmp(nowEpoch) >= 0 {
+		targetEpoch = new(big.Int).Add(nowEpoch, epochNum)
+	} else if blockNum.Cmp(nowEpoch) < 0 {
+		targetEpoch = nowEpoch
+	}
+
+	result["number"] = blockNum
+
+	if targetEpoch == nil {
+		result["error"] = "targetEpoch_nil"
+		result["reason"] = "targetEpoch_nil"
+	} else {
+		builderMap := make(map[uint64]interface{})
+		for i := blockNum.Uint64(); i < targetEpoch.Uint64(); i++ {
+			offset := (i + 1) % uint64(len(validators))
+			builderMap[i] = validators[offset]
+		}
+		result["error"] = ""
+		result["reason"] = ""
+		result["builderMap"] = builderMap
+	}
+	marshal, _ := json.Marshal(result)
+	log.Info("打印builder", "number", number, "builder", string(marshal), "cost_ms", time.Since(startTime).Milliseconds())
+
+	return result
 }
