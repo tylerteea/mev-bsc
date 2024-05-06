@@ -20,7 +20,6 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 	"math"
 	"math/big"
-	"net/http"
 	"strconv"
 	"sync"
 	"time"
@@ -37,18 +36,6 @@ const (
 
 var epochNum = big.NewInt(200)
 var delayBlockNum = big.NewInt(10)
-var httpClient = &http.Client{
-	//Transport: &http.Transport{
-	//MaxIdleConnsPerHost: 2, //每个host的连接池最大空闲连接数,默认2
-	//MaxConnsPerHost:     0,  //对每个host的最大连接数量，0表示不限制
-	//MaxIdleConns:        0,  //所有host的连接池最大连接数量，默认无穷大
-	//IdleConnTimeout:     time.Second * 10,
-	//DialContext: (&net.Dialer{
-	//	Timeout:   10 * time.Second,
-	//	KeepAlive: 30 * time.Second,
-	//}).DialContext,
-	//},
-}
 
 // --------------------------------------------------------Call Bundle--------------------------------------------------------
 
