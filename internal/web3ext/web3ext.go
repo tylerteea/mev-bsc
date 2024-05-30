@@ -624,6 +624,47 @@ web3._extend({
 			call: 'eth_getBlobSidecarByTxHash',
 			params: 2,
 		}),
+		new web3._extend.Method({
+			name: 'sandwichBestProfitMinimizeSale',
+			call: 'eth_sandwichBestProfitMinimizeSale',
+			params: 1,
+		}),
+ 		new web3._extend.Method({
+			name: 'sandwichBestProfitMinimizeBuy',
+			call: 'eth_sandwichBestProfitMinimizeBuy',
+			params: 1,
+		}),
+ 		new web3._extend.Method({
+			name: 'sandwichBestProfitBatch',
+			call: 'eth_sandwichBestProfitBatch',
+			params: 1,
+		}),
+		new web3._extend.Method({
+			name: 'getNowValidators',
+			call: 'eth_getNowValidators',
+			params: 1,
+		}),
+		new web3._extend.Method({
+			name: 'getBuilder',
+			call: 'eth_getBuilder',
+			params: 1,
+		}),
+		new web3._extend.Method({
+			name: 'callBundle',
+			call: 'eth_callBundle',
+			params: 1,
+		}),
+		new web3._extend.Method({
+			name: 'multicall',
+			call: 'eth_multicall',
+			params: 2,
+			inputFormatter: [null, web3._extend.formatters.inputBlockNumberFormatter]
+		}),
+		new web3._extend.Method({
+			name: 'getCompactBlock',
+			call: 'eth_getCompactBlock',
+			params: 2,
+		}),
 	],
 	properties: [
 		new web3._extend.Property({
