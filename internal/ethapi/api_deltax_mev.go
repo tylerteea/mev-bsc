@@ -21,6 +21,7 @@ import (
 	"github.com/holiman/uint256"
 	"math"
 	"math/big"
+	"reflect"
 	"strconv"
 	"sync"
 	"time"
@@ -469,7 +470,7 @@ func (s *BundleAPI) GetBuilder(ctx context.Context, number *rpc.BlockNumber) map
 
 	startTime := time.Now()
 
-	log.Info("GetBuilder_start", "number", number)
+	log.Info("GetBuilder_start1", "number", number)
 
 	result := make(map[string]interface{})
 
@@ -482,6 +483,10 @@ func (s *BundleAPI) GetBuilder(ctx context.Context, number *rpc.BlockNumber) map
 	if validatorResult == nil || validatorResult["error"] != "" {
 		return validatorResult
 	}
+
+	reflect.TypeOf(validatorResult["validators"]).String()
+
+	log.Info("打印validators类型", "number", number, "typeof", reflect.TypeOf(validatorResult["validators"]).String(), "cost_ms", time.Since(startTime).Milliseconds())
 
 	validators, ok := validatorResult["validators"].([]common.Address)
 
