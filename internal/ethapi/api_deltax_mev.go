@@ -20,6 +20,7 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 	"math"
 	"math/big"
+	"reflect"
 	"strconv"
 	"sync"
 	"time"
@@ -489,13 +490,17 @@ func (s *BundleAPI) GetBuilder(ctx context.Context, number *rpc.BlockNumber) map
 		return validatorResult
 	}
 
+	reflect.TypeOf(validatorResult["validators"]).String()
+
+	log.Info("打印validators类型", "number", number, "typeof", reflect.TypeOf(validatorResult["validators"]).String(), "cost_ms", time.Since(startTime).Milliseconds())
+
 	validators, ok := validatorResult["validators"].([]common.Address)
 
 	if !ok {
 		result["error"] = "validator_err"
 		result["reason"] = "validator_err"
 		marshal, _ := json.Marshal(result)
-		log.Info("打印builder", "number", number, "builder", string(marshal), "cost_ms", time.Since(startTime).Milliseconds())
+		log.Info("打印builder1", "number", number, "builder", string(marshal), "cost_ms", time.Since(startTime).Milliseconds())
 		return validatorResult
 	}
 
@@ -505,7 +510,7 @@ func (s *BundleAPI) GetBuilder(ctx context.Context, number *rpc.BlockNumber) map
 		result["reason"] = "number_err"
 		result["number"] = blockNum
 		marshal, _ := json.Marshal(result)
-		log.Info("打印builder", "number", number, "builder", string(marshal), "cost_ms", time.Since(startTime).Milliseconds())
+		log.Info("打印builder2", "number", number, "builder", string(marshal), "cost_ms", time.Since(startTime).Milliseconds())
 		return validatorResult
 	}
 
@@ -538,7 +543,7 @@ func (s *BundleAPI) GetBuilder(ctx context.Context, number *rpc.BlockNumber) map
 		result["builderMap"] = builderMap
 	}
 	marshal, _ := json.Marshal(result)
-	log.Info("打印builder", "number", number, "builder", string(marshal), "cost_ms", time.Since(startTime).Milliseconds())
+	log.Info("打印builder3", "number", number, "builder", string(marshal), "cost_ms", time.Since(startTime).Milliseconds())
 
 	return result
 }
