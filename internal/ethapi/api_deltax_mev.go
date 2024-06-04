@@ -1509,19 +1509,24 @@ func timeCost(reqId string, start time.Time) {
 	log.Info("call_cost", "reqId", reqId, "ms", tc.Milliseconds())
 }
 
-func ApplyTransactionWithResult(config *params.ChainConfig, bc core.ChainContext, author *common.Address, gp *core.GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, cfg vm.Config) (*types.Receipt, *core.ExecutionResult, error) {
+func ApplyTransactionWithResult(config *params.ChainConfig, bc core.ChainContext, author *common.Address, gp *core.GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, cfg vm.Config, receiptProcessors ...core.ReceiptProcessor) (*types.Receipt, *core.ExecutionResult, error) {
 	msg, err := core.TransactionToMessage(tx, types.MakeSigner(config, header.Number, header.Time), header.BaseFee)
 	if err != nil {
 		return nil, nil, err
 	}
 	// Create a new context to be used in the EVM environment
 	blockContext := core.NewEVMBlockContext(header, bc, author)
-	vmenv := vm.NewEVM(blockContext, vm.TxContext{}, statedb, config, cfg)
-	return applyTransactionWithResult(msg, config, bc, author, gp, statedb, header, tx, usedGas, vmenv)
+	txContext := core.NewEVMTxContext(msg)
+	vmenv := vm.NewEVM(blockContext, txContext, statedb, config, cfg)
+	defer func() {
+		ite := vmenv.Interpreter()
+		vm.EVMInterpreterPool.Put(ite)
+		vm.EvmPool.Put(vmenv)
+	}()
+	return applyTransactionWithResult(msg, config, gp, statedb, header.Number, header.Hash(), tx, usedGas, vmenv, receiptProcessors...)
 }
 
-// apply transaction returning result, for callBundle
-func applyTransactionWithResult(msg *core.Message, config *params.ChainConfig, bc core.ChainContext, author *common.Address, gp *core.GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, evm *vm.EVM) (*types.Receipt, *core.ExecutionResult, error) {
+func applyTransactionWithResult(msg *core.Message, config *params.ChainConfig, gp *core.GasPool, statedb *state.StateDB, blockNumber *big.Int, blockHash common.Hash, tx *types.Transaction, usedGas *uint64, evm *vm.EVM, receiptProcessors ...core.ReceiptProcessor) (*types.Receipt, *core.ExecutionResult, error) {
 	// Create a new context to be used in the EVM environment.
 	txContext := core.NewEVMTxContext(msg)
 	evm.Reset(txContext, statedb)
@@ -1534,10 +1539,10 @@ func applyTransactionWithResult(msg *core.Message, config *params.ChainConfig, b
 
 	// Update the state with pending changes.
 	var root []byte
-	if config.IsByzantium(header.Number) {
+	if config.IsByzantium(blockNumber) {
 		statedb.Finalise(true)
 	} else {
-		root = statedb.IntermediateRoot(config.IsEIP158(header.Number)).Bytes()
+		root = statedb.IntermediateRoot(config.IsEIP158(blockNumber)).Bytes()
 	}
 	*usedGas += result.UsedGas
 
@@ -1552,16 +1557,81 @@ func applyTransactionWithResult(msg *core.Message, config *params.ChainConfig, b
 	receipt.TxHash = tx.Hash()
 	receipt.GasUsed = result.UsedGas
 
+	if tx.Type() == types.BlobTxType {
+		receipt.BlobGasUsed = uint64(len(tx.BlobHashes()) * params.BlobTxBlobGasPerBlob)
+		receipt.BlobGasPrice = evm.Context.BlobBaseFee
+	}
+
 	// If the transaction created a contract, store the creation address in the receipt.
 	if msg.To == nil {
 		receipt.ContractAddress = crypto.CreateAddress(evm.TxContext.Origin, tx.Nonce())
 	}
 
 	// Set the receipt logs and create the bloom filter.
-	receipt.Logs = statedb.GetLogs(tx.Hash(), header.Number.Uint64(), header.Hash())
-	receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
-	receipt.BlockHash = header.Hash()
-	receipt.BlockNumber = header.Number
+	receipt.Logs = statedb.GetLogs(tx.Hash(), blockNumber.Uint64(), blockHash)
+	receipt.BlockHash = blockHash
+	receipt.BlockNumber = blockNumber
 	receipt.TransactionIndex = uint(statedb.TxIndex())
+	for _, receiptProcessor := range receiptProcessors {
+		receiptProcessor.Apply(receipt)
+	}
 	return receipt, result, err
 }
+
+//func ApplyTransactionWithResultOld(config *params.ChainConfig, bc core.ChainContext, author *common.Address, gp *core.GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, cfg vm.Config) (*types.Receipt, *core.ExecutionResult, error) {
+//	msg, err := core.TransactionToMessage(tx, types.MakeSigner(config, header.Number, header.Time), header.BaseFee)
+//	if err != nil {
+//		return nil, nil, err
+//	}
+//	// Create a new context to be used in the EVM environment
+//	blockContext := core.NewEVMBlockContext(header, bc, author)
+//	vmenv := vm.NewEVM(blockContext, vm.TxContext{}, statedb, config, cfg)
+//	return applyTransactionWithResultOld(msg, config, bc, author, gp, statedb, header, tx, usedGas, vmenv)
+//}
+//
+//// apply transaction returning result, for callBundle
+//func applyTransactionWithResultOld(msg *core.Message, config *params.ChainConfig, bc core.ChainContext, author *common.Address, gp *core.GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, evm *vm.EVM) (*types.Receipt, *core.ExecutionResult, error) {
+//	// Create a new context to be used in the EVM environment.
+//	txContext := core.NewEVMTxContext(msg)
+//	evm.Reset(txContext, statedb)
+//
+//	// Apply the transaction to the current state (included in the env).
+//	result, err := core.ApplyMessage(evm, msg, gp)
+//	if err != nil {
+//		return nil, nil, err
+//	}
+//
+//	// Update the state with pending changes.
+//	var root []byte
+//	if config.IsByzantium(header.Number) {
+//		statedb.Finalise(true)
+//	} else {
+//		root = statedb.IntermediateRoot(config.IsEIP158(header.Number)).Bytes()
+//	}
+//	*usedGas += result.UsedGas
+//
+//	// Create a new receipt for the transaction, storing the intermediate root and gas used
+//	// by the tx.
+//	receipt := &types.Receipt{Type: tx.Type(), PostState: root, CumulativeGasUsed: *usedGas}
+//	if result.Failed() {
+//		receipt.Status = types.ReceiptStatusFailed
+//	} else {
+//		receipt.Status = types.ReceiptStatusSuccessful
+//	}
+//	receipt.TxHash = tx.Hash()
+//	receipt.GasUsed = result.UsedGas
+//
+//	// If the transaction created a contract, store the creation address in the receipt.
+//	if msg.To == nil {
+//		receipt.ContractAddress = crypto.CreateAddress(evm.TxContext.Origin, tx.Nonce())
+//	}
+//
+//	// Set the receipt logs and create the bloom filter.
+//	receipt.Logs = statedb.GetLogs(tx.Hash(), header.Number.Uint64(), header.Hash())
+//	receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
+//	receipt.BlockHash = header.Hash()
+//	receipt.BlockNumber = header.Number
+//	receipt.TransactionIndex = uint(statedb.TxIndex())
+//	return receipt, result, err
+//}
+//
