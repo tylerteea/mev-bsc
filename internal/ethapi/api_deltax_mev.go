@@ -450,7 +450,7 @@ func (s *BundleAPI) GetNowValidators(ctx context.Context, number *rpc.BlockNumbe
 		return result
 	}
 
-	validators, err := s.b.Engine().NextInTurnValidator(s.chain, header)
+	validators, err := s.b.Engine().GetNowValidators(s.chain, header)
 	if err == nil {
 		result["error"] = ""
 		result["reason"] = ""
