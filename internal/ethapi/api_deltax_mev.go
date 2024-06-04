@@ -21,7 +21,6 @@ import (
 	"github.com/holiman/uint256"
 	"math"
 	"math/big"
-	"reflect"
 	"strconv"
 	"sync"
 	"time"
@@ -484,10 +483,82 @@ func (s *BundleAPI) GetBuilder(ctx context.Context, number *rpc.BlockNumber) map
 		return validatorResult
 	}
 
-	reflect.TypeOf(validatorResult["validators"]).String()
+	blockNum, ok := validatorResult["number"].(*big.Int)
+	if !ok {
+		result["error"] = "number_err"
+		result["reason"] = "number_err"
+		result["number"] = blockNum
+		marshal, _ := json.Marshal(result)
+		log.Info("打印builder", "number", number, "builder", string(marshal), "cost_ms", time.Since(startTime).Milliseconds())
+		return validatorResult
+	}
 
-	log.Info("打印validators类型", "number", number, "typeof", reflect.TypeOf(validatorResult["validators"]).String(), "cost_ms", time.Since(startTime).Milliseconds())
+	mod := new(big.Int).Mod(blockNum, epochNum)
 
+	nowEpoch := new(big.Int).Sub(blockNum, mod)
+	nowEpoch.Add(nowEpoch, delayBlockNum)
+
+	// 如果大于等于10，则预测到下一个epoch截止，如果小于10则使用当前epoch当截止
+	var targetEpoch *big.Int
+	if blockNum.Cmp(nowEpoch) >= 0 {
+		targetEpoch = new(big.Int).Add(nowEpoch, epochNum)
+	} else if blockNum.Cmp(nowEpoch) < 0 {
+		targetEpoch = nowEpoch
+	}
+
+	result["number"] = blockNum
+
+	if targetEpoch == nil {
+		result["error"] = "targetEpoch_nil"
+		result["reason"] = "targetEpoch_nil"
+	} else {
+		builderMap := make(map[int64]interface{})
+		for i := blockNum.Int64(); i < targetEpoch.Int64(); i++ {
+
+			blockNumber := rpc.BlockNumber(i)
+
+			validatorRes := s.GetNowValidators(ctx, &blockNumber)
+
+			if validatorRes == nil || validatorRes["error"] != "" {
+				log.Info("找不到验证者1", "number", i)
+				continue
+			}
+			validatorsTmp, ok1 := validatorRes["validators"].(common.Address)
+
+			if !ok1 {
+				log.Info("找不到验证者2", "number", i)
+				continue
+			}
+			builderMap[i] = validatorsTmp
+			log.Info("找到验证者", "number", i, "builder", validatorsTmp)
+		}
+		result["error"] = ""
+		result["reason"] = ""
+		result["builderMap"] = builderMap
+	}
+	marshal, _ := json.Marshal(result)
+	log.Info("打印builder", "number", number, "builder", string(marshal), "cost_ms", time.Since(startTime).Milliseconds())
+
+	return result
+}
+
+func (s *BundleAPI) GetBuilderOld(ctx context.Context, number *rpc.BlockNumber) map[string]interface{} {
+
+	startTime := time.Now()
+
+	log.Info("GetBuilder_start1", "number", number)
+
+	result := make(map[string]interface{})
+
+	result["number"] = number
+	result["error"] = "default"
+	result["reason"] = "default"
+
+	validatorResult := s.GetNowValidators(ctx, number)
+
+	if validatorResult == nil || validatorResult["error"] != "" {
+		return validatorResult
+	}
 	validators, ok := validatorResult["validators"].([]common.Address)
 
 	if !ok {
