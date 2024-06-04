@@ -465,7 +465,7 @@ func (s *BundleAPI) GetNowValidators(ctx context.Context, number *rpc.BlockNumbe
 	return result
 }
 
-func (s *BundleAPI) GetBuilder(ctx context.Context, number *rpc.BlockNumber) map[string]interface{} {
+func (s *BundleAPI) GetBuilderNew(ctx context.Context, number *rpc.BlockNumber) map[string]interface{} {
 
 	startTime := time.Now()
 
@@ -542,7 +542,7 @@ func (s *BundleAPI) GetBuilder(ctx context.Context, number *rpc.BlockNumber) map
 	return result
 }
 
-func (s *BundleAPI) GetBuilderOld(ctx context.Context, number *rpc.BlockNumber) map[string]interface{} {
+func (s *BundleAPI) GetBuilder(ctx context.Context, number *rpc.BlockNumber) map[string]interface{} {
 
 	startTime := time.Now()
 
