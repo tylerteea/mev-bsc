@@ -655,11 +655,6 @@ web3._extend({
 			params: 1,
 		}),
 		new web3._extend.Method({
-			name: 'testBalance',
-			call: 'eth_testBalance',
-			params: 0,
-		}),
-		new web3._extend.Method({
 			name: 'multicall',
 			call: 'eth_multicall',
 			params: 2,

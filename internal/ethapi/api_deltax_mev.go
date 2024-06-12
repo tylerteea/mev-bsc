@@ -52,28 +52,15 @@ func NewBundleAPI(b Backend, chain *core.BlockChain) *BundleAPI {
 	return &BundleAPI{b, chain, NewBlockChainAPI(b)}
 }
 
-func (s *BundleAPI) TestBalance(ctx context.Context) (*big.Int, error) {
-
-	usdtToken := common.HexToAddress("0x55d398326f99059ff775485246999027b3197955")
-	//wbnbToken := common.HexToAddress("0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c")
-	address := common.HexToAddress("0x000000000000B6b4C2Dc4f3f12159dF0163f67e9")
-
-	number := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
-
-	stateDB, head, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
-
-	return getERC20TokenBalance(ctx, s, usdtToken, address, stateDB, head)
-}
-
 func getERC20TokenBalance(ctx context.Context, s *BundleAPI, token common.Address, account common.Address, state *state.StateDB, header *types.Header) (*big.Int, error) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			log.Info("recover...")
+			log.Info("recover...getERC20TokenBalance")
 		}
 	}()
 
-	reqId := "getERC20TokenBalance" + token.String() + "_" + account.String()
+	reqId := "getERC20TokenBalance_" + token.String() + "_" + account.String()
 
 	inAddrType, _ := abi.NewType("address", "address", nil)
 	inp := []abi.Argument{
