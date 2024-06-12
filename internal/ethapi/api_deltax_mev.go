@@ -52,6 +52,87 @@ func NewBundleAPI(b Backend, chain *core.BlockChain) *BundleAPI {
 	return &BundleAPI{b, chain, NewBlockChainAPI(b)}
 }
 
+func (s *BundleAPI) TestBalance(ctx context.Context) (*big.Int, error) {
+
+	usdtToken := common.HexToAddress("0x55d398326f99059ff775485246999027b3197955")
+	//wbnbToken := common.HexToAddress("0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c")
+	address := common.HexToAddress("0x000000000000B6b4C2Dc4f3f12159dF0163f67e9")
+
+	number := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+
+	stateDB, head, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
+
+	return getERC20TokenBalance(ctx, s, usdtToken, address, stateDB, head)
+}
+
+func getERC20TokenBalance(ctx context.Context, s *BundleAPI, token common.Address, account common.Address, state *state.StateDB, header *types.Header) (*big.Int, error) {
+
+	defer func() {
+		if r := recover(); r != nil {
+			log.Info("recover...")
+		}
+	}()
+
+	reqId := "getERC20TokenBalance" + token.String() + "_" + account.String()
+
+	inAddrType, _ := abi.NewType("address", "address", nil)
+	inp := []abi.Argument{
+		{
+			Name: "account",
+			Type: inAddrType,
+		},
+	}
+
+	balanceType, _ := abi.NewType("uint256", "uint256", nil)
+	oup := []abi.Argument{
+		{
+			Name: "",
+			Type: balanceType,
+		},
+	}
+	newMethod := abi.NewMethod("balanceOf", "balanceOf", abi.Function, "pure", false, false, inp, oup)
+	pack, err := newMethod.Inputs.Pack(account)
+	var data = append(newMethod.ID, pack...)
+	bytes := (hexutil.Bytes)(data)
+
+	callArgs := TransactionArgs{
+		To:   &token,
+		Data: &bytes,
+	}
+	callResult, err := mevCall(reqId, state, header, s, ctx, callArgs, nil, nil)
+
+	if callResult != nil {
+
+		log.Info("call_execute4", "reqId", reqId, "result", string(callResult.ReturnData))
+		if len(callResult.Revert()) > 0 {
+
+			revertReason := newRevertError(callResult.Revert())
+			log.Info("call_result_not_nil_44",
+				"reqId", reqId,
+				"data", callResult,
+				"revert", common.Bytes2Hex(callResult.Revert()),
+				"revertReason", revertReason,
+				"returnData", common.Bytes2Hex(callResult.Return()),
+			)
+			log.Info("call_execute5", "reqId", reqId, "revertReason", revertReason.reason)
+			return nil, revertReason
+		}
+
+		if callResult.Err != nil {
+			log.Info("call_execute7", "reqId", reqId, "err", callResult.Err)
+			return nil, callResult.Err
+		}
+	}
+	if err != nil {
+		log.Info("call_execute6", "reqId", reqId, "err", err)
+		return nil, err
+	}
+
+	balance := new(big.Int).SetBytes(callResult.Return())
+
+	return balance, nil
+}
+
 // CallBundleArgs represents the arguments for a call.
 type CallBundleArgs struct {
 	Txs                    []hexutil.Bytes       `json:"txs"`
