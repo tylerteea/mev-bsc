@@ -664,10 +664,10 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 	for address, balanceAfterTmp := range balancesAfterMap {
 		balanceBeforeTmp := balancesBeforeMap[address]
 		if balanceAfterTmp.Cmp(balanceBeforeTmp) < 0 {
-			log.Info("call_bundle_balance校验失败", "reqId", reqId, "mevToken", address, "balanceBefore", balanceBeforeTmp.String(), "balanceAfterTmp", balanceAfterTmp.String(), "err", err)
+			log.Info("call_bundle_balance校验失败", "reqId", reqId, "mevToken", address, "balanceBefore", balanceBeforeTmp.String(), "balanceAfter", balanceAfterTmp.String(), "err", err)
 			isSuccess = false
 		} else {
-			log.Info("call_bundle_balance校验成功", "reqId", reqId, "mevToken", address, "balanceBefore", balanceBeforeTmp.String(), "balanceAfterTmp", balanceAfterTmp.String(), "err", err)
+			log.Info("call_bundle_balance校验成功", "reqId", reqId, "mevToken", address, "balanceBefore", balanceBeforeTmp.String(), "balanceAfter", balanceAfterTmp.String(), "err", err)
 		}
 	}
 	ret := map[string]interface{}{}
