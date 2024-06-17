@@ -119,6 +119,89 @@ func getERC20TokenBalance(ctx context.Context, s *BundleAPI, token common.Addres
 	return balance, nil
 }
 
+func getTokenBalanceByContract(ctx context.Context, s *BundleAPI, tokens []common.Address, contractAddress common.Address, state *state.StateDB, header *types.Header) ([]*big.Int, error) {
+
+	defer func() {
+		if r := recover(); r != nil {
+			log.Info("recover...getTokenBalanceByContract")
+		}
+	}()
+	reqId := "getTokenBalanceByContract_"
+	for _, token := range tokens {
+		reqId += token.String() + "_"
+	}
+	reqId += contractAddress.String()
+
+	inAddrType, _ := abi.NewType("address[]", "address[]", nil)
+	inp := []abi.Argument{
+		{
+			Name: "tokens",
+			Type: inAddrType,
+		},
+	}
+
+	balanceType, _ := abi.NewType("uint256[]", "uint256[]", nil)
+	oup := []abi.Argument{
+		{
+			Name: "memory",
+			Type: balanceType,
+		},
+	}
+	newMethod := abi.NewMethod("balancesOf", "balancesOf", abi.Function, "pure", false, false, inp, oup)
+	pack, err := newMethod.Inputs.Pack(tokens)
+	var data = append(newMethod.ID, pack...)
+	bytes := (hexutil.Bytes)(data)
+
+	callArgs := TransactionArgs{
+		To:   &contractAddress,
+		Data: &bytes,
+	}
+	callResult, err := mevCall(reqId, state, header, s, ctx, callArgs, nil, nil)
+
+	if callResult != nil {
+
+		log.Info("call_execute4", "reqId", reqId, "result", string(callResult.ReturnData))
+		if len(callResult.Revert()) > 0 {
+
+			revertReason := newRevertError(callResult.Revert())
+			log.Info("call_result_not_nil_44",
+				"reqId", reqId,
+				"data", callResult,
+				"revert", common.Bytes2Hex(callResult.Revert()),
+				"revertReason", revertReason,
+				"returnData", common.Bytes2Hex(callResult.Return()),
+			)
+			log.Info("call_execute5", "reqId", reqId, "revertReason", revertReason.reason)
+			return nil, revertReason
+		}
+
+		if callResult.Err != nil {
+			log.Info("call_execute7", "reqId", reqId, "err", callResult.Err)
+			return nil, callResult.Err
+		}
+	}
+	if err != nil {
+		log.Info("call_execute6", "reqId", reqId, "err", err)
+		return nil, err
+	}
+
+	unpack, err := newMethod.Outputs.Unpack(callResult.Return())
+	if err != nil {
+		log.Info("call_execute8", "reqId", reqId, "err", err)
+		return nil, err
+	}
+
+	balances, ok := abi.ConvertType(unpack[0], []*big.Int{}).([]*big.Int)
+
+	if ok {
+		log.Info("call_execute_ok", "reqId", reqId, "err", err)
+		return balances, nil
+	} else {
+		log.Info("call_execute9", "reqId", reqId, "err", err)
+		return nil, errors.New("转换失败")
+	}
+}
+
 // CallBundleArgs represents the arguments for a call.
 type CallBundleArgs struct {
 	Txs                    []hexutil.Bytes       `json:"txs"`
@@ -341,6 +424,7 @@ type CallBundleCheckArgs struct {
 	GrossProfit            *big.Int              `json:"grossProfit"`
 	MinTokenOutBalance     *big.Int              `json:"minTokenOutBalance"`
 	MevTokens              []common.Address      `json:"mevTokens"`
+	Victim                 common.Hash           `json:"victim"`
 }
 
 // CallBundleCheckBalance will simulate a bundle of transactions at the top of a given block
@@ -351,6 +435,8 @@ type CallBundleCheckArgs struct {
 // nonce and ensuring validity
 func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleCheckArgs) (map[string]interface{}, error) {
 
+	reqId := args.Victim.String() + "_" + args.MevContract.String()
+
 	if len(args.Txs) == 0 {
 		return nil, errors.New("bundle missing txs")
 	}
@@ -359,7 +445,7 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 	}
 	minTokenOutBalance := args.MinTokenOutBalance
 	if minTokenOutBalance == nil {
-		log.Info("minTokenOutBalance为空不允许执行")
+		log.Info("minTokenOutBalance为空不允许执行", "reqId", reqId)
 		return nil, errors.New("minTokenOutBalance is nil")
 	}
 
@@ -372,7 +458,9 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 		}
 		txs = append(txs, tx)
 	}
-	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
+	defer func(start time.Time) {
+		log.Debug("callBundle Executing EVM call finished", "runtime", time.Since(start))
+	}(time.Now())
 
 	timeoutMilliSeconds := int64(5000)
 	if args.Timeout != nil {
@@ -455,16 +543,32 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 
 	balanceOriginal := new(big.Int).Sub(args.MinTokenOutBalance, args.GrossProfit)
 
-	balanceBefore, err := getERC20TokenBalance(ctx, s, args.MevToken, args.MevContract, state, header)
+	balancesBefore, err := getTokenBalanceByContract(ctx, s, args.MevTokens, args.MevContract, state, header)
 
 	if err != nil {
-		log.Info("call_bundle_", "balanceBefore", balanceBefore, "err", err)
+		log.Info("call_bundle_balance_err1", "reqId", reqId, "err", err)
 		return nil, err
 	}
 
-	if balanceBefore.Cmp(balanceOriginal) > 0 {
-		minTokenOutBalance = new(big.Int).Add(balanceBefore, args.GrossProfit)
+	if len(args.MevTokens) != len(balancesBefore) {
+		log.Info("call_bundle_balance_err2", "reqId", reqId, "mevTokens_len", len(args.MevTokens), "balances_len", len(balancesBefore), "err", err)
+		return nil, err
 	}
+
+	balancesBeforeMap := make(map[common.Address]*big.Int)
+
+	for i, mevTokenTmp := range args.MevTokens {
+		balancesBeforeMap[mevTokenTmp] = balancesBefore[i]
+	}
+
+	mainMevTokenBalance := balancesBeforeMap[args.MevToken]
+
+	if mainMevTokenBalance.Cmp(balanceOriginal) > 0 {
+		minTokenOutBalance = new(big.Int).Add(mainMevTokenBalance, args.GrossProfit)
+	}
+
+	// 设置主mevToken 的余额限制为包含毛利的值
+	balancesBeforeMap[args.MevToken] = minTokenOutBalance
 
 	//-------------------------------------------
 
@@ -537,46 +641,71 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 
 	//-------------------------------------------
 
-	balanceAfter, err := getERC20TokenBalance(ctx, s, args.MevToken, args.MevContract, state, header)
+	balancesAfter, err := getTokenBalanceByContract(ctx, s, args.MevTokens, args.MevContract, state, header)
 
 	if err != nil {
-		log.Info("call_bundle_", "balanceBefore", balanceBefore, "err", err)
+		log.Info("call_bundle_balance_err3", "reqId", reqId, "err", err)
 		return nil, err
 	}
 
-	if balanceAfter.Cmp(balanceBefore) < 0 {
-		log.Info("call_bundle_", "balanceBefore", balanceBefore, "err", err)
-		return nil, errors.New("balance_too_low")
+	if len(args.MevTokens) != len(balancesAfter) {
+		log.Info("call_bundle_balance_err2", "reqId", reqId, "mevTokens_len", len(args.MevTokens), "balances_len", len(balancesAfter), "err", err)
+		return nil, err
 	}
 
-	if minTokenOutBalance != nil {
-		if balanceAfter.Cmp(minTokenOutBalance) < 0 {
-			log.Info("call_bundle_", "balanceBefore", balanceBefore, "err", err)
-			return nil, errors.New("balance_limit")
+	balancesAfterMap := make(map[common.Address]*big.Int)
+
+	for i, mevTokenTmp := range args.MevTokens {
+		balancesAfterMap[mevTokenTmp] = balancesAfter[i]
+	}
+
+	isSuccess := true
+
+	for address, balanceAfterTmp := range balancesAfterMap {
+		balanceBeforeTmp := balancesBeforeMap[address]
+		if balanceAfterTmp.Cmp(balanceBeforeTmp) < 0 {
+			log.Info("call_bundle_balance校验失败", "reqId", reqId, "mevToken", address, "balanceBefore", balanceBeforeTmp.String(), "balanceAfterTmp", balanceAfterTmp.String(), "err", err)
+			isSuccess = false
+		} else {
+			log.Info("call_bundle_balance校验成功", "reqId", reqId, "mevToken", address, "balanceBefore", balanceBeforeTmp.String(), "balanceAfterTmp", balanceAfterTmp.String(), "err", err)
 		}
 	}
-
-	//-------------------------------------------
-
 	ret := map[string]interface{}{}
-	ret["results"] = results
-	coinbaseDiff := new(uint256.Int).Sub(state.GetBalance(coinbase), coinbaseBalanceBefore)
-	ret["coinbaseDiff"] = coinbaseDiff.String()
-	ret["gasFees"] = gasFees.String()
-	ret["ethSentToCoinbase"] = new(uint256.Int).Sub(coinbaseDiff, uint256.NewInt(gasFees.Uint64())).String()
-	ret["bundleGasPrice"] = new(uint256.Int).Div(coinbaseDiff, uint256.NewInt(totalGasUsed)).String() // new(big.Int).Div(gasFees, big.NewInt(int64(totalGasUsed))).String()
-	ret["totalGasUsed"] = totalGasUsed
-	ret["stateBlockNumber"] = parent.Number.Int64()
 
-	ret["bundleHash"] = "0x" + common.Bytes2Hex(bundleHash.Sum(nil))
+	checkResult := map[string]interface{}{}
 
-	ret["balanceAfter"] = balanceAfter.String()
+	checkResult["balancesBefore"] = balancesBeforeMap
+	checkResult["balancesAfter"] = balancesAfterMap
 
-	//// todo
-	//newResultJson, _ := json.Marshal(ret)
-	//log.Info("call_bundle_result", "ret", string(newResultJson))
+	if isSuccess {
+		ret["stateBlockNumber"] = parent.Number.Int64()
+		ret["results"] = results
+		coinbaseDiff := new(uint256.Int).Sub(state.GetBalance(coinbase), coinbaseBalanceBefore)
+		ret["coinbaseDiff"] = coinbaseDiff.String()
+		ret["gasFees"] = gasFees.String()
+		ret["ethSentToCoinbase"] = new(uint256.Int).Sub(coinbaseDiff, uint256.NewInt(gasFees.Uint64())).String()
+		ret["bundleGasPrice"] = new(uint256.Int).Div(coinbaseDiff, uint256.NewInt(totalGasUsed)).String() // new(big.Int).Div(gasFees, big.NewInt(int64(totalGasUsed))).String()
+		ret["totalGasUsed"] = totalGasUsed
+		ret["stateBlockNumber"] = parent.Number.Int64()
+		ret["bundleHash"] = "0x" + common.Bytes2Hex(bundleHash.Sum(nil))
 
-	return ret, nil
+		checkResult["check_balance"] = "success"
+		checkResultJson, _ := json.Marshal(checkResult)
+		ret["check_result"] = string(checkResultJson)
+
+		newResultJson, _ := json.Marshal(ret)
+		log.Info("call_bundle_result", "reqId", reqId, "ret", string(newResultJson))
+
+		return ret, nil
+	} else {
+
+		checkResult["check_balance"] = "fail"
+		newResultJson, _ := json.Marshal(checkResult)
+		errMsg := string(newResultJson)
+		log.Info("call_bundle_余额最终校验失败", "reqId", reqId, "errMsg", errMsg)
+
+		return nil, errors.New(errMsg)
+	}
 }
 
 //--------------------------------------------------------Multicall--------------------------------------------------------
