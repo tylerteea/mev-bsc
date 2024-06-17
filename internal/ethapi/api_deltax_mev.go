@@ -22,7 +22,6 @@ import (
 	"math"
 	"math/big"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/log"
@@ -925,29 +924,75 @@ func (s *BundleAPI) GetBuilder(ctx context.Context, number *rpc.BlockNumber) map
 
 // SbpBuyArgs SandwichBestProfitArgs represents the arguments for a call.
 type SbpBuyArgs struct {
-	Eoa             common.Address `json:"eoa"`
-	Contract        common.Address `json:"contract"`
-	Balance         *big.Int       `json:"balance"`
-	Token2          common.Address `json:"token2"`
-	Token3          common.Address `json:"token3"`
-	PairOrPool2     common.Address `json:"pairOrPool2"`
-	ZeroForOne2     bool           `json:"zeroForOne2"`
-	Fee2            *big.Int       `json:"fee2"`
-	Version2        int            `json:"version2"`
-	AmountInMin     *big.Int       `json:"amountInMin"`
-	AmountOutMin    *big.Int       `json:"amountOutMin"`
-	BriberyAddress  common.Address `json:"briberyAddress"`
-	VictimTxHash    common.Hash    `json:"vTxHash"`
-	BuyOrSale       bool           `json:"buyOrSale"`
-	Steps           *big.Int       `json:"steps"`
-	ReqId           string         `json:"reqId"`
-	FuncEvaluations int            `json:"funcEvaluations"`
-	RunTimeout      int            `json:"runTimeout"`
-	Iterations      int            `json:"iterations"`
-	Concurrent      int            `json:"concurrent"`
-	InitialValues   float64        `json:"initialValues"`
-	SubOne          bool           `json:"subOne"`
-	LogEnable       bool           `json:"logEnable"`
+	Eoa                common.Address `json:"eoa"`
+	Contract           common.Address `json:"contract"`
+	Balance            *big.Int       `json:"balance"`
+	Token2             common.Address `json:"token2"`
+	Token3             common.Address `json:"token3"`
+	PairOrPool2        common.Address `json:"pairOrPool2"`
+	ZeroForOne2        bool           `json:"zeroForOne2"`
+	Fee2               *big.Int       `json:"fee2"`
+	Version2           int            `json:"version2"`
+	AmountInMin        *big.Int       `json:"amountInMin"`
+	AmountOut          *big.Int       `json:"amountOut"`
+	MinTokenOutBalance *big.Int       `json:"minTokenOutBalance"`
+	BriberyAddress     common.Address `json:"briberyAddress"`
+	VictimTxHash       common.Hash    `json:"vTxHash"`
+	BuyOrSale          bool           `json:"buyOrSale"`
+	SubOne             bool           `json:"subOne"`
+	Token3BuyTax       bool           `json:"token3BuyTax"`
+	Token3SaleTax      bool           `json:"token3SaleTax"`
+	Steps              *big.Int       `json:"steps"`
+	ReqId              string         `json:"reqId"`
+	FuncEvaluations    int            `json:"funcEvaluations"`
+	RunTimeout         int            `json:"runTimeout"`
+	Iterations         int            `json:"iterations"`
+	Concurrent         int            `json:"concurrent"`
+	InitialValues      float64        `json:"initialValues"`
+	LogEnable          bool           `json:"logEnable"`
+}
+
+type ConfigContract struct {
+	Simulate      bool
+	CheckTax      bool
+	CalcAmountOut bool
+	FeeToBuilder  bool
+	ZeroForOne    bool
+}
+
+func NewConfigContract(
+	checkTax bool,
+	calcAmountOut bool,
+	feeToBuilder bool,
+	zeroForOne bool,
+) *ConfigContract {
+	return &ConfigContract{
+		Simulate:      true,
+		CheckTax:      checkTax,
+		CalcAmountOut: calcAmountOut,
+		FeeToBuilder:  feeToBuilder,
+		ZeroForOne:    zeroForOne,
+	}
+}
+
+func configContractToBigInt(config *ConfigContract) *big.Int {
+	configInt := int64(0)
+	if config.Simulate {
+		configInt += 16
+	}
+	if config.CheckTax {
+		configInt += 8
+	}
+	if config.CalcAmountOut {
+		configInt += 4
+	}
+	if config.FeeToBuilder {
+		configInt += 2
+	}
+	if config.ZeroForOne {
+		configInt += 1
+	}
+	return big.NewInt(configInt)
 }
 
 type SbpSaleArgs struct {
@@ -955,215 +1000,34 @@ type SbpSaleArgs struct {
 	Contract common.Address `json:"contract"`
 	Balance  *big.Int       `json:"balance"`
 
-	Token1      common.Address `json:"token1,omitempty"`
-	Token2      common.Address `json:"token2"`
-	Token3      common.Address `json:"token3"`
-	PairOrPool1 common.Address `json:"pairOrPool1,omitempty"`
-	ZeroForOne1 bool           `json:"zeroForOne1,omitempty"`
-	Fee1        *big.Int       `json:"fee1,omitempty"`
-	PairOrPool2 common.Address `json:"pairOrPool2"`
-	ZeroForOne2 bool           `json:"zeroForOne2"`
-	Fee2        *big.Int       `json:"fee2"`
-	Version2    int            `json:"version2"`
-	BuyOrSale   bool           `json:"buyOrSale"`
-	SubOne      bool           `json:"subOne"`
+	Token1        common.Address `json:"token1,omitempty"`
+	Token2        common.Address `json:"token2"`
+	Token3        common.Address `json:"token3"`
+	PairOrPool1   common.Address `json:"pairOrPool1,omitempty"`
+	ZeroForOne1   bool           `json:"zeroForOne1,omitempty"`
+	Fee1          *big.Int       `json:"fee1,omitempty"`
+	PairOrPool2   common.Address `json:"pairOrPool2"`
+	ZeroForOne2   bool           `json:"zeroForOne2"`
+	Fee2          *big.Int       `json:"fee2"`
+	Version2      int            `json:"version2"`
+	BuyOrSale     bool           `json:"buyOrSale"`
+	SubOne        bool           `json:"subOne"`
+	Token3BuyTax  bool           `json:"token3BuyTax,omitempty"`
+	Token3SaleTax bool           `json:"token3SaleTax,omitempty"`
 
-	AmountInMin     *big.Int       `json:"amountInMin"`
-	AmountOutMin    *big.Int       `json:"amountOutMin"`
-	BriberyAddress  common.Address `json:"briberyAddress"`
-	VictimTxHash    common.Hash    `json:"vTxHash"`
-	Steps           *big.Int       `json:"steps"`
-	ReqId           string         `json:"reqId"`
-	FuncEvaluations int            `json:"funcEvaluations"`
-	RunTimeout      int            `json:"runTimeout"`
-	Iterations      int            `json:"iterations"`
-	Concurrent      int            `json:"concurrent"`
-	InitialValues   float64        `json:"initialValues"`
-	LogEnable       bool           `json:"logEnable"`
-}
-
-type SbpBatchArgs struct {
-	// 账户及合约参数
-	Eoa            common.Address `json:"eoa"`
-	Contract       common.Address `json:"contract"`
-	Balance        *big.Int       `json:"balance"`
-	AmountInMin    *big.Int       `json:"amountInMin"`
-	AmountOutMin   *big.Int       `json:"amountOutMin"`
-	BriberyAddress common.Address `json:"briberyAddress"`
-	VictimTxHash   common.Hash    `json:"vTxHash"`
-
-	// minimize参数
-	Steps           *big.Int `json:"steps"`
-	ReqId           string   `json:"reqId"`
-	FuncEvaluations int      `json:"funcEvaluations"`
-	RunTimeout      int      `json:"runTimeout"`
-	Iterations      int      `json:"iterations"`
-	Concurrent      int      `json:"concurrent"`
-	InitialValues   float64  `json:"initialValues"`
-	LogEnable       bool     `json:"logEnable"`
-
-	// 三明治pair参数
-	SbpPairs []*SbpPairArgs `json:"sbpPairArgs"`
-}
-
-// SbpPairArgs 三明治pair参数
-type SbpPairArgs struct {
-	PairIndex   int            `json:"pairIndex"`
-	Token1      common.Address `json:"token1,omitempty"`
-	Token2      common.Address `json:"token2"`
-	Token3      common.Address `json:"token3"`
-	PairOrPool1 common.Address `json:"pairOrPool1,omitempty"`
-	ZeroForOne1 bool           `json:"zeroForOne1,omitempty"`
-	Fee1        *big.Int       `json:"fee1,omitempty"`
-	PairOrPool2 common.Address `json:"pairOrPool2"`
-	ZeroForOne2 bool           `json:"zeroForOne2"`
-	Fee2        *big.Int       `json:"fee2"`
-	Version2    int            `json:"version2"`
-	BuyOrSale   bool           `json:"buyOrSale"`
-	SubOne      bool           `json:"subOne"`
-}
-
-// SandwichBestProfitBatch profit calculate
-func (s *BundleAPI) SandwichBestProfitBatch(ctx context.Context, sbp SbpBatchArgs) map[string]interface{} {
-
-	result := make(map[string]interface{})
-
-	result["error"] = "default"
-	result["reason"] = "default"
-
-	timeout := s.b.RPCEVMTimeout()
-	var cancel context.CancelFunc
-	if timeout > 0 {
-		ctx, cancel = context.WithTimeout(ctx, timeout)
-	} else {
-		ctx, cancel = context.WithCancel(ctx)
-	}
-
-	defer cancel()
-	defer func(results *map[string]interface{}) {
-		if r := recover(); r != nil {
-			if sbp.LogEnable {
-				oldResultJson, _ := json.Marshal(result)
-				log.Info("call_sbp_old_result_", "reqId", sbp.ReqId, "result", string(oldResultJson))
-			}
-			result["error"] = "panic"
-			result["reason"] = r
-			if sbp.LogEnable {
-				newResultJson, _ := json.Marshal(result)
-				log.Info("call_sbp_defer_result_", "reqId", sbp.ReqId, "result", string(newResultJson))
-			}
-		}
-	}(&result)
-
-	sbpPairs := sbp.SbpPairs
-
-	if sbpPairs == nil {
-		result["error"] = "args_SbpPair"
-		result["reason"] = "args_SbpPair"
-		return result
-	}
-
-	wg := new(sync.WaitGroup)
-	wg.Add(len(sbpPairs))
-
-	channelResult := make(chan map[string]interface{})
-
-	go func() {
-		defer close(channelResult) // 等待wg 执行完后关闭channel
-		wg.Wait()
-	}()
-
-	for _, sbpPair := range sbpPairs {
-		go bestProfit(ctx, channelResult, wg, sbp, sbpPair, s)
-	}
-
-	maxProfit := big.NewInt(0)
-
-	for singleResult := range channelResult {
-
-		if singleResult["error"] == nil && singleResult["profit"] != nil {
-			profit, ok := singleResult["profit"].(*big.Int)
-
-			if ok && profit.Cmp(big.NewInt(0)) > 0 {
-				if profit.Cmp(maxProfit) > 0 {
-					maxProfit = profit
-					result = singleResult
-				}
-			}
-		}
-	}
-	if maxProfit.Cmp(big.NewInt(0)) <= 0 {
-		result["error"] = "profit_too_low"
-		result["reason"] = "profit_too_low"
-	}
-
-	if sbp.LogEnable {
-		resultJson, _ := json.Marshal(result)
-		log.Info("call_sbp_batch_end", "reqId", sbp.ReqId, "result", string(resultJson))
-	}
-
-	return result
-}
-
-func bestProfit(ctx context.Context, channelResult chan map[string]interface{}, wg *sync.WaitGroup, sbp SbpBatchArgs, sbpPair *SbpPairArgs, s *BundleAPI) {
-
-	result := make(map[string]interface{})
-
-	defer func() {
-		if r := recover(); r != nil {
-			channelResult <- result
-			wg.Done()
-		} else {
-			channelResult <- result
-			wg.Done()
-		}
-	}()
-
-	reqId := sbp.ReqId
-
-	if sbpPair.BuyOrSale {
-		reqId = reqId + "_buy_" + sbpPair.PairOrPool2.String()
-	} else {
-		reqId = reqId + "_sale_" + sbpPair.PairOrPool1.String()
-	}
-
-	sbpSaleArgs := SbpSaleArgs{
-
-		// 账户及合约公共参数
-		Eoa:            sbp.Eoa,
-		Contract:       sbp.Contract,
-		Balance:        sbp.Balance,
-		AmountInMin:    sbp.AmountInMin,
-		AmountOutMin:   sbp.AmountOutMin,
-		BriberyAddress: sbp.BriberyAddress,
-		VictimTxHash:   sbp.VictimTxHash,
-
-		// minimize公共参数
-		Steps:           sbp.Steps,
-		ReqId:           reqId, // 使用新生成的id
-		FuncEvaluations: sbp.FuncEvaluations,
-		RunTimeout:      sbp.RunTimeout,
-		Iterations:      sbp.Iterations,
-		Concurrent:      sbp.Concurrent,
-		InitialValues:   sbp.InitialValues,
-		LogEnable:       sbp.LogEnable,
-
-		// 三明治pair参数
-		Token1:      sbpPair.Token1,
-		Token2:      sbpPair.Token2,
-		Token3:      sbpPair.Token3,
-		PairOrPool1: sbpPair.PairOrPool1,
-		ZeroForOne1: sbpPair.ZeroForOne1,
-		Fee1:        sbpPair.Fee1,
-		PairOrPool2: sbpPair.PairOrPool2,
-		ZeroForOne2: sbpPair.ZeroForOne2,
-		Fee2:        sbpPair.Fee2,
-		Version2:    sbpPair.Version2,
-		SubOne:      sbpPair.SubOne,
-		BuyOrSale:   sbpPair.BuyOrSale,
-	}
-	result = s.SandwichBestProfitMinimizeSale(ctx, sbpSaleArgs)
-	result["pairIndex"] = sbpPair.PairIndex
+	AmountInMin        *big.Int       `json:"amountInMin"`
+	AmountOut          *big.Int       `json:"amountOut"`
+	MinTokenOutBalance *big.Int       `json:"minTokenOutBalance"`
+	BriberyAddress     common.Address `json:"briberyAddress"`
+	VictimTxHash       common.Hash    `json:"vTxHash"`
+	Steps              *big.Int       `json:"steps"`
+	ReqId              string         `json:"reqId"`
+	FuncEvaluations    int            `json:"funcEvaluations"`
+	RunTimeout         int            `json:"runTimeout"`
+	Iterations         int            `json:"iterations"`
+	Concurrent         int            `json:"concurrent"`
+	InitialValues      float64        `json:"initialValues"`
+	LogEnable          bool           `json:"logEnable"`
 }
 
 // SandwichBestProfitMinimizeBuy profit calculate
@@ -1184,10 +1048,13 @@ func (s *BundleAPI) SandwichBestProfitMinimizeBuy(ctx context.Context, sbp SbpBu
 		Fee2:            sbp.Fee2,
 		Version2:        sbp.Version2,
 		AmountInMin:     sbp.AmountInMin,
-		AmountOutMin:    sbp.AmountOutMin,
+		AmountOut:       sbp.AmountOut,
 		BriberyAddress:  sbp.BriberyAddress,
 		VictimTxHash:    sbp.VictimTxHash,
 		BuyOrSale:       sbp.BuyOrSale,
+		SubOne:          sbp.SubOne,
+		Token3BuyTax:    sbp.Token3BuyTax,
+		Token3SaleTax:   sbp.Token3SaleTax,
 		Steps:           sbp.Steps,
 		ReqId:           sbp.ReqId,
 		FuncEvaluations: sbp.FuncEvaluations,
@@ -1195,7 +1062,6 @@ func (s *BundleAPI) SandwichBestProfitMinimizeBuy(ctx context.Context, sbp SbpBu
 		Iterations:      sbp.Iterations,
 		Concurrent:      sbp.Concurrent,
 		InitialValues:   sbp.InitialValues,
-		SubOne:          sbp.SubOne,
 		LogEnable:       sbp.LogEnable,
 	}
 
@@ -1588,17 +1454,32 @@ func execute(
 	if isFront {
 
 		if sbp.BuyOrSale {
-			data = encodeParams(sbp.Version2, sbp.Token2, sbp.Token3, sbp.PairOrPool2, sbp.Fee2, sbp.ZeroForOne2, amountIn, sbp.BriberyAddress, sbp.AmountOutMin)
+
+			var frontConfig *ConfigContract
+			if sbp.Version2 == V2 {
+				frontConfig = NewConfigContract(sbp.Token3BuyTax, true, false, sbp.ZeroForOne2)
+			} else {
+				frontConfig = NewConfigContract(false, true, false, sbp.ZeroForOne2)
+			}
+			frontMinTokenOutBalance := big.NewInt(0)
+			data = encodeParamsBuy(sbp.Version2, true, amountIn, sbp.PairOrPool2, sbp.Token2, sbp.Token3, frontConfig, sbp.Fee2, sbp.AmountOut, frontMinTokenOutBalance, sbp.BriberyAddress)
 		} else {
-			data = encodeParamsSale(sbp.Token1, sbp.Token2, sbp.Token3, sbp.PairOrPool1, sbp.Fee1, sbp.ZeroForOne1, sbp.PairOrPool2, sbp.Fee2, sbp.ZeroForOne2, amountIn, sbp.BriberyAddress, sbp.AmountOutMin)
+			data = encodeParamsSale(amountIn, sbp.Token1, sbp.Token2, sbp.Token3, sbp.Fee1, sbp.PairOrPool1, sbp.ZeroForOne1, sbp.Fee2, sbp.PairOrPool2, sbp.ZeroForOne2, sbp.MinTokenOutBalance, sbp.BriberyAddress)
 		}
 
 	} else {
 
 		if sbp.BuyOrSale {
-			data = encodeParams(sbp.Version2, sbp.Token3, sbp.Token2, sbp.PairOrPool2, sbp.Fee2, !sbp.ZeroForOne2, amountIn, sbp.BriberyAddress, sbp.AmountOutMin)
+
+			var backConfig *ConfigContract
+			if sbp.Version2 == V2 {
+				backConfig = NewConfigContract(sbp.Token3SaleTax, true, false, !sbp.ZeroForOne2)
+			} else {
+				backConfig = NewConfigContract(false, true, false, !sbp.ZeroForOne2)
+			}
+			data = encodeParamsBuy(sbp.Version2, false, amountIn, sbp.PairOrPool2, sbp.Token3, sbp.Token2, backConfig, sbp.Fee2, sbp.AmountOut, sbp.MinTokenOutBalance, sbp.BriberyAddress)
 		} else {
-			data = encodeParamsSale(sbp.Token3, sbp.Token2, sbp.Token1, sbp.PairOrPool2, sbp.Fee2, !sbp.ZeroForOne2, sbp.PairOrPool1, sbp.Fee1, !sbp.ZeroForOne1, amountIn, sbp.BriberyAddress, sbp.AmountOutMin)
+			data = encodeParamsSale(amountIn, sbp.Token3, sbp.Token2, sbp.Token1, sbp.Fee2, sbp.PairOrPool2, !sbp.ZeroForOne2, sbp.Fee1, sbp.PairOrPool1, !sbp.ZeroForOne1, sbp.MinTokenOutBalance, sbp.BriberyAddress)
 		}
 	}
 
@@ -1660,7 +1541,57 @@ func execute(
 	return amountOut, nil
 }
 
+// execute_44g58pv
 func encodeParamsSale(
+	amountIn *big.Int,
+
+	token1 common.Address,
+	token2 common.Address,
+	token3 common.Address,
+
+	fee1 *big.Int,
+	pairOrPool1 common.Address,
+	zeroForOne1 bool,
+
+	fee2 *big.Int,
+	pairOrPool2 common.Address,
+	zeroForOne2 bool,
+
+	minTokenOutBalance *big.Int,
+	builderAddress common.Address,
+) []byte {
+	params := make([]byte, 0)
+	params = append(params, []byte{0x00, 0x00, 0x00, 0x00}...)
+
+	params = append(params, fillBytes(14, amountIn.Bytes())...)
+
+	params = append(params, token1.Bytes()...)
+	params = append(params, token2.Bytes()...)
+	params = append(params, token3.Bytes()...)
+
+	params = append(params, fillBytes(2, fee1.Bytes())...)
+	params = append(params, pairOrPool1.Bytes()...)
+	if zeroForOne1 {
+		params = append(params, []byte{1}...)
+	} else {
+		params = append(params, []byte{0}...)
+	}
+
+	params = append(params, fillBytes(2, fee2.Bytes())...)
+	params = append(params, pairOrPool2.Bytes()...)
+	if zeroForOne2 {
+		params = append(params, []byte{1}...)
+	} else {
+		params = append(params, []byte{0}...)
+	}
+
+	params = append(params, fillBytes(14, minTokenOutBalance.Bytes())...)
+	params = append(params, builderAddress.Bytes()...)
+
+	return params
+}
+
+func encodeParamsSale1(
 	token1 common.Address,
 	token2 common.Address,
 	token3 common.Address,
@@ -1700,37 +1631,151 @@ func encodeParamsSale(
 	return params
 }
 
-func encodeParams(
+func encodeParamsBuy(
 	version int,
+	isFront bool,
+	amountIn *big.Int,
+	pairOrPool common.Address,
 	tokenIn common.Address,
 	tokenOut common.Address,
-	pairOrPool common.Address,
-
+	config *ConfigContract,
 	fee *big.Int,
-	zeroForOne bool,
+	amountOut *big.Int,
+	minTokenOutBalance *big.Int,
+	builderAddress common.Address,
+) []byte {
+
+	if version == V2 {
+		if isFront {
+			return v2BuyFrontEncodeParams(amountIn, pairOrPool, tokenIn, tokenOut, config, fee, amountOut, builderAddress)
+		} else {
+			return v2BuyBackEncodeParams(amountIn, pairOrPool, tokenIn, tokenOut, config, fee, amountOut, minTokenOutBalance, builderAddress)
+		}
+	} else {
+		if isFront {
+			return v3BuyFrontEncodeParams(amountIn, pairOrPool, tokenIn, tokenOut, config, builderAddress)
+		} else {
+			return v3BuyBackEncodeParams(amountIn, pairOrPool, tokenIn, tokenOut, config, minTokenOutBalance, builderAddress)
+		}
+	}
+}
+
+func v2BuyFrontEncodeParams(
 	amountIn *big.Int,
-	briberyAddress common.Address,
-	amountOutMin *big.Int,
+	pair common.Address,
+	tokenIn common.Address,
+	tokenOut common.Address,
+	config *ConfigContract,
+	fee *big.Int,
+	amountOut *big.Int,
+	builderAddress common.Address,
 ) []byte {
 	params := make([]byte, 0)
-	if version == V2 {
-		params = append(params, []byte{0xa9, 0x24, 0x83, 0xf0}...)
-	} else {
-		params = append(params, []byte{0x2f, 0xb4, 0x2d, 0x70}...)
-	}
+	params = append(params, []byte{0x00, 0x00, 0x00, 0x01}...)
+
 	params = append(params, fillBytes(14, amountIn.Bytes())...)
-	params = append(params, pairOrPool.Bytes()...)
+	params = append(params, pair.Bytes()...)
 	params = append(params, tokenIn.Bytes()...)
 	params = append(params, tokenOut.Bytes()...)
-	params = append(params, briberyAddress.Bytes()...)
-	params = append(params, fillBytes(14, amountOutMin.Bytes())...)
-	if version == V2 {
+
+	params = append(params, fillBytes(1, configContractToBigInt(config).Bytes())...)
+
+	if config.CalcAmountOut {
 		params = append(params, fillBytes(2, fee.Bytes())...)
-	}
-	if zeroForOne {
-		params = append(params, []byte{1}...)
 	} else {
-		params = append(params, []byte{0}...)
+		params = append(params, fillBytes(14, amountOut.Bytes())...)
+	}
+
+	if config.FeeToBuilder {
+		//params = append(params, builderAddress.Bytes()...)
+	}
+
+	return params
+}
+
+func v2BuyBackEncodeParams(
+	amountIn *big.Int,
+	pair common.Address,
+	tokenIn common.Address,
+	tokenOut common.Address,
+	config *ConfigContract,
+	fee *big.Int,
+	amountOut *big.Int,
+	minTokenOutBalance *big.Int,
+	builderAddress common.Address,
+) []byte {
+	params := make([]byte, 0)
+	params = append(params, []byte{0x00, 0x00, 0x00, 0x02}...)
+
+	params = append(params, fillBytes(14, amountIn.Bytes())...)
+	params = append(params, pair.Bytes()...)
+	params = append(params, tokenIn.Bytes()...)
+	params = append(params, tokenOut.Bytes()...)
+
+	params = append(params, fillBytes(1, configContractToBigInt(config).Bytes())...)
+
+	if config.CalcAmountOut {
+		params = append(params, fillBytes(2, fee.Bytes())...)
+	} else {
+		params = append(params, fillBytes(14, amountOut.Bytes())...)
+	}
+
+	params = append(params, fillBytes(14, minTokenOutBalance.Bytes())...)
+
+	if config.FeeToBuilder {
+		params = append(params, builderAddress.Bytes()...)
+	}
+
+	return params
+}
+
+func v3BuyFrontEncodeParams(
+	amountIn *big.Int,
+	pool common.Address,
+	tokenIn common.Address,
+	tokenOut common.Address,
+	config *ConfigContract,
+	builderAddress common.Address,
+) []byte {
+	params := make([]byte, 0)
+	params = append(params, []byte{0x00, 0x00, 0x00, 0x04}...)
+
+	params = append(params, fillBytes(14, amountIn.Bytes())...)
+	params = append(params, pool.Bytes()...)
+	params = append(params, tokenIn.Bytes()...)
+	params = append(params, tokenOut.Bytes()...)
+
+	params = append(params, fillBytes(1, configContractToBigInt(config).Bytes())...)
+
+	if config.FeeToBuilder {
+		//params = append(params, builderAddress.Bytes()...)
+	}
+	return params
+}
+
+func v3BuyBackEncodeParams(
+	amountIn *big.Int,
+	pool common.Address,
+	tokenIn common.Address,
+	tokenOut common.Address,
+	config *ConfigContract,
+	minTokenOutBalance *big.Int,
+	builderAddress common.Address,
+) []byte {
+	params := make([]byte, 0)
+	params = append(params, []byte{0x00, 0x00, 0x00, 0x08}...)
+
+	params = append(params, fillBytes(14, amountIn.Bytes())...)
+	params = append(params, pool.Bytes()...)
+	params = append(params, tokenIn.Bytes()...)
+	params = append(params, tokenOut.Bytes()...)
+
+	params = append(params, fillBytes(1, configContractToBigInt(config).Bytes())...)
+
+	params = append(params, fillBytes(14, minTokenOutBalance.Bytes())...)
+
+	if config.FeeToBuilder {
+		params = append(params, builderAddress.Bytes()...)
 	}
 	return params
 }
@@ -1887,61 +1932,3 @@ func applyTransactionWithResult(msg *core.Message, config *params.ChainConfig, g
 	}
 	return receipt, result, err
 }
-
-//func ApplyTransactionWithResultOld(config *params.ChainConfig, bc core.ChainContext, author *common.Address, gp *core.GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, cfg vm.Config) (*types.Receipt, *core.ExecutionResult, error) {
-//	msg, err := core.TransactionToMessage(tx, types.MakeSigner(config, header.Number, header.Time), header.BaseFee)
-//	if err != nil {
-//		return nil, nil, err
-//	}
-//	// Create a new context to be used in the EVM environment
-//	blockContext := core.NewEVMBlockContext(header, bc, author)
-//	vmenv := vm.NewEVM(blockContext, vm.TxContext{}, statedb, config, cfg)
-//	return applyTransactionWithResultOld(msg, config, bc, author, gp, statedb, header, tx, usedGas, vmenv)
-//}
-//
-//// apply transaction returning result, for callBundle
-//func applyTransactionWithResultOld(msg *core.Message, config *params.ChainConfig, bc core.ChainContext, author *common.Address, gp *core.GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, evm *vm.EVM) (*types.Receipt, *core.ExecutionResult, error) {
-//	// Create a new context to be used in the EVM environment.
-//	txContext := core.NewEVMTxContext(msg)
-//	evm.Reset(txContext, statedb)
-//
-//	// Apply the transaction to the current state (included in the env).
-//	result, err := core.ApplyMessage(evm, msg, gp)
-//	if err != nil {
-//		return nil, nil, err
-//	}
-//
-//	// Update the state with pending changes.
-//	var root []byte
-//	if config.IsByzantium(header.Number) {
-//		statedb.Finalise(true)
-//	} else {
-//		root = statedb.IntermediateRoot(config.IsEIP158(header.Number)).Bytes()
-//	}
-//	*usedGas += result.UsedGas
-//
-//	// Create a new receipt for the transaction, storing the intermediate root and gas used
-//	// by the tx.
-//	receipt := &types.Receipt{Type: tx.Type(), PostState: root, CumulativeGasUsed: *usedGas}
-//	if result.Failed() {
-//		receipt.Status = types.ReceiptStatusFailed
-//	} else {
-//		receipt.Status = types.ReceiptStatusSuccessful
-//	}
-//	receipt.TxHash = tx.Hash()
-//	receipt.GasUsed = result.UsedGas
-//
-//	// If the transaction created a contract, store the creation address in the receipt.
-//	if msg.To == nil {
-//		receipt.ContractAddress = crypto.CreateAddress(evm.TxContext.Origin, tx.Nonce())
-//	}
-//
-//	// Set the receipt logs and create the bloom filter.
-//	receipt.Logs = statedb.GetLogs(tx.Hash(), header.Number.Uint64(), header.Hash())
-//	receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
-//	receipt.BlockHash = header.Hash()
-//	receipt.BlockNumber = header.Number
-//	receipt.TransactionIndex = uint(statedb.TxIndex())
-//	return receipt, result, err
-//}
-//
