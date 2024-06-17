@@ -323,7 +323,7 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 	return ret, nil
 }
 
-// CallBundleArgs represents the arguments for a call.
+// CallBundleCheckArgs represents the arguments for a call.
 type CallBundleCheckArgs struct {
 	Txs                    []hexutil.Bytes       `json:"txs"`
 	BlockNumber            rpc.BlockNumber       `json:"blockNumber"`
@@ -338,7 +338,9 @@ type CallBundleCheckArgs struct {
 	BaseFee                *big.Int              `json:"baseFee"`
 	MevToken               common.Address        `json:"mevToken"`
 	MevContract            common.Address        `json:"mevContract"`
-	BalanceLimit           *big.Int              `json:"balanceLimit"`
+	GrossProfit            *big.Int              `json:"grossProfit"`
+	MinTokenOutBalance     *big.Int              `json:"minTokenOutBalance"`
+	MevTokens              []common.Address      `json:"mevTokens"`
 }
 
 // CallBundleCheckBalance will simulate a bundle of transactions at the top of a given block
@@ -354,6 +356,11 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 	}
 	if args.BlockNumber == 0 {
 		return nil, errors.New("bundle missing blockNumber")
+	}
+	minTokenOutBalance := args.MinTokenOutBalance
+	if minTokenOutBalance == nil {
+		log.Info("minTokenOutBalance为空不允许执行")
+		return nil, errors.New("minTokenOutBalance is nil")
 	}
 
 	var txs types.Transactions
@@ -446,12 +453,19 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 
 	//-------------------------------------------
 
+	balanceOriginal := new(big.Int).Sub(args.MinTokenOutBalance, args.GrossProfit)
+
 	balanceBefore, err := getERC20TokenBalance(ctx, s, args.MevToken, args.MevContract, state, header)
 
 	if err != nil {
 		log.Info("call_bundle_", "balanceBefore", balanceBefore, "err", err)
 		return nil, err
 	}
+
+	if balanceBefore.Cmp(balanceOriginal) > 0 {
+		minTokenOutBalance = new(big.Int).Add(balanceBefore, args.GrossProfit)
+	}
+
 	//-------------------------------------------
 
 	for _, tx := range txs {
@@ -535,8 +549,8 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 		return nil, errors.New("balance_too_low")
 	}
 
-	if args.BalanceLimit != nil {
-		if balanceAfter.Cmp(args.BalanceLimit) < 0 {
+	if minTokenOutBalance != nil {
+		if balanceAfter.Cmp(minTokenOutBalance) < 0 {
 			log.Info("call_bundle_", "balanceBefore", balanceBefore, "err", err)
 			return nil, errors.New("balance_limit")
 		}
