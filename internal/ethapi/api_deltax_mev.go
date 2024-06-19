@@ -541,8 +541,6 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 
 	//-------------------------------------------
 
-	balanceOriginal := new(big.Int).Sub(args.MinTokenOutBalance, args.GrossProfit)
-
 	balancesBefore, err := getTokenBalanceByContract(ctx, s, args.MevTokens, args.MevContract, state, header)
 
 	if err != nil {
@@ -562,8 +560,9 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 	}
 
 	mainMevTokenBalance := balancesBeforeMap[args.MevToken]
+	mainMevBalanceOriginal := new(big.Int).Sub(args.MinTokenOutBalance, args.GrossProfit)
 
-	if mainMevTokenBalance.Cmp(balanceOriginal) > 0 {
+	if mainMevTokenBalance.Cmp(mainMevBalanceOriginal) > 0 {
 		minTokenOutBalance = new(big.Int).Add(mainMevTokenBalance, args.GrossProfit)
 	}
 
