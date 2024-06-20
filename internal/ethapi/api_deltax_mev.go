@@ -1142,20 +1142,20 @@ type SbpSaleArgs struct {
 	Contract common.Address `json:"contract"`
 	Balance  *big.Int       `json:"balance"`
 
-	Token1        common.Address `json:"token1,omitempty"`
+	Token1        common.Address `json:"token1"`
 	Token2        common.Address `json:"token2"`
 	Token3        common.Address `json:"token3"`
-	PairOrPool1   common.Address `json:"pairOrPool1,omitempty"`
-	ZeroForOne1   bool           `json:"zeroForOne1,omitempty"`
-	Fee1          *big.Int       `json:"fee1,omitempty"`
+	PairOrPool1   common.Address `json:"pairOrPool1"`
+	ZeroForOne1   bool           `json:"zeroForOne1"`
+	Fee1          *big.Int       `json:"fee1"`
 	PairOrPool2   common.Address `json:"pairOrPool2"`
 	ZeroForOne2   bool           `json:"zeroForOne2"`
 	Fee2          *big.Int       `json:"fee2"`
 	Version2      int            `json:"version2"`
 	BuyOrSale     bool           `json:"buyOrSale"`
 	SubOne        bool           `json:"subOne"`
-	Token3BuyTax  bool           `json:"token3BuyTax,omitempty"`
-	Token3SaleTax bool           `json:"token3SaleTax,omitempty"`
+	Token3BuyTax  bool           `json:"token3BuyTax"`
+	Token3SaleTax bool           `json:"token3SaleTax"`
 
 	AmountInMin        *big.Int       `json:"amountInMin"`
 	AmountOut          *big.Int       `json:"amountOut"`
