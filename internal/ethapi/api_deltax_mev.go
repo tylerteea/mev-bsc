@@ -124,7 +124,7 @@ func getTokenBalanceByContract(ctx context.Context, s *BundleAPI, tokens []commo
 
 	defer func() {
 		if r := recover(); r != nil {
-			log.Info("recover...getTokenBalanceByContract")
+			log.Info("recover...getTokenBalanceByContract", "err", r)
 		}
 	}()
 	reqId := "getTokenBalanceByContract_"
@@ -157,6 +157,9 @@ func getTokenBalanceByContract(ctx context.Context, s *BundleAPI, tokens []commo
 		To:   &contractAddress,
 		Data: &bytes,
 	}
+
+	log.Info("call_getTokenBalance_start", "reqId", reqId)
+
 	callResult, err := mevCall(reqId, state, header, s, ctx, callArgs, nil, nil)
 
 	if callResult != nil {
