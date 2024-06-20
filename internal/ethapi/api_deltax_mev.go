@@ -21,6 +21,7 @@ import (
 	"github.com/holiman/uint256"
 	"math"
 	"math/big"
+	"runtime/debug"
 	"strconv"
 	"time"
 
@@ -124,7 +125,8 @@ func getTokenBalanceByContract(ctx context.Context, s *BundleAPI, tokens []commo
 
 	defer func() {
 		if r := recover(); r != nil {
-			log.Info("recover...getTokenBalanceByContract", "err", r)
+			dss := string(debug.Stack())
+			log.Info("recover...getTokenBalanceByContract", "err", r, "stack", dss)
 		}
 	}()
 	reqId := "getTokenBalanceByContract_"
