@@ -162,7 +162,13 @@ func getTokenBalanceByContract(ctx context.Context, s *BundleAPI, tokens []commo
 
 	callResult, err := mevCall(reqId, state, header, s, ctx, callArgs, nil, nil)
 
+	log.Info("call_execute0000000", "reqId", reqId)
+
 	if callResult != nil {
+
+		marshal, _ := json.Marshal(callResult)
+		log.Info("call_execute11111", "reqId", reqId)
+		log.Info("call_execute3333", "reqId", reqId, "marshal", string(marshal))
 
 		log.Info("call_execute4", "reqId", reqId, "result", string(callResult.ReturnData))
 		if len(callResult.Revert()) > 0 {
@@ -189,13 +195,19 @@ func getTokenBalanceByContract(ctx context.Context, s *BundleAPI, tokens []commo
 		return nil, err
 	}
 
+	log.Info("call_execute222222222", "reqId", reqId)
+
 	unpack, err := newMethod.Outputs.Unpack(callResult.Return())
 	if err != nil {
 		log.Info("call_execute8", "reqId", reqId, "err", err)
 		return nil, err
 	}
 
+	log.Info("call_execute5555555555", "reqId", reqId)
+
 	balances, ok := abi.ConvertType(unpack[0], []*big.Int{}).([]*big.Int)
+
+	log.Info("call_execute6666666666", "reqId", reqId)
 
 	if ok {
 		log.Info("call_execute_ok", "reqId", reqId, "err", err)
