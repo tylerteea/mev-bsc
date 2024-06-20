@@ -1600,9 +1600,11 @@ func execute(
 
 			var frontConfig *ConfigContract
 			if sbp.Version2 == V2 {
-				frontConfig = NewConfigContract(sbp.Token3BuyTax, true, false, sbp.ZeroForOne2)
+				// 模拟的时候都检查税，正式发不检查
+				//frontConfig = NewConfigContract(sbp.Token3BuyTax, true, false, sbp.ZeroForOne2)
+				frontConfig = NewConfigContract(true, true, false, sbp.ZeroForOne2)
 			} else {
-				frontConfig = NewConfigContract(false, true, false, sbp.ZeroForOne2)
+				frontConfig = NewConfigContract(true, true, false, sbp.ZeroForOne2)
 			}
 			frontMinTokenOutBalance := big.NewInt(0)
 			data = encodeParamsBuy(sbp.Version2, true, amountIn, sbp.PairOrPool2, sbp.Token2, sbp.Token3, frontConfig, sbp.Fee2, sbp.AmountOut, frontMinTokenOutBalance, sbp.BriberyAddress)
@@ -1616,9 +1618,11 @@ func execute(
 
 			var backConfig *ConfigContract
 			if sbp.Version2 == V2 {
-				backConfig = NewConfigContract(sbp.Token3SaleTax, true, false, !sbp.ZeroForOne2)
+				// 模拟的时候都检查税，正式发不检查
+				//backConfig = NewConfigContract(sbp.Token3SaleTax, true, false, !sbp.ZeroForOne2)
+				backConfig = NewConfigContract(true, true, false, !sbp.ZeroForOne2)
 			} else {
-				backConfig = NewConfigContract(false, true, false, !sbp.ZeroForOne2)
+				backConfig = NewConfigContract(true, true, false, !sbp.ZeroForOne2)
 			}
 			data = encodeParamsBuy(sbp.Version2, false, amountIn, sbp.PairOrPool2, sbp.Token3, sbp.Token2, backConfig, sbp.Fee2, sbp.AmountOut, sbp.MinTokenOutBalance, sbp.BriberyAddress)
 		} else {
