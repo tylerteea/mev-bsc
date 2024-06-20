@@ -485,48 +485,49 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 		timeoutMilliSeconds = *args.Timeout
 	}
 	timeout := time.Millisecond * time.Duration(timeoutMilliSeconds)
-	state, parent, err := s.b.StateAndHeaderByNumberOrHash(ctx, args.StateBlockNumberOrHash)
-	if state == nil || err != nil {
-		return nil, err
+	stateHeader, header, err0 := s.b.StateAndHeaderByNumberOrHash(ctx, args.StateBlockNumberOrHash)
+
+	if stateHeader == nil || err0 != nil {
+		return nil, err0
 	}
-	if err := args.StateOverrides.Apply(state); err != nil {
+	if err := args.StateOverrides.Apply(stateHeader); err != nil {
 		return nil, err
 	}
 	blockNumber := big.NewInt(int64(args.BlockNumber))
 
-	timestamp := parent.Time + 1
-	if args.Timestamp != nil {
-		timestamp = *args.Timestamp
-	}
-	coinbase := parent.Coinbase
+	//timestamp := parent.Time + 1
+	//if args.Timestamp != nil {
+	//	timestamp = *args.Timestamp
+	//}
+	coinbase := header.Coinbase
 	if args.Coinbase != nil {
 		coinbase = common.HexToAddress(*args.Coinbase)
 	}
-	difficulty := parent.Difficulty
-	if args.Difficulty != nil {
-		difficulty = args.Difficulty
-	}
-	gasLimit := parent.GasLimit
-	if args.GasLimit != nil {
-		gasLimit = *args.GasLimit
-	}
+	//difficulty := parent.Difficulty
+	//if args.Difficulty != nil {
+	//	difficulty = args.Difficulty
+	//}
+	//gasLimit := parent.GasLimit
+	//if args.GasLimit != nil {
+	//	gasLimit = *args.GasLimit
+	//}
 
-	var baseFee *big.Int
-	if args.BaseFee != nil {
-		baseFee = args.BaseFee
-	} else if s.b.ChainConfig().IsLondon(big.NewInt(args.BlockNumber.Int64())) {
-		baseFee = eip1559.CalcBaseFee(s.b.ChainConfig(), parent)
-	}
+	//var baseFee *big.Int
+	//if args.BaseFee != nil {
+	//	baseFee = args.BaseFee
+	//} else if s.b.ChainConfig().IsLondon(big.NewInt(args.BlockNumber.Int64())) {
+	//	baseFee = eip1559.CalcBaseFee(s.b.ChainConfig(), parent)
+	//}
 
-	header := &types.Header{
-		ParentHash: parent.Hash(),
-		Number:     blockNumber,
-		GasLimit:   gasLimit,
-		Time:       timestamp,
-		Difficulty: difficulty,
-		Coinbase:   coinbase,
-		BaseFee:    baseFee,
-	}
+	//header := &types.Header{
+	//	ParentHash: parent.Hash(),
+	//	Number:     blockNumber,
+	//	GasLimit:   gasLimit,
+	//	Time:       timestamp,
+	//	Difficulty: difficulty,
+	//	Coinbase:   coinbase,
+	//	BaseFee:    baseFee,
+	//}
 
 	// Setup context so it may be cancelled the call has completed
 	// or, in case of unmetered gas, setup a context with a timeout.
@@ -547,7 +548,7 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 	gp := new(core.GasPool).AddGas(math.MaxUint64)
 
 	results := []map[string]interface{}{}
-	coinbaseBalanceBefore := state.GetBalance(coinbase)
+	coinbaseBalanceBefore := stateHeader.GetBalance(coinbase)
 
 	bundleHash := sha3.NewLegacyKeccak256()
 	signer := types.MakeSigner(s.b.ChainConfig(), blockNumber, header.Time)
@@ -559,16 +560,16 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 
 	//-------------------------------------------
 
-	balancesBefore, err := getTokenBalanceByContract(ctx, s, args.MevTokens, args.MevContract, state, header)
+	balancesBefore, errb := getTokenBalanceByContract(ctx, s, args.MevTokens, args.MevContract, stateHeader, header)
 
-	if err != nil {
-		log.Info("call_bundle_balance_err1", "reqId", reqId, "err", err)
-		return nil, err
+	if errb != nil {
+		log.Info("call_bundle_balance_err1", "reqId", reqId, "err", errb)
+		return nil, errb
 	}
 
 	if len(args.MevTokens) != len(balancesBefore) {
-		log.Info("call_bundle_balance_err2", "reqId", reqId, "mevTokens_len", len(args.MevTokens), "balances_len", len(balancesBefore), "err", err)
-		return nil, err
+		log.Info("call_bundle_balance_err2", "reqId", reqId, "mevTokens_len", len(args.MevTokens), "balances_len", len(balancesBefore), "err", errb)
+		return nil, errb
 	}
 
 	balancesBeforeMap := make(map[common.Address]*big.Int)
@@ -591,40 +592,40 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 
 	for _, tx := range txs {
 		// Check if the context was cancelled (eg. timed-out)
-		if err := ctx.Err(); err != nil {
-			return nil, err
+		if err1 := ctx.Err(); err1 != nil {
+			return nil, err1
 		}
 
-		coinbaseBalanceBeforeTx := state.GetBalance(coinbase)
+		coinbaseBalanceBeforeTx := stateHeader.GetBalance(coinbase)
 
-		from, err := types.Sender(signer, tx)
-		state.Prepare(rules, from, coinbase, tx.To(), vm.ActivePrecompiles(rules), tx.AccessList())
-
-		receipt, result, err := ApplyTransactionWithResult(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, &header.GasUsed, vmconfig)
-		if err != nil {
-			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
+		from, err2 := types.Sender(signer, tx)
+		if err2 != nil {
+			return nil, fmt.Errorf("err: %w; txhash %s", err2, tx.Hash())
 		}
 
-		txHash := tx.Hash().String()
+		stateHeader.Prepare(rules, from, coinbase, tx.To(), vm.ActivePrecompiles(rules), tx.AccessList())
 
-		if err != nil {
-			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
+		receipt, result, err3 := ApplyTransactionWithResult(s.b.ChainConfig(), s.chain, &coinbase, gp, stateHeader, header, tx, &header.GasUsed, vmconfig)
+
+		if err3 != nil {
+			return nil, fmt.Errorf("err: %w; txhash %s", err3, tx.Hash())
 		}
+
 		to := "0x"
 		if tx.To() != nil {
 			to = tx.To().String()
 		}
 		jsonResult := map[string]interface{}{
-			"txHash":      txHash,
+			"txHash":      tx.Hash().String(),
 			"gasUsed":     receipt.GasUsed,
 			"fromAddress": from.String(),
 			"toAddress":   to,
 		}
 		totalGasUsed += receipt.GasUsed
 
-		gasPrice, err := tx.EffectiveGasTip(header.BaseFee)
-		if err != nil {
-			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
+		gasPrice, err4 := tx.EffectiveGasTip(header.BaseFee)
+		if err4 != nil {
+			return nil, fmt.Errorf("err: %w; txhash %s", err4, tx.Hash())
 		}
 		gasFeesTx := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), gasPrice)
 
@@ -647,7 +648,7 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 		if args.SimulationLogs {
 			jsonResult["logs"] = receipt.Logs
 		}
-		coinbaseDiffTx := new(uint256.Int).Sub(state.GetBalance(coinbase), coinbaseBalanceBeforeTx)
+		coinbaseDiffTx := new(uint256.Int).Sub(stateHeader.GetBalance(coinbase), coinbaseBalanceBeforeTx)
 		jsonResult["coinbaseDiff"] = coinbaseDiffTx.String()
 		jsonResult["gasFees"] = gasFeesTx.String()
 		jsonResult["ethSentToCoinbase"] = new(uint256.Int).Sub(coinbaseDiffTx, uint256.NewInt(gasFeesTx.Uint64())).String()
@@ -658,7 +659,7 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 
 	//-------------------------------------------
 
-	balancesAfter, err := getTokenBalanceByContract(ctx, s, args.MevTokens, args.MevContract, state, header)
+	balancesAfter, err := getTokenBalanceByContract(ctx, s, args.MevTokens, args.MevContract, stateHeader, header)
 
 	if err != nil {
 		log.Info("call_bundle_balance_err3", "reqId", reqId, "err", err)
@@ -695,15 +696,15 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 	checkResult["balancesAfter"] = balancesAfterMap
 
 	if isSuccess {
-		ret["stateBlockNumber"] = parent.Number.Int64()
+		ret["stateBlockNumber"] = header.Number.Int64()
 		ret["results"] = results
-		coinbaseDiff := new(uint256.Int).Sub(state.GetBalance(coinbase), coinbaseBalanceBefore)
+		coinbaseDiff := new(uint256.Int).Sub(stateHeader.GetBalance(coinbase), coinbaseBalanceBefore)
 		ret["coinbaseDiff"] = coinbaseDiff.String()
 		ret["gasFees"] = gasFees.String()
 		ret["ethSentToCoinbase"] = new(uint256.Int).Sub(coinbaseDiff, uint256.NewInt(gasFees.Uint64())).String()
 		ret["bundleGasPrice"] = new(uint256.Int).Div(coinbaseDiff, uint256.NewInt(totalGasUsed)).String() // new(big.Int).Div(gasFees, big.NewInt(int64(totalGasUsed))).String()
 		ret["totalGasUsed"] = totalGasUsed
-		ret["stateBlockNumber"] = parent.Number.Int64()
+		ret["stateBlockNumber"] = header.Number.Int64()
 		ret["bundleHash"] = "0x" + common.Bytes2Hex(bundleHash.Sum(nil))
 
 		checkResult["check_balance"] = "success"
