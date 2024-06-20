@@ -300,13 +300,14 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 	}
 
 	header := &types.Header{
-		ParentHash: parent.Hash(),
-		Number:     blockNumber,
-		GasLimit:   gasLimit,
-		Time:       timestamp,
-		Difficulty: difficulty,
-		Coinbase:   coinbase,
-		BaseFee:    baseFee,
+		ParentHash:    parent.Hash(),
+		Number:        blockNumber,
+		GasLimit:      gasLimit,
+		Time:          timestamp,
+		Difficulty:    difficulty,
+		Coinbase:      coinbase,
+		BaseFee:       baseFee,
+		ExcessBlobGas: parent.ExcessBlobGas,
 	}
 
 	// Setup context so it may be cancelled the call has completed
