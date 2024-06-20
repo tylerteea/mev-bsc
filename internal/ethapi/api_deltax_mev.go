@@ -158,7 +158,7 @@ func getTokenBalanceByContract(ctx context.Context, s *BundleAPI, tokens []commo
 		Data: &bytes,
 	}
 
-	log.Info("call_getTokenBalance_start", "reqId", reqId)
+	log.Info("call_getTokenBalance_start", "reqId", reqId, "data", common.Bytes2Hex(bytes))
 
 	callResult, err := mevCall(reqId, state, header, s, ctx, callArgs, nil, nil)
 
