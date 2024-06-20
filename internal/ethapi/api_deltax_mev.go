@@ -36,6 +36,7 @@ const (
 
 var epochNum = big.NewInt(200)
 var delayBlockNum = big.NewInt(10)
+var NullAddress = common.HexToAddress("0x0000000000000000000000000000000000000000")
 
 // --------------------------------------------------------Call Bundle--------------------------------------------------------
 
@@ -1609,7 +1610,7 @@ func execute(
 			frontMinTokenOutBalance := big.NewInt(0)
 			data = encodeParamsBuy(sbp.Version2, true, amountIn, sbp.PairOrPool2, sbp.Token2, sbp.Token3, frontConfig, sbp.Fee2, sbp.AmountOut, frontMinTokenOutBalance, sbp.BriberyAddress)
 		} else {
-			data = encodeParamsSale(amountIn, sbp.Token1, sbp.Token2, sbp.Token3, sbp.Fee1, sbp.PairOrPool1, sbp.ZeroForOne1, sbp.Fee2, sbp.PairOrPool2, sbp.ZeroForOne2, sbp.MinTokenOutBalance, sbp.BriberyAddress)
+			data = encodeParamsSale(isFront, amountIn, sbp.Token1, sbp.Token2, sbp.Token3, sbp.Fee1, sbp.PairOrPool1, sbp.ZeroForOne1, sbp.Fee2, sbp.PairOrPool2, sbp.ZeroForOne2, sbp.MinTokenOutBalance, sbp.BriberyAddress)
 		}
 
 	} else {
@@ -1626,7 +1627,7 @@ func execute(
 			}
 			data = encodeParamsBuy(sbp.Version2, false, amountIn, sbp.PairOrPool2, sbp.Token3, sbp.Token2, backConfig, sbp.Fee2, sbp.AmountOut, sbp.MinTokenOutBalance, sbp.BriberyAddress)
 		} else {
-			data = encodeParamsSale(amountIn, sbp.Token3, sbp.Token2, sbp.Token1, sbp.Fee2, sbp.PairOrPool2, !sbp.ZeroForOne2, sbp.Fee1, sbp.PairOrPool1, !sbp.ZeroForOne1, sbp.MinTokenOutBalance, sbp.BriberyAddress)
+			data = encodeParamsSale(isFront, amountIn, sbp.Token3, sbp.Token2, sbp.Token1, sbp.Fee2, sbp.PairOrPool2, !sbp.ZeroForOne2, sbp.Fee1, sbp.PairOrPool1, !sbp.ZeroForOne1, sbp.MinTokenOutBalance, sbp.BriberyAddress)
 		}
 	}
 
@@ -1690,6 +1691,8 @@ func execute(
 
 // execute_44g58pv
 func encodeParamsSale(
+	isFront bool,
+
 	amountIn *big.Int,
 
 	token1 common.Address,
@@ -1732,8 +1735,12 @@ func encodeParamsSale(
 		params = append(params, []byte{0}...)
 	}
 
-	params = append(params, fillBytes(14, minTokenOutBalance.Bytes())...)
-	params = append(params, builderAddress.Bytes()...)
+	if !isFront {
+		params = append(params, fillBytes(14, minTokenOutBalance.Bytes())...)
+		if builderAddress != NullAddress {
+			params = append(params, builderAddress.Bytes()...)
+		}
+	}
 
 	return params
 }
