@@ -83,11 +83,11 @@ func getERC20TokenBalance(ctx context.Context, s *BundleAPI, token common.Addres
 	var data = append(newMethod.ID, pack...)
 	bytes := (hexutil.Bytes)(data)
 
-	callArgs := TransactionArgs{
+	callArgs := &TransactionArgs{
 		To:   &token,
 		Data: &bytes,
 	}
-	callResult, err := mevCall(reqId, state, header, s, ctx, callArgs, nil, nil)
+	callResult, err := mevCall(reqId, state, header, s, ctx, callArgs, nil, nil, nil)
 
 	if callResult != nil {
 
@@ -155,14 +155,14 @@ func getTokenBalanceByContract(ctx context.Context, s *BundleAPI, tokens []commo
 	var data = append(newMethod.ID, pack...)
 	bytes := (hexutil.Bytes)(data)
 
-	callArgs := TransactionArgs{
+	callArgs := &TransactionArgs{
 		To:   &contractAddress,
 		Data: &bytes,
 	}
 
 	log.Info("call_getTokenBalance_start", "reqId", reqId, "data", common.Bytes2Hex(bytes))
 
-	callResult, err := mevCall(reqId, state, header, s, ctx, callArgs, nil, nil)
+	callResult, err := mevCall(reqId, state, header, s, ctx, callArgs, nil, nil, nil)
 
 	log.Info("call_getTokenBalance1", "reqId", reqId)
 
@@ -529,9 +529,288 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 	// or, in case of unmetered gas, setup a context with a timeout.
 	var cancel context.CancelFunc
 	if timeout > 0 {
-		_, cancel = context.WithTimeout(ctx, timeout)
+		ctx, cancel = context.WithTimeout(ctx, timeout)
 	} else {
-		_, cancel = context.WithCancel(ctx)
+		ctx, cancel = context.WithCancel(ctx)
+	}
+	// Make sure the context is cancelled when the call has completed
+	// this makes sure resources are cleaned up.
+	defer cancel()
+
+	results := []map[string]interface{}{}
+	coinbaseBalanceBefore := state.GetBalance(coinbase)
+
+	bundleHash := sha3.NewLegacyKeccak256()
+	signer := types.MakeSigner(s.b.ChainConfig(), blockNumber, header.Time)
+	var totalGasUsed uint64
+	gasFees := new(big.Int)
+
+	isPostMerge := header.Difficulty.Cmp(common.Big0) == 0
+	rules := s.b.ChainConfig().Rules(header.Number, isPostMerge, header.Time)
+
+	//-------------------------------------------
+
+	balancesBefore, err := getTokenBalanceByContract(ctx, s, args.MevTokens, args.MevContract, state, header)
+
+	if err != nil {
+		log.Info("call_bundle_balance_err1", "reqId", reqId, "err", err)
+		return nil, err
+	}
+
+	if len(args.MevTokens) != len(balancesBefore) {
+		log.Info("call_bundle_balance_err2", "reqId", reqId, "mevTokens_len", len(args.MevTokens), "balances_len", len(balancesBefore), "err", err)
+		return nil, err
+	}
+
+	balancesBeforeMap := make(map[common.Address]*big.Int)
+
+	for i, mevTokenTmp := range args.MevTokens {
+		balancesBeforeMap[mevTokenTmp] = balancesBefore[i]
+	}
+
+	mainMevTokenBalance := balancesBeforeMap[args.MevToken]
+	mainMevBalanceOriginal := new(big.Int).Sub(args.MinTokenOutBalance, args.GrossProfit)
+
+	if mainMevTokenBalance.Cmp(mainMevBalanceOriginal) > 0 {
+		minTokenOutBalance = new(big.Int).Add(mainMevTokenBalance, args.GrossProfit)
+	}
+
+	// 设置主mevToken 的余额限制为包含毛利的值
+	balancesBeforeMap[args.MevToken] = minTokenOutBalance
+
+	//-------------------------------------------
+
+	for _, tx := range txs {
+		// Check if the context was cancelled (eg. timed-out)
+		if errCtx := ctx.Err(); errCtx != nil {
+			return nil, errCtx
+		}
+
+		coinbaseBalanceBeforeTx := state.GetBalance(coinbase)
+
+		from, err0 := types.Sender(signer, tx)
+		if err0 != nil {
+			return nil, fmt.Errorf("err: %w; txhash %s", err0, tx.Hash())
+		}
+
+		state.Prepare(rules, from, coinbase, tx.To(), vm.ActivePrecompiles(rules), tx.AccessList())
+
+		msg, err1 := core.TransactionToMessage(tx, types.MakeSigner(s.b.ChainConfig(), header.Number, header.Time), header.BaseFee)
+		if err1 != nil {
+			return nil, fmt.Errorf("err: %w; txhash %s", err1, tx.Hash())
+		}
+
+		result, err2 := mevCall(reqId, state, header, s, ctx, nil, msg, nil, nil)
+		if err2 != nil {
+			return nil, fmt.Errorf("err: %w; txhash %s", err2, tx.Hash())
+		}
+
+		to := "0x"
+		if tx.To() != nil {
+			to = tx.To().String()
+		}
+		jsonResult := map[string]interface{}{
+			"txHash":      tx.Hash().String(),
+			"gasUsed":     result.UsedGas,
+			"fromAddress": from.String(),
+			"toAddress":   to,
+		}
+		totalGasUsed += result.UsedGas
+
+		gasPrice, err := tx.EffectiveGasTip(header.BaseFee)
+		if err != nil {
+			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
+		}
+		gasFeesTx := new(big.Int).Mul(big.NewInt(int64(result.UsedGas)), gasPrice)
+
+		// gasFeesTx := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), tx.GasPrice())
+		gasFees.Add(gasFees, gasFeesTx)
+		bundleHash.Write(tx.Hash().Bytes())
+		if result.Err != nil {
+			jsonResult["error"] = result.Err.Error()
+			revert := result.Revert()
+			if len(revert) > 0 {
+				reason, _ := abi.UnpackRevert(revert)
+				jsonResult["revert"] = reason
+			}
+		} else {
+			dst := make([]byte, hex.EncodedLen(len(result.Return())))
+			hex.Encode(dst, result.Return())
+			jsonResult["value"] = "0x" + string(dst)
+		}
+
+		coinbaseDiffTx := new(uint256.Int).Sub(state.GetBalance(coinbase), coinbaseBalanceBeforeTx)
+		jsonResult["coinbaseDiff"] = coinbaseDiffTx.String()
+		jsonResult["gasFees"] = gasFeesTx.String()
+		jsonResult["ethSentToCoinbase"] = new(uint256.Int).Sub(coinbaseDiffTx, uint256.NewInt(gasFeesTx.Uint64())).String()
+		jsonResult["gasPrice"] = new(uint256.Int).Div(coinbaseDiffTx, uint256.NewInt(result.UsedGas)).String() // tx.GasPrice().String()
+		jsonResult["gasUsed"] = result.UsedGas
+		results = append(results, jsonResult)
+	}
+
+	//-------------------------------------------
+
+	balancesAfter, err := getTokenBalanceByContract(ctx, s, args.MevTokens, args.MevContract, state, header)
+
+	if err != nil {
+		log.Info("call_bundle_balance_err3", "reqId", reqId, "err", err)
+		return nil, err
+	}
+
+	if len(args.MevTokens) != len(balancesAfter) {
+		log.Info("call_bundle_balance_err4", "reqId", reqId, "mevTokens_len", len(args.MevTokens), "balances_len", len(balancesAfter), "err", err)
+		return nil, err
+	}
+
+	balancesAfterMap := make(map[common.Address]*big.Int)
+
+	for i, mevTokenTmp := range args.MevTokens {
+		balancesAfterMap[mevTokenTmp] = balancesAfter[i]
+	}
+
+	isSuccess := true
+
+	for address, balanceAfterTmp := range balancesAfterMap {
+		balanceBeforeTmp := balancesBeforeMap[address]
+		if balanceAfterTmp.Cmp(balanceBeforeTmp) < 0 {
+			log.Info("call_bundle_balance校验失败", "reqId", reqId, "mevToken", address, "balanceBefore", balanceBeforeTmp.String(), "balanceAfter", balanceAfterTmp.String(), "err", err)
+			isSuccess = false
+		} else {
+			log.Info("call_bundle_balance校验成功", "reqId", reqId, "mevToken", address, "balanceBefore", balanceBeforeTmp.String(), "balanceAfter", balanceAfterTmp.String(), "err", err)
+		}
+	}
+	ret := map[string]interface{}{}
+
+	checkResult := map[string]interface{}{}
+
+	checkResult["balancesBefore"] = balancesBeforeMap
+	checkResult["balancesAfter"] = balancesAfterMap
+
+	if isSuccess {
+		ret["stateBlockNumber"] = parent.Number.Int64()
+		ret["results"] = results
+		coinbaseDiff := new(uint256.Int).Sub(state.GetBalance(coinbase), coinbaseBalanceBefore)
+		ret["coinbaseDiff"] = coinbaseDiff.String()
+		ret["gasFees"] = gasFees.String()
+		ret["ethSentToCoinbase"] = new(uint256.Int).Sub(coinbaseDiff, uint256.NewInt(gasFees.Uint64())).String()
+		ret["bundleGasPrice"] = new(uint256.Int).Div(coinbaseDiff, uint256.NewInt(totalGasUsed)).String() // new(big.Int).Div(gasFees, big.NewInt(int64(totalGasUsed))).String()
+		ret["totalGasUsed"] = totalGasUsed
+		ret["stateBlockNumber"] = parent.Number.Int64()
+		ret["bundleHash"] = "0x" + common.Bytes2Hex(bundleHash.Sum(nil))
+
+		checkResult["check_balance"] = "success"
+		checkResultJson, _ := json.Marshal(checkResult)
+		ret["check_result"] = string(checkResultJson)
+
+		newResultJson, _ := json.Marshal(ret)
+		log.Info("call_bundle_result", "reqId", reqId, "ret", string(newResultJson))
+
+		return ret, nil
+	} else {
+
+		checkResult["check_balance"] = "fail"
+		newResultJson, _ := json.Marshal(checkResult)
+		errMsg := string(newResultJson)
+		log.Info("call_bundle_余额最终校验失败", "reqId", reqId, "errMsg", errMsg)
+
+		return nil, errors.New(errMsg)
+	}
+}
+
+// CallBundleCheckBalanceOld will simulate a bundle of transactions at the top of a given block
+// number with the state of another (or the same) block. This can be used to
+// simulate future blocks with the current state, or it can be used to simulate
+// a past block.
+// The sender is responsible for signing the transactions and using the correct
+// nonce and ensuring validity
+func (s *BundleAPI) CallBundleCheckBalanceOld(ctx context.Context, args CallBundleCheckArgs) (map[string]interface{}, error) {
+
+	reqId := args.Victim.String() + "_" + args.MevContract.String()
+
+	if len(args.Txs) == 0 {
+		return nil, errors.New("bundle missing txs")
+	}
+	if args.BlockNumber == 0 {
+		return nil, errors.New("bundle missing blockNumber")
+	}
+	minTokenOutBalance := args.MinTokenOutBalance
+	if minTokenOutBalance == nil {
+		log.Info("minTokenOutBalance为空不允许执行", "reqId", reqId)
+		return nil, errors.New("minTokenOutBalance is nil")
+	}
+
+	var txs types.Transactions
+
+	for _, encodedTx := range args.Txs {
+		tx := new(types.Transaction)
+		if err := tx.UnmarshalBinary(encodedTx); err != nil {
+			return nil, err
+		}
+		txs = append(txs, tx)
+	}
+	defer func(start time.Time) {
+		log.Debug("callBundle Executing EVM call finished", "reqId", reqId, "runtime", time.Since(start))
+	}(time.Now())
+
+	timeoutMilliSeconds := int64(5000)
+	if args.Timeout != nil {
+		timeoutMilliSeconds = *args.Timeout
+	}
+	timeout := time.Millisecond * time.Duration(timeoutMilliSeconds)
+	stateHead, parent, err := s.b.StateAndHeaderByNumberOrHash(ctx, args.StateBlockNumberOrHash)
+	if stateHead == nil || err != nil {
+		return nil, err
+	}
+	// 避免相互影响
+	state := stateHead.Copy()
+
+	if err := args.StateOverrides.Apply(state); err != nil {
+		return nil, err
+	}
+	blockNumber := big.NewInt(int64(args.BlockNumber))
+
+	timestamp := parent.Time + 1
+	if args.Timestamp != nil {
+		timestamp = *args.Timestamp
+	}
+	coinbase := parent.Coinbase
+	if args.Coinbase != nil {
+		coinbase = common.HexToAddress(*args.Coinbase)
+	}
+	difficulty := parent.Difficulty
+	if args.Difficulty != nil {
+		difficulty = args.Difficulty
+	}
+	gasLimit := parent.GasLimit
+	if args.GasLimit != nil {
+		gasLimit = *args.GasLimit
+	}
+
+	var baseFee *big.Int
+	if args.BaseFee != nil {
+		baseFee = args.BaseFee
+	} else if s.b.ChainConfig().IsLondon(big.NewInt(args.BlockNumber.Int64())) {
+		baseFee = eip1559.CalcBaseFee(s.b.ChainConfig(), parent)
+	}
+
+	header := &types.Header{
+		ParentHash:    parent.Hash(),
+		Number:        blockNumber,
+		GasLimit:      gasLimit,
+		Time:          timestamp,
+		Difficulty:    difficulty,
+		Coinbase:      coinbase,
+		BaseFee:       baseFee,
+		ExcessBlobGas: parent.ExcessBlobGas,
+	}
+
+	// Setup context so it may be cancelled the call has completed
+	// or, in case of unmetered gas, setup a context with a timeout.
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+	} else {
+		ctx, cancel = context.WithCancel(ctx)
 	}
 	// Make sure the context is cancelled when the call has completed
 	// this makes sure resources are cleaned up.
@@ -1650,7 +1929,7 @@ func execute(
 		log.Info("call_execute2", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "data_hex", common.Bytes2Hex(data))
 	}
 	bytes := hexutil.Bytes(data)
-	callArgs := TransactionArgs{
+	callArgs := &TransactionArgs{
 		From: &sbp.Eoa,
 		To:   &sbp.Contract,
 		Data: &bytes,
@@ -1658,7 +1937,7 @@ func execute(
 
 	reqIdString := reqId + amountIn.String()
 
-	callResult, err := mevCall(reqIdString, sdb, head, s, ctx, callArgs, nil, nil)
+	callResult, err := mevCall(reqIdString, sdb, head, s, ctx, callArgs, nil, nil, nil)
 	if sbp.LogEnable {
 		log.Info("call_execute3", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err, "callResult", callResult)
 	}
@@ -1910,13 +2189,13 @@ func fillBytes(l int, rawData []byte) []byte {
 	return res
 }
 
-func mevCall(reqId string, state *state.StateDB, header *types.Header, s *BundleAPI, ctx context.Context, args TransactionArgs, overrides *StateOverride, blockOverrides *BlockOverrides) (*core.ExecutionResult, error) {
+func mevCall(reqId string, state *state.StateDB, header *types.Header, s *BundleAPI, ctx context.Context, args *TransactionArgs, msg *core.Message, overrides *StateOverride, blockOverrides *BlockOverrides) (*core.ExecutionResult, error) {
 
 	defer func(start time.Time) {
 		log.Info("call_ExecutingEVMCallFinished", "runtime", time.Since(start), "reqId", reqId)
 	}(time.Now())
 	//result, err := doMevCall(ctx, s.b, args, state, header, overrides, blockOverrides, s.b.RPCEVMTimeout(), s.b.RPCGasCap())
-	result, err := doMevCall(ctx, s.b, args, state, header, overrides, blockOverrides, 50*time.Millisecond, s.b.RPCGasCap())
+	result, err := doMevCall(ctx, s.b, args, msg, state, header, overrides, blockOverrides, 50*time.Millisecond, s.b.RPCGasCap())
 
 	if err != nil {
 		return nil, err
@@ -1928,7 +2207,7 @@ func mevCall(reqId string, state *state.StateDB, header *types.Header, s *Bundle
 	return result, result.Err
 }
 
-func doMevCall(ctx context.Context, b Backend, args TransactionArgs, state *state.StateDB, header *types.Header, overrides *StateOverride, blockOverrides *BlockOverrides, timeout time.Duration, globalGasCap uint64) (*core.ExecutionResult, error) {
+func doMevCall(ctx context.Context, b Backend, args *TransactionArgs, msg *core.Message, state *state.StateDB, header *types.Header, overrides *StateOverride, blockOverrides *BlockOverrides, timeout time.Duration, globalGasCap uint64) (*core.ExecutionResult, error) {
 	if err := overrides.Apply(state); err != nil {
 		return nil, err
 	}
@@ -1949,10 +2228,15 @@ func doMevCall(ctx context.Context, b Backend, args TransactionArgs, state *stat
 	if blockOverrides != nil {
 		blockOverrides.Apply(&blockCtx)
 	}
-	msg, err := args.ToMessage(globalGasCap, blockCtx.BaseFee)
-	if err != nil {
-		return nil, err
+
+	if msg == nil && args != nil {
+		msgTmp, err2 := args.ToMessage(globalGasCap, blockCtx.BaseFee)
+		if err2 != nil {
+			return nil, err2
+		}
+		msg = msgTmp
 	}
+
 	evm := b.GetEVM(ctx, msg, state, header, &vm.Config{NoBaseFee: true}, &blockCtx)
 
 	// Wait for the context to be done and cancel the evm. Even if the
