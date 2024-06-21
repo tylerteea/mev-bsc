@@ -470,7 +470,7 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 		txs = append(txs, tx)
 	}
 	defer func(start time.Time) {
-		log.Debug("callBundle Executing EVM call finished", "runtime", time.Since(start))
+		log.Debug("callBundle Executing EVM call finished", "reqId", reqId, "runtime", time.Since(start))
 	}(time.Now())
 
 	timeoutMilliSeconds := int64(5000)
