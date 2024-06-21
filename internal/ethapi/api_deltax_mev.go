@@ -658,7 +658,7 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 	}
 
 	if len(args.MevTokens) != len(balancesAfter) {
-		log.Info("call_bundle_balance_err2", "reqId", reqId, "mevTokens_len", len(args.MevTokens), "balances_len", len(balancesAfter), "err", err)
+		log.Info("call_bundle_balance_err4", "reqId", reqId, "mevTokens_len", len(args.MevTokens), "balances_len", len(balancesAfter), "err", err)
 		return nil, err
 	}
 
