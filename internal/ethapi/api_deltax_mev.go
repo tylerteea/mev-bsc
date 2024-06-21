@@ -256,10 +256,12 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 		timeoutMilliSeconds = *args.Timeout
 	}
 	timeout := time.Millisecond * time.Duration(timeoutMilliSeconds)
-	state, parent, err := s.b.StateAndHeaderByNumberOrHash(ctx, args.StateBlockNumberOrHash)
-	if state == nil || err != nil {
+	stateHead, parent, err := s.b.StateAndHeaderByNumberOrHash(ctx, args.StateBlockNumberOrHash)
+	if stateHead == nil || err != nil {
 		return nil, err
 	}
+	state := stateHead.Copy()
+
 	if err := args.StateOverrides.Apply(state); err != nil {
 		return nil, err
 	}
@@ -476,10 +478,13 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 		timeoutMilliSeconds = *args.Timeout
 	}
 	timeout := time.Millisecond * time.Duration(timeoutMilliSeconds)
-	state, parent, err := s.b.StateAndHeaderByNumberOrHash(ctx, args.StateBlockNumberOrHash)
-	if state == nil || err != nil {
+	stateHead, parent, err := s.b.StateAndHeaderByNumberOrHash(ctx, args.StateBlockNumberOrHash)
+	if stateHead == nil || err != nil {
 		return nil, err
 	}
+	// 避免相互影响
+	state := stateHead.Copy()
+
 	if err := args.StateOverrides.Apply(state); err != nil {
 		return nil, err
 	}
