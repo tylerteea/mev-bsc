@@ -1471,7 +1471,8 @@ func worker(
 
 	defer func() {
 		if r := recover(); r != nil {
-			log.Info("call_SandwichBestProfit_defer_err_", "reqAndIndex", reqAndIndex, "err", r)
+			dss := string(debug.Stack())
+			log.Info("recover...call_SandwichBestProfit", "reqAndIndex", reqAndIndex, "err", r, "stack", dss)
 		}
 	}()
 
