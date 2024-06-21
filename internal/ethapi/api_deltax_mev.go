@@ -478,51 +478,15 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 		timeoutMilliSeconds = *args.Timeout
 	}
 	timeout := time.Millisecond * time.Duration(timeoutMilliSeconds)
-	stateHead, parent, err := s.b.StateAndHeaderByNumberOrHash(ctx, args.StateBlockNumberOrHash)
+	stateHead, header, err := s.b.StateAndHeaderByNumberOrHash(ctx, args.StateBlockNumberOrHash)
 	if stateHead == nil || err != nil {
 		return nil, err
 	}
 	// 避免相互影响
-	state := stateHead.Copy()
+	stateCopy := stateHead.Copy()
 
-	if err := args.StateOverrides.Apply(state); err != nil {
-		return nil, err
-	}
-	blockNumber := big.NewInt(int64(args.BlockNumber))
-
-	timestamp := parent.Time + 1
-	if args.Timestamp != nil {
-		timestamp = *args.Timestamp
-	}
-	coinbase := parent.Coinbase
-	if args.Coinbase != nil {
-		coinbase = common.HexToAddress(*args.Coinbase)
-	}
-	difficulty := parent.Difficulty
-	if args.Difficulty != nil {
-		difficulty = args.Difficulty
-	}
-	gasLimit := parent.GasLimit
-	if args.GasLimit != nil {
-		gasLimit = *args.GasLimit
-	}
-
-	var baseFee *big.Int
-	if args.BaseFee != nil {
-		baseFee = args.BaseFee
-	} else if s.b.ChainConfig().IsLondon(big.NewInt(args.BlockNumber.Int64())) {
-		baseFee = eip1559.CalcBaseFee(s.b.ChainConfig(), parent)
-	}
-
-	header := &types.Header{
-		ParentHash:    parent.Hash(),
-		Number:        blockNumber,
-		GasLimit:      gasLimit,
-		Time:          timestamp,
-		Difficulty:    difficulty,
-		Coinbase:      coinbase,
-		BaseFee:       baseFee,
-		ExcessBlobGas: parent.ExcessBlobGas,
+	if errSo := args.StateOverrides.Apply(stateCopy); errSo != nil {
+		return nil, errSo
 	}
 
 	// Setup context so it may be cancelled the call has completed
@@ -537,20 +501,9 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 	// this makes sure resources are cleaned up.
 	defer cancel()
 
-	results := []map[string]interface{}{}
-	coinbaseBalanceBefore := state.GetBalance(coinbase)
-
-	bundleHash := sha3.NewLegacyKeccak256()
-	signer := types.MakeSigner(s.b.ChainConfig(), blockNumber, header.Time)
-	var totalGasUsed uint64
-	gasFees := new(big.Int)
-
-	isPostMerge := header.Difficulty.Cmp(common.Big0) == 0
-	rules := s.b.ChainConfig().Rules(header.Number, isPostMerge, header.Time)
-
 	//-------------------------------------------
 
-	balancesBefore, err := getTokenBalanceByContract(ctx, s, args.MevTokens, args.MevContract, state, header)
+	balancesBefore, err := getTokenBalanceByContract(ctx, s, args.MevTokens, args.MevContract, stateCopy, header)
 
 	if err != nil {
 		log.Info("call_bundle_balance_err1", "reqId", reqId, "err", err)
@@ -580,27 +533,20 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 
 	//-------------------------------------------
 
+	bundleHash := sha3.NewLegacyKeccak256()
+	results := []map[string]interface{}{}
 	for _, tx := range txs {
 		// Check if the context was cancelled (eg. timed-out)
 		if errCtx := ctx.Err(); errCtx != nil {
 			return nil, errCtx
 		}
 
-		coinbaseBalanceBeforeTx := state.GetBalance(coinbase)
-
-		from, err0 := types.Sender(signer, tx)
-		if err0 != nil {
-			return nil, fmt.Errorf("err: %w; txhash %s", err0, tx.Hash())
-		}
-
-		state.Prepare(rules, from, coinbase, tx.To(), vm.ActivePrecompiles(rules), tx.AccessList())
-
 		msg, err1 := core.TransactionToMessage(tx, types.MakeSigner(s.b.ChainConfig(), header.Number, header.Time), header.BaseFee)
 		if err1 != nil {
 			return nil, fmt.Errorf("err: %w; txhash %s", err1, tx.Hash())
 		}
 
-		result, err2 := mevCall(reqId, state, header, s, ctx, nil, msg, nil, nil)
+		result, err2 := mevCall(reqId, stateCopy, header, s, ctx, nil, msg, nil, nil)
 		if err2 != nil {
 			return nil, fmt.Errorf("err: %w; txhash %s", err2, tx.Hash())
 		}
@@ -610,21 +556,11 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 			to = tx.To().String()
 		}
 		jsonResult := map[string]interface{}{
-			"txHash":      tx.Hash().String(),
-			"gasUsed":     result.UsedGas,
-			"fromAddress": from.String(),
-			"toAddress":   to,
+			"txHash":    tx.Hash().String(),
+			"gasUsed":   result.UsedGas,
+			"toAddress": to,
 		}
-		totalGasUsed += result.UsedGas
 
-		gasPrice, err := tx.EffectiveGasTip(header.BaseFee)
-		if err != nil {
-			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
-		}
-		gasFeesTx := new(big.Int).Mul(big.NewInt(int64(result.UsedGas)), gasPrice)
-
-		// gasFeesTx := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), tx.GasPrice())
-		gasFees.Add(gasFees, gasFeesTx)
 		bundleHash.Write(tx.Hash().Bytes())
 		if result.Err != nil {
 			jsonResult["error"] = result.Err.Error()
@@ -638,19 +574,12 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 			hex.Encode(dst, result.Return())
 			jsonResult["value"] = "0x" + string(dst)
 		}
-
-		coinbaseDiffTx := new(uint256.Int).Sub(state.GetBalance(coinbase), coinbaseBalanceBeforeTx)
-		jsonResult["coinbaseDiff"] = coinbaseDiffTx.String()
-		jsonResult["gasFees"] = gasFeesTx.String()
-		jsonResult["ethSentToCoinbase"] = new(uint256.Int).Sub(coinbaseDiffTx, uint256.NewInt(gasFeesTx.Uint64())).String()
-		jsonResult["gasPrice"] = new(uint256.Int).Div(coinbaseDiffTx, uint256.NewInt(result.UsedGas)).String() // tx.GasPrice().String()
-		jsonResult["gasUsed"] = result.UsedGas
 		results = append(results, jsonResult)
 	}
 
 	//-------------------------------------------
 
-	balancesAfter, err := getTokenBalanceByContract(ctx, s, args.MevTokens, args.MevContract, state, header)
+	balancesAfter, err := getTokenBalanceByContract(ctx, s, args.MevTokens, args.MevContract, stateCopy, header)
 
 	if err != nil {
 		log.Info("call_bundle_balance_err3", "reqId", reqId, "err", err)
@@ -687,15 +616,8 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 	checkResult["balancesAfter"] = balancesAfterMap
 
 	if isSuccess {
-		ret["stateBlockNumber"] = parent.Number.Int64()
 		ret["results"] = results
-		coinbaseDiff := new(uint256.Int).Sub(state.GetBalance(coinbase), coinbaseBalanceBefore)
-		ret["coinbaseDiff"] = coinbaseDiff.String()
-		ret["gasFees"] = gasFees.String()
-		ret["ethSentToCoinbase"] = new(uint256.Int).Sub(coinbaseDiff, uint256.NewInt(gasFees.Uint64())).String()
-		ret["bundleGasPrice"] = new(uint256.Int).Div(coinbaseDiff, uint256.NewInt(totalGasUsed)).String() // new(big.Int).Div(gasFees, big.NewInt(int64(totalGasUsed))).String()
-		ret["totalGasUsed"] = totalGasUsed
-		ret["stateBlockNumber"] = parent.Number.Int64()
+		ret["stateBlockNumber"] = header.Number.Int64()
 		ret["bundleHash"] = "0x" + common.Bytes2Hex(bundleHash.Sum(nil))
 
 		checkResult["check_balance"] = "success"
