@@ -1695,18 +1695,19 @@ func worker(
 	if fErr != nil {
 		result["error"] = "frontCallErr"
 		result["reason"] = fErr.Error()
-		result["amountIn"] = amountIn.String()
+		result["frontAmountIn"] = amountIn.String()
 		return result
 	}
 
+	backAmountIn := frontAmountOut
 	if sbp.SubOne {
-		frontAmountOut = new(big.Int).Sub(frontAmountOut, big.NewInt(1))
+		backAmountIn = new(big.Int).Sub(frontAmountOut, big.NewInt(1))
 	}
 
-	if frontAmountOut.Cmp(big.NewInt(0)) == 0 {
-		result["error"] = "frontAmountOutZero"
-		result["reason"] = "frontAmountOutZero"
-		result["amountIn"] = amountIn.String()
+	if backAmountIn.Cmp(big.NewInt(0)) <= 0 {
+		result["error"] = "backAmountInZero"
+		result["reason"] = "backAmountInZero"
+		result["frontAmountIn"] = amountIn.String()
 		return result
 	}
 
@@ -1745,42 +1746,44 @@ func worker(
 	if victimTxCallErr != nil {
 		result["error"] = "victimTxCallErr"
 		result["reason"] = victimTxCallErr.Error()
-		result["amountIn"] = amountIn.String()
+		result["frontAmountIn"] = amountIn.String()
 		return result
 	}
 	if len(victimTxCallResult.Revert()) > 0 {
 		result["error"] = "execution_victimTx_reverted"
 		result["reason"] = victimTxCallResult.Err.Error()
-		result["amountIn"] = amountIn.String()
+		result["frontAmountIn"] = amountIn.String()
 		return result
 	}
 	if victimTxCallResult.Err != nil {
 		result["error"] = "execution_victimTx_callResult_err"
 		result["reason"] = victimTxCallResult.Err.Error()
-		result["amountIn"] = amountIn.String()
+		result["frontAmountIn"] = amountIn.String()
 		return result
 	}
 
 	// 跟跑----------------------------------------------------------------------------------------
 	backStartTime := time.Now()
-	backAmountOut, bErr := execute(ctx, reqAndIndex, false, sbp, frontAmountOut, statedb, s, head)
+	backAmountOut, bErr := execute(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head)
 	backCostTime := time.Since(backStartTime).Milliseconds()
 
 	if sbp.LogEnable {
-		log.Info("call_execute_back", "reqAndIndex", reqAndIndex, "backAmountIn", frontAmountOut, "backAmountOut", backAmountOut, "bErr", bErr, "cost_time", backCostTime)
+		log.Info("call_execute_back", "reqAndIndex", reqAndIndex, "backAmountIn", backAmountIn, "backAmountOut", backAmountOut, "bErr", bErr, "cost_time", backCostTime)
 	}
-	if bErr != nil || backAmountOut.Cmp(big.NewInt(0)) == 0 {
+	if bErr != nil || backAmountOut.Cmp(big.NewInt(0)) <= 0 {
 		result["error"] = "backCallErr"
 		result["reason"] = bErr.Error()
-		result["amountIn"] = amountIn.String()
+		result["frontAmountIn"] = amountIn.String()
 		result["frontAmountOut"] = frontAmountOut.String()
+		result["backAmountIn"] = backAmountIn.String()
 		return result
 	}
 	profit := new(big.Int).Sub(backAmountOut, amountIn)
 
-	result["amountIn"] = amountIn
+	result["frontAmountIn"] = amountIn
 	result["frontAmountOut"] = frontAmountOut
-	result["amountOut"] = backAmountOut
+	result["backAmountIn"] = backAmountIn
+	result["backAmountOut"] = backAmountOut
 	result["profit"] = profit
 
 	if profit.Cmp(big.NewInt(0)) <= 0 {
