@@ -1964,7 +1964,7 @@ func encodeParamsSale(
 
 	if !isFront {
 		params = append(params, fillBytes(14, minTokenOutBalance.Bytes())...)
-		if builderAddress != NullAddress {
+		if builderAddress.Cmp(NullAddress) != 0 {
 			params = append(params, builderAddress.Bytes()...)
 		}
 	}
