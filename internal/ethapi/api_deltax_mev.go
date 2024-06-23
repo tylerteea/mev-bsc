@@ -441,13 +441,13 @@ type CallBundleCheckArgs struct {
 	Victim                 common.Hash           `json:"victim"`
 }
 
-// CallBundleCheckBalance will simulate a bundle of transactions at the top of a given block
+// CallBundleCheckBalance11 will simulate a bundle of transactions at the top of a given block
 // number with the state of another (or the same) block. This can be used to
 // simulate future blocks with the current state, or it can be used to simulate
 // a past block.
 // The sender is responsible for signing the transactions and using the correct
 // nonce and ensuring validity
-func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleCheckArgs) (map[string]interface{}, error) {
+func (s *BundleAPI) CallBundleCheckBalance11(ctx context.Context, args CallBundleCheckArgs) (map[string]interface{}, error) {
 
 	reqId := args.Victim.String() + "_" + args.MevContract.String()
 
@@ -892,13 +892,13 @@ func (s *BundleAPI) CallBundleCheckBalancebak(ctx context.Context, args CallBund
 	}
 }
 
-// CallBundleCheckBalanceOld will simulate a bundle of transactions at the top of a given block
+// CallBundleCheckBalance will simulate a bundle of transactions at the top of a given block
 // number with the state of another (or the same) block. This can be used to
 // simulate future blocks with the current state, or it can be used to simulate
 // a past block.
 // The sender is responsible for signing the transactions and using the correct
 // nonce and ensuring validity
-func (s *BundleAPI) CallBundleCheckBalanceOld(ctx context.Context, args CallBundleCheckArgs) (map[string]interface{}, error) {
+func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleCheckArgs) (map[string]interface{}, error) {
 
 	reqId := args.Victim.String() + "_" + args.MevContract.String()
 
