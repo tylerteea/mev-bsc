@@ -478,6 +478,245 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 		timeoutMilliSeconds = *args.Timeout
 	}
 	timeout := time.Millisecond * time.Duration(timeoutMilliSeconds)
+	stateHead, parent, err := s.b.StateAndHeaderByNumberOrHash(ctx, args.StateBlockNumberOrHash)
+	if stateHead == nil || err != nil {
+		return nil, err
+	}
+	// 避免相互影响
+	stateCopy := stateHead.Copy()
+
+	if err := args.StateOverrides.Apply(stateCopy); err != nil {
+		return nil, err
+	}
+	blockNumber := big.NewInt(int64(args.BlockNumber))
+
+	timestamp := parent.Time + 1
+	if args.Timestamp != nil {
+		timestamp = *args.Timestamp
+	}
+	coinbase := parent.Coinbase
+	if args.Coinbase != nil {
+		coinbase = common.HexToAddress(*args.Coinbase)
+	}
+	difficulty := parent.Difficulty
+	if args.Difficulty != nil {
+		difficulty = args.Difficulty
+	}
+	gasLimit := parent.GasLimit
+	if args.GasLimit != nil {
+		gasLimit = *args.GasLimit
+	}
+
+	var baseFee *big.Int
+	if args.BaseFee != nil {
+		baseFee = args.BaseFee
+	} else if s.b.ChainConfig().IsLondon(big.NewInt(args.BlockNumber.Int64())) {
+		baseFee = eip1559.CalcBaseFee(s.b.ChainConfig(), parent)
+	}
+
+	header := &types.Header{
+		ParentHash:    parent.Hash(),
+		Number:        blockNumber,
+		GasLimit:      gasLimit,
+		Time:          timestamp,
+		Difficulty:    difficulty,
+		Coinbase:      coinbase,
+		BaseFee:       baseFee,
+		ExcessBlobGas: parent.ExcessBlobGas,
+	}
+
+	// Setup context so it may be cancelled the call has completed
+	// or, in case of unmetered gas, setup a context with a timeout.
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+	} else {
+		ctx, cancel = context.WithCancel(ctx)
+	}
+	// Make sure the context is cancelled when the call has completed
+	// this makes sure resources are cleaned up.
+	defer cancel()
+
+	//-------------------------------------------
+
+	balancesBefore, err := getTokenBalanceByContract(ctx, s, args.MevTokens, args.MevContract, stateCopy, header)
+
+	if err != nil {
+		log.Info("call_bundle_balance_err1", "reqId", reqId, "err", err)
+		return nil, err
+	}
+
+	if len(args.MevTokens) != len(balancesBefore) {
+		log.Info("call_bundle_balance_err2", "reqId", reqId, "mevTokens_len", len(args.MevTokens), "balances_len", len(balancesBefore), "err", err)
+		return nil, err
+	}
+
+	balancesBeforeMap := make(map[common.Address]*big.Int)
+
+	for i, mevTokenTmp := range args.MevTokens {
+		balancesBeforeMap[mevTokenTmp] = balancesBefore[i]
+	}
+
+	mainMevTokenBalance := balancesBeforeMap[args.MevToken]
+	mainMevBalanceOriginal := new(big.Int).Sub(args.MinTokenOutBalance, args.GrossProfit)
+
+	if mainMevTokenBalance.Cmp(mainMevBalanceOriginal) > 0 {
+		minTokenOutBalance = new(big.Int).Add(mainMevTokenBalance, args.GrossProfit)
+	}
+
+	// 设置主mevToken 的余额限制为包含毛利的值
+	balancesBeforeMap[args.MevToken] = minTokenOutBalance
+
+	//-------------------------------------------
+
+	bundleHash := sha3.NewLegacyKeccak256()
+	results := []map[string]interface{}{}
+	for _, tx := range txs {
+		// Check if the context was cancelled (eg. timed-out)
+		if errCtx := ctx.Err(); errCtx != nil {
+			return nil, errCtx
+		}
+
+		msg, err1 := core.TransactionToMessage(tx, types.MakeSigner(s.b.ChainConfig(), header.Number, header.Time), header.BaseFee)
+		if err1 != nil {
+			return nil, fmt.Errorf("err: %w; txhash %s", err1, tx.Hash())
+		}
+
+		result, err2 := mevCall(reqId, stateCopy, header, s, ctx, nil, msg, nil, nil)
+		if err2 != nil {
+			return nil, fmt.Errorf("err: %w; txhash %s", err2, tx.Hash())
+		}
+
+		to := "0x"
+		if tx.To() != nil {
+			to = tx.To().String()
+		}
+		jsonResult := map[string]interface{}{
+			"txHash":    tx.Hash().String(),
+			"gasUsed":   result.UsedGas,
+			"toAddress": to,
+		}
+
+		bundleHash.Write(tx.Hash().Bytes())
+		if result.Err != nil {
+			jsonResult["error"] = result.Err.Error()
+			revert := result.Revert()
+			if len(revert) > 0 {
+				reason, _ := abi.UnpackRevert(revert)
+				jsonResult["revert"] = reason
+			}
+		} else {
+			dst := make([]byte, hex.EncodedLen(len(result.Return())))
+			hex.Encode(dst, result.Return())
+			jsonResult["value"] = "0x" + string(dst)
+		}
+		results = append(results, jsonResult)
+	}
+
+	//-------------------------------------------
+
+	balancesAfter, err := getTokenBalanceByContract(ctx, s, args.MevTokens, args.MevContract, stateCopy, header)
+
+	if err != nil {
+		log.Info("call_bundle_balance_err3", "reqId", reqId, "err", err)
+		return nil, err
+	}
+
+	if len(args.MevTokens) != len(balancesAfter) {
+		log.Info("call_bundle_balance_err4", "reqId", reqId, "mevTokens_len", len(args.MevTokens), "balances_len", len(balancesAfter), "err", err)
+		return nil, err
+	}
+
+	balancesAfterMap := make(map[common.Address]*big.Int)
+
+	for i, mevTokenTmp := range args.MevTokens {
+		balancesAfterMap[mevTokenTmp] = balancesAfter[i]
+	}
+
+	isSuccess := true
+
+	for address, balanceAfterTmp := range balancesAfterMap {
+		balanceBeforeTmp := balancesBeforeMap[address]
+		if balanceAfterTmp.Cmp(balanceBeforeTmp) < 0 {
+			log.Info("call_bundle_balance校验失败", "reqId", reqId, "mevToken", address, "balanceBefore", balanceBeforeTmp.String(), "balanceAfter", balanceAfterTmp.String(), "err", err)
+			isSuccess = false
+		} else {
+			log.Info("call_bundle_balance校验成功", "reqId", reqId, "mevToken", address, "balanceBefore", balanceBeforeTmp.String(), "balanceAfter", balanceAfterTmp.String(), "err", err)
+		}
+	}
+	ret := map[string]interface{}{}
+
+	checkResult := map[string]interface{}{}
+
+	checkResult["balancesBefore"] = balancesBeforeMap
+	checkResult["balancesAfter"] = balancesAfterMap
+
+	if isSuccess {
+		ret["errMsg"] = ""
+		ret["results"] = results
+		ret["stateBlockNumber"] = header.Number.Int64()
+		ret["bundleHash"] = "0x" + common.Bytes2Hex(bundleHash.Sum(nil))
+		checkResult["check_balance"] = "success"
+		checkResultJson, _ := json.Marshal(checkResult)
+		ret["check_result"] = string(checkResultJson)
+
+		newResultJson, _ := json.Marshal(ret)
+
+		log.Info("call_bundle_result", "reqId", reqId, "ret", string(newResultJson))
+		return ret, nil
+	} else {
+
+		ret["results"] = results
+		ret["stateBlockNumber"] = header.Number.Int64()
+		ret["bundleHash"] = "0x" + common.Bytes2Hex(bundleHash.Sum(nil))
+
+		checkResult["check_balance"] = "fail"
+		checkResultJson, _ := json.Marshal(checkResult)
+		ret["check_result"] = string(checkResultJson)
+
+		newResultJson, _ := json.Marshal(ret)
+		errMsg := string(newResultJson)
+		ret["errMsg"] = errMsg
+
+		log.Info("call_bundle_余额最终校验失败", "reqId", reqId, "ret", errMsg)
+		return nil, errors.New(errMsg)
+	}
+}
+
+func (s *BundleAPI) CallBundleCheckBalancebak(ctx context.Context, args CallBundleCheckArgs) (map[string]interface{}, error) {
+
+	reqId := args.Victim.String() + "_" + args.MevContract.String()
+
+	if len(args.Txs) == 0 {
+		return nil, errors.New("bundle missing txs")
+	}
+	if args.BlockNumber == 0 {
+		return nil, errors.New("bundle missing blockNumber")
+	}
+	minTokenOutBalance := args.MinTokenOutBalance
+	if minTokenOutBalance == nil {
+		log.Info("minTokenOutBalance为空不允许执行", "reqId", reqId)
+		return nil, errors.New("minTokenOutBalance is nil")
+	}
+
+	var txs types.Transactions
+
+	for _, encodedTx := range args.Txs {
+		tx := new(types.Transaction)
+		if err := tx.UnmarshalBinary(encodedTx); err != nil {
+			return nil, err
+		}
+		txs = append(txs, tx)
+	}
+	defer func(start time.Time) {
+		log.Debug("callBundle Executing EVM call finished", "reqId", reqId, "runtime", time.Since(start))
+	}(time.Now())
+
+	timeoutMilliSeconds := int64(5000)
+	if args.Timeout != nil {
+		timeoutMilliSeconds = *args.Timeout
+	}
+	timeout := time.Millisecond * time.Duration(timeoutMilliSeconds)
 	stateHead, header, err := s.b.StateAndHeaderByNumberOrHash(ctx, args.StateBlockNumberOrHash)
 	if stateHead == nil || err != nil {
 		return nil, err
