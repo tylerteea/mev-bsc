@@ -628,42 +628,40 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 	}
 	blockNumber := big.NewInt(int64(args.BlockNumber))
 
-	//timestamp := parent.Time + 1
-	//if args.Timestamp != nil {
-	//	timestamp = *args.Timestamp
-	//}
+	timestamp := parent.Time + 1
+	if args.Timestamp != nil {
+		timestamp = *args.Timestamp
+	}
 	coinbase := parent.Coinbase
 	if args.Coinbase != nil {
 		coinbase = common.HexToAddress(*args.Coinbase)
 	}
-	//difficulty := parent.Difficulty
-	//if args.Difficulty != nil {
-	//	difficulty = args.Difficulty
-	//}
-	//gasLimit := parent.GasLimit
-	//if args.GasLimit != nil {
-	//	gasLimit = *args.GasLimit
-	//}
+	difficulty := parent.Difficulty
+	if args.Difficulty != nil {
+		difficulty = args.Difficulty
+	}
+	gasLimit := parent.GasLimit
+	if args.GasLimit != nil {
+		gasLimit = *args.GasLimit
+	}
 
-	//var baseFee *big.Int
-	//if args.BaseFee != nil {
-	//	baseFee = args.BaseFee
-	//} else if s.b.ChainConfig().IsLondon(big.NewInt(args.BlockNumber.Int64())) {
-	//	baseFee = eip1559.CalcBaseFee(s.b.ChainConfig(), parent)
-	//}
+	var baseFee *big.Int
+	if args.BaseFee != nil {
+		baseFee = args.BaseFee
+	} else if s.b.ChainConfig().IsLondon(big.NewInt(args.BlockNumber.Int64())) {
+		baseFee = eip1559.CalcBaseFee(s.b.ChainConfig(), parent)
+	}
 
-	//header := &types.Header{
-	//	ParentHash:    parent.Hash(),
-	//	Number:        blockNumber,
-	//	GasLimit:      gasLimit,
-	//	Time:          timestamp,
-	//	Difficulty:    difficulty,
-	//	Coinbase:      coinbase,
-	//	BaseFee:       baseFee,
-	//	ExcessBlobGas: parent.ExcessBlobGas,
-	//}
-
-	header := parent
+	header := &types.Header{
+		ParentHash:    parent.Hash(),
+		Number:        blockNumber,
+		GasLimit:      gasLimit,
+		Time:          timestamp,
+		Difficulty:    difficulty,
+		Coinbase:      coinbase,
+		BaseFee:       baseFee,
+		ExcessBlobGas: parent.ExcessBlobGas,
+	}
 
 	// Setup context so it may be cancelled the call has completed
 	// or, in case of unmetered gas, setup a context with a timeout.
