@@ -162,7 +162,7 @@ func getTokenBalanceByContract(ctx context.Context, s *BundleAPI, tokens []commo
 
 	log.Info("call_getTokenBalance_start", "reqId", reqId, "data", common.Bytes2Hex(bytes))
 
-	callResult, err := mevCall(reqId, state, header, s, ctx, callArgs, nil, nil, nil)
+	callResult, err := callBundleMevCall(reqId, state, header, s, ctx, callArgs, nil, nil, nil)
 
 	log.Info("call_getTokenBalance1", "reqId", reqId)
 
@@ -582,7 +582,7 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 			return nil, fmt.Errorf("err: %w; txhash %s", err1, tx.Hash())
 		}
 
-		result, err2 := mevCall(reqId, stateCopy, header, s, ctx, nil, msg, nil, nil)
+		result, err2 := callBundleMevCall(reqId, stateCopy, header, s, ctx, nil, msg, nil, nil)
 		if err2 != nil {
 			return nil, fmt.Errorf("err: %w; txhash %s", err2, tx.Hash())
 		}
@@ -2359,6 +2359,93 @@ func fillBytes(l int, rawData []byte) []byte {
 		res[head+i] = rawData[i]
 	}
 	return res
+}
+
+func callBundleMevCall(reqId string, state *state.StateDB, header *types.Header, s *BundleAPI, ctx context.Context, args *TransactionArgs, msg *core.Message, overrides *StateOverride, blockOverrides *BlockOverrides) (*core.ExecutionResult, error) {
+
+	defer func(start time.Time) {
+		log.Info("call_ExecutingEVMCallFinished", "runtime", time.Since(start), "reqId", reqId)
+	}(time.Now())
+	//result, err := doMevCall(ctx, s.b, args, state, header, overrides, blockOverrides, s.b.RPCEVMTimeout(), s.b.RPCGasCap())
+	result, err := callBundleDoMevCall(ctx, s.b, args, msg, state, header, overrides, blockOverrides, 50*time.Millisecond, s.b.RPCGasCap())
+
+	if err != nil {
+		return nil, err
+	}
+	// If the result contains a revert reason, try to unpack and return it.
+	if len(result.Revert()) > 0 {
+		return nil, newRevertError(result.Revert())
+	}
+	return result, result.Err
+}
+
+func callBundleDoMevCall(ctx context.Context, b Backend, args *TransactionArgs, msg *core.Message, state *state.StateDB, header *types.Header, overrides *StateOverride, blockOverrides *BlockOverrides, timeout time.Duration, globalGasCap uint64) (*core.ExecutionResult, error) {
+	if err := overrides.Apply(state); err != nil {
+		return nil, err
+	}
+	// Setup context so it may be cancelled the call has completed
+	// or, in case of unmetered gas, setup a context with a timeout.
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+	} else {
+		ctx, cancel = context.WithCancel(ctx)
+	}
+	// Make sure the context is cancelled when the call has completed
+	// this makes sure resources are cleaned up.
+	defer cancel()
+
+	// Get a new instance of the EVM.
+	blockCtx := core.NewEVMBlockContext(header, NewChainContext(ctx, b), nil)
+	if blockOverrides != nil {
+		blockOverrides.Apply(&blockCtx)
+	}
+
+	if msg == nil && args != nil {
+		msgTmp, err2 := args.ToMessage(globalGasCap, blockCtx.BaseFee)
+		if err2 != nil {
+			return nil, err2
+		}
+		msg = msgTmp
+	}
+
+	vmConfig := &vm.Config{NoBaseFee: true}
+
+	//evm := b.GetEVM(ctx, msg, state, header, &vm.Config{NoBaseFee: true}, &blockCtx)
+
+	txContext := core.NewEVMTxContext(msg)
+
+	evm := vm.NewEVM(blockCtx, txContext, state, b.ChainConfig(), *vmConfig)
+	defer func() {
+		ite := evm.Interpreter()
+		vm.EVMInterpreterPool.Put(ite)
+		vm.EvmPool.Put(evm)
+	}()
+
+	evm.Reset(core.NewEVMTxContext(msg), state)
+
+	// Wait for the context to be done and cancel the evm. Even if the
+	// EVM has finished, cancelling may be done (repeatedly)
+	//gopool.Submit(func() {
+	//	<-ctx.Done()
+	//	evm.Cancel()
+	//})
+
+	// Execute the message.
+	gp := new(core.GasPool).AddGas(math.MaxUint64)
+	result, err := core.ApplyMessage(evm, msg, gp)
+	if err := state.Error(); err != nil {
+		return nil, err
+	}
+
+	// If the timer caused an abort, return an appropriate error message
+	if evm.Cancelled() {
+		return nil, fmt.Errorf("execution aborted (timeout = %v)", timeout)
+	}
+	if err != nil {
+		return result, fmt.Errorf("err: %w (supplied gas %d)", err, msg.GasLimit)
+	}
+	return result, nil
 }
 
 func mevCall(reqId string, state *state.StateDB, header *types.Header, s *BundleAPI, ctx context.Context, args *TransactionArgs, msg *core.Message, overrides *StateOverride, blockOverrides *BlockOverrides) (*core.ExecutionResult, error) {
