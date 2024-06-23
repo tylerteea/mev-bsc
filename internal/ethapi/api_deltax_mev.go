@@ -162,7 +162,7 @@ func getTokenBalanceByContract(ctx context.Context, s *BundleAPI, tokens []commo
 
 	log.Info("call_getTokenBalance_start", "reqId", reqId, "data", common.Bytes2Hex(bytes))
 
-	callResult, err := callBundleMevCall(reqId, state, header, s, ctx, callArgs, nil, nil, nil)
+	callResult, err := mevCall(reqId, state, header, s, ctx, callArgs, nil, nil, nil)
 
 	log.Info("call_getTokenBalance1", "reqId", reqId)
 
@@ -1051,7 +1051,7 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 		from, err := types.Sender(signer, tx)
 		state.Prepare(rules, from, coinbase, tx.To(), vm.ActivePrecompiles(rules), tx.AccessList())
 
-		receipt, result, err := ApplyTransactionWithResult(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, &header.GasUsed, vmconfig)
+		receipt, result, err := ApplyTransactionWithResultNew(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, &header.GasUsed, vmconfig)
 		if err != nil {
 			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
 		}
@@ -2546,6 +2546,21 @@ func ApplyTransactionWithResult(config *params.ChainConfig, bc core.ChainContext
 		ite := vmenv.Interpreter()
 		vm.EVMInterpreterPool.Put(ite)
 		vm.EvmPool.Put(vmenv)
+	}()
+	return applyTransactionWithResult(msg, config, gp, statedb, header.Number, header.Hash(), tx, usedGas, vmenv, receiptProcessors...)
+}
+
+func ApplyTransactionWithResultNew(config *params.ChainConfig, bc core.ChainContext, author *common.Address, gp *core.GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, cfg vm.Config, receiptProcessors ...core.ReceiptProcessor) (*types.Receipt, *core.ExecutionResult, error) {
+	msg, err := core.TransactionToMessage(tx, types.MakeSigner(config, header.Number, header.Time), header.BaseFee)
+	if err != nil {
+		return nil, nil, err
+	}
+	// Create a new context to be used in the EVM environment
+	blockContext := core.NewEVMBlockContext(header, bc, author)
+	txContext := core.NewEVMTxContext(msg)
+	vmenv := vm.NewEVM(blockContext, txContext, statedb, config, cfg)
+	defer func() {
+		vmenv.Cancel()
 	}()
 	return applyTransactionWithResult(msg, config, gp, statedb, header.Number, header.Hash(), tx, usedGas, vmenv, receiptProcessors...)
 }
