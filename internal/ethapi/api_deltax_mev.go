@@ -342,6 +342,9 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 		from, err := types.Sender(signer, tx)
 		state.Prepare(rules, from, coinbase, tx.To(), vm.ActivePrecompiles(rules), tx.AccessList())
 
+		used := header.GasUsed
+		log.Info("call_bundle_old_header_used", "reqId", tx.Hash(), "used", used)
+
 		receipt, result, err := ApplyTransactionWithResult(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, &header.GasUsed, vmconfig)
 		if err != nil {
 			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
@@ -577,6 +580,9 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 			return nil, errCtx
 		}
 
+		used := header.GasUsed
+		log.Info("call_bundle_new_header_used", "reqId", reqId, "hash", tx.Hash(), "used", used)
+
 		msg, err1 := core.TransactionToMessage(tx, types.MakeSigner(s.b.ChainConfig(), header.Number, header.Time), header.BaseFee)
 		if err1 != nil {
 			return nil, fmt.Errorf("err: %w; txhash %s", err1, tx.Hash())
@@ -593,7 +599,7 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 		}
 		jsonResult := map[string]interface{}{
 			"txHash":    tx.Hash().String(),
-			"gasUsed":   result.UsedGas,
+			"gasUsed":   result.UsedGas + used,
 			"toAddress": to,
 		}
 
