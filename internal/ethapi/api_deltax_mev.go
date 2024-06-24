@@ -1817,11 +1817,13 @@ func encodeParamsSaleNew(
 	params = append(params, fillBytes(1, saleOptionToBigInt(option).Bytes())...)
 	params = append(params, fillBytes(1, saleConfigToBigInt(config).Bytes())...)
 
-	params = append(params, fillBytes(2, fee1.Bytes())...)
-	params = append(params, fillBytes(2, fee2.Bytes())...)
-
-	params = append(params, fillBytes(14, amountOut1.Bytes())...)
-	params = append(params, fillBytes(14, amountOut2.Bytes())...)
+	if config.CalcAmountOut {
+		params = append(params, fillBytes(2, fee1.Bytes())...)
+		params = append(params, fillBytes(2, fee2.Bytes())...)
+	} else {
+		params = append(params, fillBytes(14, amountOut1.Bytes())...)
+		params = append(params, fillBytes(14, amountOut2.Bytes())...)
+	}
 
 	if config.IsBackRun {
 		params = append(params, fillBytes(14, minTokenOutBalance.Bytes())...)
@@ -1829,7 +1831,6 @@ func encodeParamsSaleNew(
 			params = append(params, builderAddress.Bytes()...)
 		}
 	}
-
 	return params
 }
 
