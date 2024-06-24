@@ -1038,7 +1038,7 @@ type SbpBuyArgs struct {
 	LogEnable          bool           `json:"logEnable"`
 }
 
-type ConfigContract struct {
+type BuyConfig struct {
 	Simulate      bool
 	CheckTax      bool
 	CalcAmountOut bool
@@ -1046,13 +1046,13 @@ type ConfigContract struct {
 	ZeroForOne    bool
 }
 
-func NewConfigContract(
+func NewBuyConfig(
 	checkTax bool,
 	calcAmountOut bool,
 	feeToBuilder bool,
 	zeroForOne bool,
-) *ConfigContract {
-	return &ConfigContract{
+) *BuyConfig {
+	return &BuyConfig{
 		Simulate:      true,
 		CheckTax:      checkTax,
 		CalcAmountOut: calcAmountOut,
@@ -1061,7 +1061,7 @@ func NewConfigContract(
 	}
 }
 
-func configContractToBigInt(config *ConfigContract) *big.Int {
+func buyConfigToBigInt(config *BuyConfig) *big.Int {
 	configInt := int64(0)
 	if config.Simulate {
 		configInt += 16
@@ -1080,6 +1080,93 @@ func configContractToBigInt(config *ConfigContract) *big.Int {
 	}
 	return big.NewInt(configInt)
 }
+
+//--------------------------------------------------------------------------------
+
+type SaleConfig struct {
+	IsBackRun     bool
+	Simulate      bool
+	CheckTax      bool
+	CalcAmountOut bool
+	FeeToBuilder  bool
+}
+
+func NewSaleConfig(
+	isBackRun bool,
+	checkTax bool,
+	calcAmountOut bool,
+	feeToBuilder bool,
+) *SaleConfig {
+	return &SaleConfig{
+		IsBackRun:     isBackRun,
+		Simulate:      true,
+		CheckTax:      checkTax,
+		CalcAmountOut: calcAmountOut,
+		FeeToBuilder:  feeToBuilder,
+	}
+}
+
+func saleConfigToBigInt(config *SaleConfig) *big.Int {
+	configInt := int64(0)
+	if config.IsBackRun {
+		configInt += 32
+	}
+	if config.Simulate {
+		configInt += 16
+	}
+	if config.CheckTax {
+		configInt += 8
+	}
+	if config.CalcAmountOut {
+		configInt += 4
+	}
+	if config.FeeToBuilder {
+		configInt += 2
+	}
+	return big.NewInt(configInt)
+}
+
+//==============================
+
+type SaleOption struct {
+	ZeroForOne2  bool
+	Version2IsV3 bool
+	ZeroForOne1  bool
+	Version1IsV3 bool
+}
+
+func NewSaleOption(
+	zeroForOne2 bool,
+	version2IsV3 bool,
+	zeroForOne1 bool,
+	version1IsV3 bool,
+) *SaleOption {
+	return &SaleOption{
+		ZeroForOne2:  zeroForOne2,
+		Version2IsV3: version2IsV3,
+		ZeroForOne1:  zeroForOne1,
+		Version1IsV3: version1IsV3,
+	}
+}
+
+func saleOptionToBigInt(config *SaleOption) *big.Int {
+	configInt := int64(0)
+	if config.ZeroForOne2 {
+		configInt += 8
+	}
+	if config.Version2IsV3 {
+		configInt += 4
+	}
+	if config.ZeroForOne1 {
+		configInt += 2
+	}
+	if config.Version1IsV3 {
+		configInt += 1
+	}
+	return big.NewInt(configInt)
+}
+
+//------------------------------------------------------------------------------------------
 
 type SbpSaleArgs struct {
 	Eoa      common.Address `json:"eoa"`
@@ -1546,13 +1633,13 @@ func execute(
 
 		if sbp.BuyOrSale {
 
-			var frontConfig *ConfigContract
+			var frontConfig *BuyConfig
 			if sbp.Version2 == V2 {
 				// 模拟的时候都检查税，正式发不检查
-				//frontConfig = NewConfigContract(sbp.Token3BuyTax, true, false, sbp.ZeroForOne2)
-				frontConfig = NewConfigContract(true, true, false, sbp.ZeroForOne2)
+				//frontConfig = NewBuyConfig(sbp.Token3BuyTax, true, false, sbp.ZeroForOne2)
+				frontConfig = NewBuyConfig(true, true, false, sbp.ZeroForOne2)
 			} else {
-				frontConfig = NewConfigContract(true, true, false, sbp.ZeroForOne2)
+				frontConfig = NewBuyConfig(true, true, false, sbp.ZeroForOne2)
 			}
 			frontMinTokenOutBalance := big.NewInt(0)
 			data = encodeParamsBuy(sbp.Version2, true, amountIn, sbp.PairOrPool2, sbp.Token2, sbp.Token3, frontConfig, sbp.Fee2, sbp.AmountOut, frontMinTokenOutBalance, sbp.BriberyAddress)
@@ -1564,13 +1651,13 @@ func execute(
 
 		if sbp.BuyOrSale {
 
-			var backConfig *ConfigContract
+			var backConfig *BuyConfig
 			if sbp.Version2 == V2 {
 				// 模拟的时候都检查税，正式发不检查
-				//backConfig = NewConfigContract(sbp.Token3SaleTax, true, false, !sbp.ZeroForOne2)
-				backConfig = NewConfigContract(true, true, false, !sbp.ZeroForOne2)
+				//backConfig = NewBuyConfig(sbp.Token3SaleTax, true, false, !sbp.ZeroForOne2)
+				backConfig = NewBuyConfig(true, true, false, !sbp.ZeroForOne2)
 			} else {
-				backConfig = NewConfigContract(true, true, false, !sbp.ZeroForOne2)
+				backConfig = NewBuyConfig(true, true, false, !sbp.ZeroForOne2)
 			}
 			data = encodeParamsBuy(sbp.Version2, false, amountIn, sbp.PairOrPool2, sbp.Token3, sbp.Token2, backConfig, sbp.Fee2, sbp.AmountOut, sbp.MinTokenOutBalance, sbp.BriberyAddress)
 		} else {
@@ -1692,6 +1779,60 @@ func encodeParamsSale(
 	return params
 }
 
+// execute_44g58pv
+func encodeParamsSaleNew(
+	amountIn *big.Int,
+
+	pairOrPool1 common.Address,
+	pairOrPool2 common.Address,
+
+	token1 common.Address,
+	token2 common.Address,
+	token3 common.Address,
+
+	option *SaleOption,
+	config *SaleConfig,
+
+	fee1 *big.Int,
+	fee2 *big.Int,
+
+	amountOut1 *big.Int,
+	amountOut2 *big.Int,
+
+	minTokenOutBalance *big.Int,
+	builderAddress common.Address,
+) []byte {
+	params := make([]byte, 0)
+	params = append(params, []byte{0x00, 0x00, 0x00, 0x00}...)
+
+	params = append(params, fillBytes(14, amountIn.Bytes())...)
+
+	params = append(params, pairOrPool1.Bytes()...)
+	params = append(params, pairOrPool2.Bytes()...)
+
+	params = append(params, token1.Bytes()...)
+	params = append(params, token2.Bytes()...)
+	params = append(params, token3.Bytes()...)
+
+	params = append(params, fillBytes(1, saleOptionToBigInt(option).Bytes())...)
+	params = append(params, fillBytes(1, saleConfigToBigInt(config).Bytes())...)
+
+	params = append(params, fillBytes(2, fee1.Bytes())...)
+	params = append(params, fillBytes(2, fee2.Bytes())...)
+
+	params = append(params, fillBytes(14, amountOut1.Bytes())...)
+	params = append(params, fillBytes(14, amountOut2.Bytes())...)
+
+	if config.IsBackRun {
+		params = append(params, fillBytes(14, minTokenOutBalance.Bytes())...)
+		if builderAddress.Cmp(NullAddress) != 0 {
+			params = append(params, builderAddress.Bytes()...)
+		}
+	}
+
+	return params
+}
+
 func encodeParamsBuy(
 	version int,
 	isFront bool,
@@ -1699,7 +1840,7 @@ func encodeParamsBuy(
 	pairOrPool common.Address,
 	tokenIn common.Address,
 	tokenOut common.Address,
-	config *ConfigContract,
+	config *BuyConfig,
 	fee *big.Int,
 	amountOut *big.Int,
 	minTokenOutBalance *big.Int,
@@ -1726,7 +1867,7 @@ func v2BuyFrontEncodeParams(
 	pair common.Address,
 	tokenIn common.Address,
 	tokenOut common.Address,
-	config *ConfigContract,
+	config *BuyConfig,
 	fee *big.Int,
 	amountOut *big.Int,
 ) []byte {
@@ -1738,7 +1879,7 @@ func v2BuyFrontEncodeParams(
 	params = append(params, tokenIn.Bytes()...)
 	params = append(params, tokenOut.Bytes()...)
 
-	params = append(params, fillBytes(1, configContractToBigInt(config).Bytes())...)
+	params = append(params, fillBytes(1, buyConfigToBigInt(config).Bytes())...)
 
 	if config.CalcAmountOut {
 		params = append(params, fillBytes(2, fee.Bytes())...)
@@ -1754,7 +1895,7 @@ func v2BuyBackEncodeParams(
 	pair common.Address,
 	tokenIn common.Address,
 	tokenOut common.Address,
-	config *ConfigContract,
+	config *BuyConfig,
 	fee *big.Int,
 	amountOut *big.Int,
 	minTokenOutBalance *big.Int,
@@ -1768,7 +1909,7 @@ func v2BuyBackEncodeParams(
 	params = append(params, tokenIn.Bytes()...)
 	params = append(params, tokenOut.Bytes()...)
 
-	params = append(params, fillBytes(1, configContractToBigInt(config).Bytes())...)
+	params = append(params, fillBytes(1, buyConfigToBigInt(config).Bytes())...)
 
 	if config.CalcAmountOut {
 		params = append(params, fillBytes(2, fee.Bytes())...)
@@ -1790,7 +1931,7 @@ func v3BuyFrontEncodeParams(
 	pool common.Address,
 	tokenIn common.Address,
 	tokenOut common.Address,
-	config *ConfigContract,
+	config *BuyConfig,
 ) []byte {
 	params := make([]byte, 0)
 	params = append(params, []byte{0x00, 0x00, 0x00, 0x04}...)
@@ -1800,7 +1941,7 @@ func v3BuyFrontEncodeParams(
 	params = append(params, tokenIn.Bytes()...)
 	params = append(params, tokenOut.Bytes()...)
 
-	params = append(params, fillBytes(1, configContractToBigInt(config).Bytes())...)
+	params = append(params, fillBytes(1, buyConfigToBigInt(config).Bytes())...)
 
 	return params
 }
@@ -1810,7 +1951,7 @@ func v3BuyBackEncodeParams(
 	pool common.Address,
 	tokenIn common.Address,
 	tokenOut common.Address,
-	config *ConfigContract,
+	config *BuyConfig,
 	minTokenOutBalance *big.Int,
 	builderAddress common.Address,
 ) []byte {
@@ -1822,7 +1963,7 @@ func v3BuyBackEncodeParams(
 	params = append(params, tokenIn.Bytes()...)
 	params = append(params, tokenOut.Bytes()...)
 
-	params = append(params, fillBytes(1, configContractToBigInt(config).Bytes())...)
+	params = append(params, fillBytes(1, buyConfigToBigInt(config).Bytes())...)
 
 	params = append(params, fillBytes(14, minTokenOutBalance.Bytes())...)
 
