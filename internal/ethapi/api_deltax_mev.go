@@ -1650,7 +1650,7 @@ func executeOld(
 			frontMinTokenOutBalance := big.NewInt(0)
 			data = encodeParamsBuy(sbp.Version2, true, amountIn, sbp.PairOrPool2, sbp.Token2, sbp.Token3, frontConfig, sbp.Fee2, sbp.AmountOut, frontMinTokenOutBalance, sbp.BriberyAddress)
 		} else {
-			data = encodeParamsSale(isFront, amountIn, sbp.Token1, sbp.Token2, sbp.Token3, sbp.Fee1, sbp.PairOrPool1, sbp.ZeroForOne1, sbp.Fee2, sbp.PairOrPool2, sbp.ZeroForOne2, sbp.MinTokenOutBalance, sbp.BriberyAddress)
+			data = encodeParamsSaleOld(isFront, amountIn, sbp.Token1, sbp.Token2, sbp.Token3, sbp.Fee1, sbp.PairOrPool1, sbp.ZeroForOne1, sbp.Fee2, sbp.PairOrPool2, sbp.ZeroForOne2, sbp.MinTokenOutBalance, sbp.BriberyAddress)
 		}
 
 	} else {
@@ -1667,7 +1667,7 @@ func executeOld(
 			}
 			data = encodeParamsBuy(sbp.Version2, false, amountIn, sbp.PairOrPool2, sbp.Token3, sbp.Token2, backConfig, sbp.Fee2, sbp.AmountOut, sbp.MinTokenOutBalance, sbp.BriberyAddress)
 		} else {
-			data = encodeParamsSale(isFront, amountIn, sbp.Token3, sbp.Token2, sbp.Token1, sbp.Fee2, sbp.PairOrPool2, !sbp.ZeroForOne2, sbp.Fee1, sbp.PairOrPool1, !sbp.ZeroForOne1, sbp.MinTokenOutBalance, sbp.BriberyAddress)
+			data = encodeParamsSaleOld(isFront, amountIn, sbp.Token3, sbp.Token2, sbp.Token1, sbp.Fee2, sbp.PairOrPool2, !sbp.ZeroForOne2, sbp.Fee1, sbp.PairOrPool1, !sbp.ZeroForOne1, sbp.MinTokenOutBalance, sbp.BriberyAddress)
 		}
 	}
 
@@ -1759,7 +1759,7 @@ func execute(
 			frontSaleConfig := NewSaleConfig(!isFront, true, true, false)
 			frontSaleOption := NewSaleOption(sbp.ZeroForOne2, sbp.Version2 == V3, sbp.ZeroForOne1, sbp.Version1 == V3)
 
-			data = encodeParamsSaleNew(amountIn, sbp.PairOrPool1, sbp.PairOrPool2, sbp.Token1, sbp.Token2, sbp.Token3, frontSaleOption, frontSaleConfig, sbp.Fee1, sbp.Fee2, sbp.AmountOutMid, sbp.AmountOut, sbp.MinTokenOutBalance, sbp.BriberyAddress)
+			data = encodeParamsSale(amountIn, sbp.PairOrPool1, sbp.PairOrPool2, sbp.Token1, sbp.Token2, sbp.Token3, frontSaleOption, frontSaleConfig, sbp.Fee1, sbp.Fee2, sbp.AmountOutMid, sbp.AmountOut, sbp.MinTokenOutBalance, sbp.BriberyAddress)
 		}
 
 	} else {
@@ -1776,7 +1776,7 @@ func execute(
 			backSaleConfig := NewSaleConfig(!isFront, true, true, false)
 			backSaleOption := NewSaleOption(!sbp.ZeroForOne1, sbp.Version1 == V3, !sbp.ZeroForOne2, sbp.Version2 == V3)
 
-			data = encodeParamsSaleNew(amountIn, sbp.Token3, sbp.Token2, sbp.Token1, sbp.PairOrPool2, sbp.PairOrPool1, backSaleOption, backSaleConfig, sbp.Fee2, sbp.Fee1, sbp.AmountOutMid, sbp.AmountOut, sbp.MinTokenOutBalance, sbp.BriberyAddress)
+			data = encodeParamsSale(amountIn, sbp.Token3, sbp.Token2, sbp.Token1, sbp.PairOrPool2, sbp.PairOrPool1, backSaleOption, backSaleConfig, sbp.Fee2, sbp.Fee1, sbp.AmountOutMid, sbp.AmountOut, sbp.MinTokenOutBalance, sbp.BriberyAddress)
 		}
 	}
 
@@ -1869,7 +1869,7 @@ func execute(
 }
 
 // execute_44g58pv
-func encodeParamsSale(
+func encodeParamsSaleOld(
 	isFront bool,
 
 	amountIn *big.Int,
@@ -1925,7 +1925,7 @@ func encodeParamsSale(
 }
 
 // execute_44g58pv
-func encodeParamsSaleNew(
+func encodeParamsSale(
 	amountIn *big.Int,
 
 	pairOrPool1 common.Address,
