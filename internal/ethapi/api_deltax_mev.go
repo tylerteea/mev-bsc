@@ -33,6 +33,7 @@ import (
 
 const (
 	V2 = int(2)
+	V3 = int(3)
 )
 
 var epochNum = big.NewInt(200)
@@ -1179,6 +1180,7 @@ type SbpSaleArgs struct {
 	PairOrPool1   common.Address `json:"pairOrPool1"`
 	ZeroForOne1   bool           `json:"zeroForOne1"`
 	Fee1          *big.Int       `json:"fee1"`
+	Version1      int            `json:"version1"`
 	PairOrPool2   common.Address `json:"pairOrPool2"`
 	ZeroForOne2   bool           `json:"zeroForOne2"`
 	Fee2          *big.Int       `json:"fee2"`
@@ -1189,6 +1191,7 @@ type SbpSaleArgs struct {
 	Token3SaleTax bool           `json:"token3SaleTax"`
 
 	AmountInMin        *big.Int       `json:"amountInMin"`
+	AmountOutMid       *big.Int       `json:"amountOutMid"`
 	AmountOut          *big.Int       `json:"amountOut"`
 	MinTokenOutBalance *big.Int       `json:"minTokenOutBalance"`
 	BriberyAddress     common.Address `json:"briberyAddress"`
@@ -1216,6 +1219,7 @@ func (s *BundleAPI) SandwichBestProfitMinimizeBuy(ctx context.Context, sbp SbpBu
 		PairOrPool1:        common.Address{},
 		ZeroForOne1:        false,
 		Fee1:               nil,
+		Version1:           0,
 		PairOrPool2:        sbp.PairOrPool2,
 		ZeroForOne2:        sbp.ZeroForOne2,
 		Fee2:               sbp.Fee2,
@@ -1501,7 +1505,7 @@ func worker(
 
 	// 抢跑----------------------------------------------------------------------------------------
 	startTime := time.Now()
-	frontAmountOut, fErr := execute(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head)
+	frontAmountOutMid, frontAmountOut, fErr := execute(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head)
 	costTime := time.Since(startTime).Milliseconds()
 
 	if sbp.LogEnable {
@@ -1579,7 +1583,7 @@ func worker(
 
 	// 跟跑----------------------------------------------------------------------------------------
 	backStartTime := time.Now()
-	backAmountOut, bErr := execute(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head)
+	backAmountOutMid, backAmountOut, bErr := execute(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head)
 	backCostTime := time.Since(backStartTime).Milliseconds()
 
 	if sbp.LogEnable {
@@ -1596,8 +1600,10 @@ func worker(
 	profit := new(big.Int).Sub(backAmountOut, amountIn)
 
 	result["frontAmountIn"] = amountIn
+	result["frontAmountOutMid"] = frontAmountOutMid
 	result["frontAmountOut"] = frontAmountOut
 	result["backAmountIn"] = backAmountIn
+	result["backAmountOutMid"] = backAmountOutMid
 	result["backAmountOut"] = backAmountOut
 	result["profit"] = profit
 
@@ -1614,7 +1620,7 @@ func worker(
 	return result
 }
 
-func execute(
+func executeOld(
 	ctx context.Context,
 	reqId string,
 	isFront bool,
@@ -1721,6 +1727,145 @@ func execute(
 		log.Info("call_execute8", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "amountOut", amountOut.String())
 	}
 	return amountOut, nil
+}
+
+func execute(
+	ctx context.Context,
+	reqId string,
+	isFront bool,
+	sbp SbpSaleArgs,
+	amountIn *big.Int,
+	sdb *state.StateDB,
+	s *BundleAPI,
+	head *types.Header) (*big.Int, *big.Int, error) {
+
+	var data []byte
+
+	if sbp.LogEnable {
+		log.Info("call_execute1", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
+	}
+	if isFront {
+
+		if sbp.BuyOrSale {
+
+			// 模拟的时候都检查税，正式发不检查
+			frontBuyConfig := NewBuyConfig(true, true, false, sbp.ZeroForOne2)
+
+			frontMinTokenOutBalance := big.NewInt(0)
+			data = encodeParamsBuy(sbp.Version2, true, amountIn, sbp.PairOrPool2, sbp.Token2, sbp.Token3, frontBuyConfig, sbp.Fee2, sbp.AmountOut, frontMinTokenOutBalance, sbp.BriberyAddress)
+		} else {
+
+			// 模拟的时候都检查税，正式发不检查
+			frontSaleConfig := NewSaleConfig(!isFront, true, true, false)
+			frontSaleOption := NewSaleOption(sbp.ZeroForOne2, sbp.Version2 == V3, sbp.ZeroForOne1, sbp.Version1 == V3)
+
+			data = encodeParamsSaleNew(amountIn, sbp.PairOrPool1, sbp.PairOrPool2, sbp.Token1, sbp.Token2, sbp.Token3, frontSaleOption, frontSaleConfig, sbp.Fee1, sbp.Fee2, sbp.AmountOutMid, sbp.AmountOut, sbp.MinTokenOutBalance, sbp.BriberyAddress)
+		}
+
+	} else {
+
+		if sbp.BuyOrSale {
+
+			// 模拟的时候都检查税，正式发不检查
+			backBuyConfig := NewBuyConfig(true, true, false, !sbp.ZeroForOne2)
+
+			data = encodeParamsBuy(sbp.Version2, false, amountIn, sbp.PairOrPool2, sbp.Token3, sbp.Token2, backBuyConfig, sbp.Fee2, sbp.AmountOut, sbp.MinTokenOutBalance, sbp.BriberyAddress)
+		} else {
+
+			// 模拟的时候都检查税，正式发不检查
+			backSaleConfig := NewSaleConfig(!isFront, true, true, false)
+			backSaleOption := NewSaleOption(!sbp.ZeroForOne1, sbp.Version1 == V3, !sbp.ZeroForOne2, sbp.Version2 == V3)
+
+			data = encodeParamsSaleNew(amountIn, sbp.Token3, sbp.Token2, sbp.Token1, sbp.PairOrPool2, sbp.PairOrPool1, backSaleOption, backSaleConfig, sbp.Fee2, sbp.Fee1, sbp.AmountOutMid, sbp.AmountOut, sbp.MinTokenOutBalance, sbp.BriberyAddress)
+		}
+	}
+
+	if sbp.LogEnable {
+		log.Info("call_execute2", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "data_hex", common.Bytes2Hex(data))
+	}
+	bytes := hexutil.Bytes(data)
+	callArgs := &TransactionArgs{
+		From: &sbp.Eoa,
+		To:   &sbp.Contract,
+		Data: &bytes,
+	}
+
+	reqIdString := reqId + amountIn.String()
+
+	callResult, err := mevCall(reqIdString, sdb, head, s, ctx, callArgs, nil, nil, nil)
+	if sbp.LogEnable {
+		log.Info("call_execute3", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err, "callResult", callResult)
+	}
+	if callResult != nil {
+
+		if sbp.LogEnable {
+			log.Info("call_execute4", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "result", string(callResult.ReturnData))
+		}
+		var revertReason *revertError
+		if len(callResult.Revert()) > 0 {
+
+			revertReason = newRevertError(callResult.Revert())
+			if sbp.LogEnable {
+				log.Info("call_result_not_nil_44",
+					"reqId", reqId,
+					"amountIn", amountIn,
+					"data", callResult,
+					"revert", common.Bytes2Hex(callResult.Revert()),
+					"revertReason", revertReason,
+					"returnData", common.Bytes2Hex(callResult.Return()),
+				)
+				log.Info("call_execute5", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "revertReason", revertReason.reason)
+			}
+			return nil, nil, revertReason
+		}
+	}
+	if err != nil {
+		if sbp.LogEnable {
+			log.Info("call_execute6", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err)
+		}
+		return nil, nil, err
+	}
+	if callResult.Err != nil {
+		if sbp.LogEnable {
+			log.Info("call_execute7", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", callResult.Err)
+		}
+		return nil, nil, callResult.Err
+	}
+
+	lenR := len(callResult.Return())
+
+	amountOutMid := big.NewInt(0)
+	amountOut := big.NewInt(0)
+
+	if sbp.BuyOrSale {
+		if lenR == 32 {
+			amountOut = new(big.Int).SetBytes(callResult.Return())
+			if amountOut.Cmp(big.NewInt(0)) <= 0 {
+				log.Info("call_execute8", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOutMid", amountOutMid.String(), "amountOut", amountOut.String())
+				return nil, nil, errors.New("买结果数据大小检验不通过")
+			}
+
+		} else {
+			log.Info("call_execute8", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOutMid", amountOutMid.String(), "amountOut", amountOut.String())
+			return nil, nil, errors.New("买结果数据长度检验不通过")
+		}
+	} else {
+		if lenR == 64 {
+			amountOutMid = new(big.Int).SetBytes(callResult.Return()[:32])
+			amountOut = new(big.Int).SetBytes(callResult.Return()[32:64])
+			if amountOutMid.Cmp(big.NewInt(0)) <= 0 || amountOut.Cmp(big.NewInt(0)) <= 0 {
+				log.Info("call_execute8", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOutMid", amountOutMid.String(), "amountOut", amountOut.String())
+				return nil, nil, errors.New("卖结果数据大小检验不通过")
+			}
+		} else {
+			log.Info("call_execute9", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOutMid", amountOutMid.String(), "amountOut", amountOut.String())
+			return nil, nil, errors.New("卖结果数据长度检验不通过")
+		}
+	}
+	if sbp.LogEnable {
+		log.Info("call_execute10", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "amountOutMid", amountOutMid.String(), "amountOut", amountOut.String())
+	}
+	return amountOutMid, amountOut, nil
 }
 
 // execute_44g58pv
