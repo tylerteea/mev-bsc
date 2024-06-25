@@ -1595,6 +1595,21 @@ func worker(
 		result["backAmountOut"] = backAmountOut
 		return result
 	}
+
+	if !sbp.BuyOrSale {
+		if backAmountOutMid.Cmp(big.NewInt(0)) <= 0 {
+			result["error"] = "backCallErr"
+			result["reason"] = "backAmountOutMid_zero"
+			result["frontAmountIn"] = amountIn
+			result["frontAmountOutMid"] = frontAmountOutMid
+			result["frontAmountOut"] = frontAmountOut
+			result["backAmountIn"] = backAmountIn
+			result["backAmountOutMid"] = backAmountOutMid
+			result["backAmountOut"] = backAmountOut
+			return result
+		}
+	}
+
 	profit := new(big.Int).Sub(backAmountOut, amountIn)
 
 	result["frontAmountIn"] = amountIn
