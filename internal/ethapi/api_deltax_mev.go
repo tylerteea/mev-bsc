@@ -1495,7 +1495,7 @@ func worker(
 	costTime := time.Since(startTime).Milliseconds()
 
 	if sbp.LogEnable {
-		log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "amountIn", amountIn, "frontAmountOut", frontAmountOut, "fErr", fErr, "cost_time", costTime)
+		log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "amountIn", amountIn, "frontAmountOutMid", frontAmountOutMid, "frontAmountOut", frontAmountOut, "fErr", fErr, "cost_time", costTime)
 	}
 	if fErr != nil {
 		result["error"] = "frontCallErr"
@@ -1509,9 +1509,9 @@ func worker(
 		backAmountIn = new(big.Int).Sub(frontAmountOut, big.NewInt(1))
 	}
 
-	if backAmountIn.Cmp(big.NewInt(0)) <= 0 {
-		result["error"] = "backAmountInZero"
-		result["reason"] = "backAmountInZero"
+	if frontAmountOutMid.Cmp(big.NewInt(0)) <= 0 || backAmountIn.Cmp(big.NewInt(0)) <= 0 {
+		result["error"] = "frontAmountOutMid_backAmountIn_Zero"
+		result["reason"] = "frontAmountOutMid_backAmountIn_Zero"
 		result["frontAmountIn"] = amountIn.String()
 		return result
 	}
@@ -1573,14 +1573,17 @@ func worker(
 	backCostTime := time.Since(backStartTime).Milliseconds()
 
 	if sbp.LogEnable {
-		log.Info("call_execute_back", "reqAndIndex", reqAndIndex, "backAmountIn", backAmountIn, "backAmountOut", backAmountOut, "bErr", bErr, "cost_time", backCostTime)
+		log.Info("call_execute_back", "reqAndIndex", reqAndIndex, "backAmountIn", backAmountIn, "backAmountOutMid", backAmountOutMid, "backAmountOut", backAmountOut, "bErr", bErr, "cost_time", backCostTime)
 	}
-	if bErr != nil || backAmountOut.Cmp(big.NewInt(0)) <= 0 {
+	if bErr != nil || backAmountOutMid.Cmp(big.NewInt(0)) <= 0 || backAmountOut.Cmp(big.NewInt(0)) <= 0 {
 		result["error"] = "backCallErr"
 		result["reason"] = bErr.Error()
-		result["frontAmountIn"] = amountIn.String()
-		result["frontAmountOut"] = frontAmountOut.String()
-		result["backAmountIn"] = backAmountIn.String()
+		result["frontAmountIn"] = amountIn
+		result["frontAmountOutMid"] = frontAmountOutMid
+		result["frontAmountOut"] = frontAmountOut
+		result["backAmountIn"] = backAmountIn
+		result["backAmountOutMid"] = backAmountOutMid
+		result["backAmountOut"] = backAmountOut
 		return result
 	}
 	profit := new(big.Int).Sub(backAmountOut, amountIn)
