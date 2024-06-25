@@ -1509,7 +1509,7 @@ func worker(
 		backAmountIn = new(big.Int).Sub(frontAmountOut, big.NewInt(1))
 	}
 
-	if frontAmountOutMid.Cmp(big.NewInt(0)) <= 0 || backAmountIn.Cmp(big.NewInt(0)) <= 0 {
+	if backAmountIn.Cmp(big.NewInt(0)) <= 0 {
 		result["error"] = "backAmountIn_Zero"
 		result["reason"] = "backAmountIn_Zero"
 		result["frontAmountIn"] = amountIn.String()
@@ -1584,7 +1584,7 @@ func worker(
 	if sbp.LogEnable {
 		log.Info("call_execute_back", "reqAndIndex", reqAndIndex, "backAmountIn", backAmountIn, "backAmountOutMid", backAmountOutMid, "backAmountOut", backAmountOut, "bErr", bErr, "cost_time", backCostTime)
 	}
-	if bErr != nil || backAmountOutMid.Cmp(big.NewInt(0)) <= 0 || backAmountOut.Cmp(big.NewInt(0)) <= 0 {
+	if bErr != nil || backAmountOut.Cmp(big.NewInt(0)) <= 0 {
 		result["error"] = "backCallErr"
 		result["reason"] = bErr.Error()
 		result["frontAmountIn"] = amountIn
