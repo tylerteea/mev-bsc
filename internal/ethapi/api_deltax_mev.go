@@ -1510,10 +1510,19 @@ func worker(
 	}
 
 	if frontAmountOutMid.Cmp(big.NewInt(0)) <= 0 || backAmountIn.Cmp(big.NewInt(0)) <= 0 {
-		result["error"] = "frontAmountOutMid_backAmountIn_Zero"
-		result["reason"] = "frontAmountOutMid_backAmountIn_Zero"
+		result["error"] = "backAmountIn_Zero"
+		result["reason"] = "backAmountIn_Zero"
 		result["frontAmountIn"] = amountIn.String()
 		return result
+	}
+
+	if !sbp.BuyOrSale {
+		if frontAmountOutMid.Cmp(big.NewInt(0)) <= 0 {
+			result["error"] = "frontAmountOutMid_Zero"
+			result["reason"] = "frontAmountOutMid_Zero"
+			result["frontAmountIn"] = amountIn.String()
+			return result
+		}
 	}
 
 	// 受害者----------------------------------------------------------------------------------------
