@@ -1605,7 +1605,7 @@ func worker(
 	result["backAmountIn"] = backAmountIn
 	result["backAmountOutMid"] = backAmountOutMid
 	result["backAmountOut"] = backAmountOut
-	result["profit"] = profit
+	result["grossProfit"] = profit
 
 	if profit.Cmp(big.NewInt(0)) <= 0 {
 		result["error"] = "profit_too_low"
