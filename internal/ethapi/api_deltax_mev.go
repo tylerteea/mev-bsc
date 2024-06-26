@@ -1741,12 +1741,12 @@ func execute(
 		if lenR == 32 {
 			amountOut = new(big.Int).SetBytes(callResult.Return())
 			if amountOut.Cmp(big.NewInt(0)) <= 0 {
-				log.Info("call_execute8", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOutMid", amountOutMid.String(), "amountOut", amountOut.String())
+				log.Info("call_execute8_买结果数据大小检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOutMid", amountOutMid.String(), "amountOut", amountOut.String())
 				return nil, nil, errors.New("买结果数据大小检验不通过")
 			}
 
 		} else {
-			log.Info("call_execute8", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOutMid", amountOutMid.String(), "amountOut", amountOut.String())
+			log.Info("call_execute9_买结果数据大小检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOutMid", amountOutMid.String(), "amountOut", amountOut.String())
 			return nil, nil, errors.New("买结果数据长度检验不通过")
 		}
 	} else {
@@ -1755,16 +1755,16 @@ func execute(
 			amountOutMid = new(big.Int).SetBytes(callResult.Return()[:32])
 			amountOut = new(big.Int).SetBytes(callResult.Return()[32:64])
 			if amountOutMid.Cmp(big.NewInt(0)) <= 0 || amountOut.Cmp(big.NewInt(0)) <= 0 {
-				log.Info("call_execute8", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOutMid", amountOutMid.String(), "amountOut", amountOut.String())
+				log.Info("call_execute10_卖结果数据大小检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOutMid", amountOutMid.String(), "amountOut", amountOut.String())
 				return nil, nil, errors.New("卖结果数据大小检验不通过")
 			}
 		} else {
-			log.Info("call_execute9", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOutMid", amountOutMid.String(), "amountOut", amountOut.String())
+			log.Info("call_execute11_卖结果数据长度检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOutMid", amountOutMid.String(), "amountOut", amountOut.String())
 			return nil, nil, errors.New("卖结果数据长度检验不通过")
 		}
 	}
 	if sbp.LogEnable {
-		log.Info("call_execute10", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "amountOutMid", amountOutMid.String(), "amountOut", amountOut.String())
+		log.Info("call_execute20", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "amountOutMid", amountOutMid.String(), "amountOut", amountOut.String())
 	}
 	return amountOutMid, amountOut, nil
 }
