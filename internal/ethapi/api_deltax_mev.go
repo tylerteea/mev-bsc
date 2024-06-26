@@ -1468,6 +1468,7 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 	}
 	return result
 }
+
 func worker(
 	ctx context.Context,
 	head *types.Header,
@@ -1489,7 +1490,306 @@ func worker(
 
 	// 抢跑----------------------------------------------------------------------------------------
 	startTime := time.Now()
-	frontAmountOutMid, frontAmountOut, fErr := execute(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head)
+	frontAmountOut, fErr := execute(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head)
+	costTime := time.Since(startTime).Milliseconds()
+
+	if sbp.LogEnable {
+		log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "amountIn", amountIn, "frontAmountOut", frontAmountOut, "fErr", fErr, "cost_time", costTime)
+	}
+	if fErr != nil {
+		result["error"] = "frontCallErr"
+		result["reason"] = fErr.Error()
+		result["frontAmountIn"] = amountIn.String()
+		return result
+	}
+
+	backAmountIn := frontAmountOut
+	if sbp.SubOne {
+		backAmountIn = new(big.Int).Sub(frontAmountOut, big.NewInt(1))
+	}
+
+	if backAmountIn.Cmp(big.NewInt(0)) <= 0 {
+		result["error"] = "backAmountInZero"
+		result["reason"] = "backAmountInZero"
+		result["frontAmountIn"] = amountIn.String()
+		return result
+	}
+
+	// 受害者----------------------------------------------------------------------------------------
+	victimStartTime := time.Now()
+	victimTxMsg, victimTxMsgErr := core.TransactionToMessage(victimTransaction, types.MakeSigner(s.b.ChainConfig(), head.Number, head.Time), head.BaseFee)
+
+	if victimTxMsgErr != nil {
+		result["error"] = "victimTxMsgErr"
+		result["reason"] = victimTxMsgErr
+		return result
+	}
+
+	evmContext := core.NewEVMBlockContext(head, s.chain, nil)
+	victimTxContext := core.NewEVMTxContext(victimTxMsg)
+
+	vmEnv := vm.NewEVM(evmContext, victimTxContext, statedb, s.chain.Config(), vm.Config{NoBaseFee: true})
+	err := gopool.Submit(func() {
+		<-ctx.Done()
+		vmEnv.Cancel()
+	})
+	if err != nil {
+		result["error"] = "victimPoolSubmit"
+		result["reason"] = err.Error()
+		return result
+	}
+	gasPool := new(core.GasPool).AddGas(math.MaxUint64)
+	victimTxCallResult, victimTxCallErr := core.ApplyMessage(vmEnv, victimTxMsg, gasPool)
+
+	victimCostTime := time.Since(victimStartTime).Milliseconds()
+
+	if sbp.LogEnable {
+		log.Info("call_execute_victim", "reqAndIndex", reqAndIndex, "cost_time", victimCostTime)
+	}
+
+	if victimTxCallErr != nil {
+		result["error"] = "victimTxCallErr"
+		result["reason"] = victimTxCallErr.Error()
+		result["frontAmountIn"] = amountIn.String()
+		return result
+	}
+	if len(victimTxCallResult.Revert()) > 0 {
+		result["error"] = "execution_victimTx_reverted"
+		result["reason"] = victimTxCallResult.Err.Error()
+		result["frontAmountIn"] = amountIn.String()
+		return result
+	}
+	if victimTxCallResult.Err != nil {
+		result["error"] = "execution_victimTx_callResult_err"
+		result["reason"] = victimTxCallResult.Err.Error()
+		result["frontAmountIn"] = amountIn.String()
+		return result
+	}
+
+	// 跟跑----------------------------------------------------------------------------------------
+	backStartTime := time.Now()
+	backAmountOut, bErr := execute(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head)
+	backCostTime := time.Since(backStartTime).Milliseconds()
+
+	if sbp.LogEnable {
+		log.Info("call_execute_back", "reqAndIndex", reqAndIndex, "backAmountIn", backAmountIn, "backAmountOut", backAmountOut, "bErr", bErr, "cost_time", backCostTime)
+	}
+	if bErr != nil || backAmountOut.Cmp(big.NewInt(0)) <= 0 {
+		result["error"] = "backCallErr"
+		result["reason"] = bErr.Error()
+		result["frontAmountIn"] = amountIn.String()
+		result["frontAmountOut"] = frontAmountOut.String()
+		result["backAmountIn"] = backAmountIn.String()
+		return result
+	}
+	profit := new(big.Int).Sub(backAmountOut, amountIn)
+
+	result["frontAmountIn"] = amountIn
+	result["frontAmountOut"] = frontAmountOut
+	result["backAmountIn"] = backAmountIn
+	result["backAmountOut"] = backAmountOut
+	result["profit"] = profit
+
+	if profit.Cmp(big.NewInt(0)) <= 0 {
+		result["error"] = "profit_too_low"
+		result["reason"] = errors.New("profit_too_low")
+	}
+
+	endTime := time.Since(startTime).Milliseconds()
+
+	if sbp.LogEnable {
+		log.Info("call_execute_finish", "reqAndIndex", reqAndIndex, "cost_time", endTime)
+	}
+	return result
+}
+
+func execute(
+	ctx context.Context,
+	reqId string,
+	isFront bool,
+	sbp SbpSaleArgs,
+	amountIn *big.Int,
+	sdb *state.StateDB,
+	s *BundleAPI,
+	head *types.Header) (*big.Int, error) {
+
+	var data []byte
+
+	if sbp.LogEnable {
+		log.Info("call_execute1", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
+	}
+	if isFront {
+
+		if sbp.BuyOrSale {
+
+			var frontConfig *BuyConfig
+			if sbp.Version2 == V2 {
+				// 模拟的时候都检查税，正式发不检查
+				//frontConfig = NewBuyConfig(sbp.Token3BuyTax, true, false, sbp.ZeroForOne2)
+				frontConfig = NewBuyConfig(true, true, false, sbp.ZeroForOne2)
+			} else {
+				frontConfig = NewBuyConfig(true, true, false, sbp.ZeroForOne2)
+			}
+			frontMinTokenOutBalance := big.NewInt(0)
+			data = encodeParamsBuy(sbp.Version2, true, amountIn, sbp.PairOrPool2, sbp.Token2, sbp.Token3, frontConfig, sbp.Fee2, BigIntZeroValue, frontMinTokenOutBalance, sbp.BriberyAddress)
+		} else {
+			data = encodeParamsSale(isFront, amountIn, sbp.Token1, sbp.Token2, sbp.Token3, sbp.Fee1, sbp.PairOrPool1, sbp.ZeroForOne1, sbp.Fee2, sbp.PairOrPool2, sbp.ZeroForOne2, sbp.MinTokenOutBalance, sbp.BriberyAddress)
+		}
+
+	} else {
+
+		if sbp.BuyOrSale {
+
+			var backConfig *BuyConfig
+			if sbp.Version2 == V2 {
+				// 模拟的时候都检查税，正式发不检查
+				//backConfig = NewBuyConfig(sbp.Token3SaleTax, true, false, !sbp.ZeroForOne2)
+				backConfig = NewBuyConfig(true, true, false, !sbp.ZeroForOne2)
+			} else {
+				backConfig = NewBuyConfig(true, true, false, !sbp.ZeroForOne2)
+			}
+			data = encodeParamsBuy(sbp.Version2, false, amountIn, sbp.PairOrPool2, sbp.Token3, sbp.Token2, backConfig, sbp.Fee2, BigIntZeroValue, sbp.MinTokenOutBalance, sbp.BriberyAddress)
+		} else {
+			data = encodeParamsSale(isFront, amountIn, sbp.Token3, sbp.Token2, sbp.Token1, sbp.Fee2, sbp.PairOrPool2, !sbp.ZeroForOne2, sbp.Fee1, sbp.PairOrPool1, !sbp.ZeroForOne1, sbp.MinTokenOutBalance, sbp.BriberyAddress)
+		}
+	}
+
+	if sbp.LogEnable {
+		log.Info("call_execute2", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "data_hex", common.Bytes2Hex(data))
+	}
+	bytes := hexutil.Bytes(data)
+	callArgs := &TransactionArgs{
+		From: &sbp.Eoa,
+		To:   &sbp.Contract,
+		Data: &bytes,
+	}
+
+	reqIdString := reqId + amountIn.String()
+
+	callResult, err := mevCall(reqIdString, sdb, head, s, ctx, callArgs, nil, nil, nil)
+	if sbp.LogEnable {
+		log.Info("call_execute3", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err, "callResult", callResult)
+	}
+	if callResult != nil {
+
+		if sbp.LogEnable {
+			log.Info("call_execute4", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "result", string(callResult.ReturnData))
+		}
+		var revertReason *revertError
+		if len(callResult.Revert()) > 0 {
+
+			revertReason = newRevertError(callResult.Revert())
+			if sbp.LogEnable {
+				log.Info("call_result_not_nil_44",
+					"reqId", reqId,
+					"amountIn", amountIn,
+					"data", callResult,
+					"revert", common.Bytes2Hex(callResult.Revert()),
+					"revertReason", revertReason,
+					"returnData", common.Bytes2Hex(callResult.Return()),
+				)
+				log.Info("call_execute5", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "revertReason", revertReason.reason)
+			}
+			return nil, revertReason
+		}
+	}
+	if err != nil {
+		if sbp.LogEnable {
+			log.Info("call_execute6", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err)
+		}
+		return nil, err
+	}
+	if callResult.Err != nil {
+		if sbp.LogEnable {
+			log.Info("call_execute7", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", callResult.Err)
+		}
+		return nil, callResult.Err
+	}
+	amountOut := new(big.Int).SetBytes(callResult.Return())
+	if sbp.LogEnable {
+		log.Info("call_execute8", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "amountOut", amountOut.String())
+	}
+	return amountOut, nil
+}
+
+// execute_44g58pv
+func encodeParamsSale(
+	isFront bool,
+
+	amountIn *big.Int,
+
+	token1 common.Address,
+	token2 common.Address,
+	token3 common.Address,
+
+	fee1 *big.Int,
+	pairOrPool1 common.Address,
+	zeroForOne1 bool,
+
+	fee2 *big.Int,
+	pairOrPool2 common.Address,
+	zeroForOne2 bool,
+
+	minTokenOutBalance *big.Int,
+	builderAddress common.Address,
+) []byte {
+	params := make([]byte, 0)
+	params = append(params, []byte{0x00, 0x00, 0x00, 0x00}...)
+
+	params = append(params, fillBytes(14, amountIn.Bytes())...)
+
+	params = append(params, token1.Bytes()...)
+	params = append(params, token2.Bytes()...)
+	params = append(params, token3.Bytes()...)
+
+	params = append(params, fillBytes(2, fee1.Bytes())...)
+	params = append(params, pairOrPool1.Bytes()...)
+	if zeroForOne1 {
+		params = append(params, []byte{1}...)
+	} else {
+		params = append(params, []byte{0}...)
+	}
+
+	params = append(params, fillBytes(2, fee2.Bytes())...)
+	params = append(params, pairOrPool2.Bytes()...)
+	if zeroForOne2 {
+		params = append(params, []byte{1}...)
+	} else {
+		params = append(params, []byte{0}...)
+	}
+
+	if !isFront {
+		params = append(params, fillBytes(14, minTokenOutBalance.Bytes())...)
+		if builderAddress.Cmp(NullAddress) != 0 {
+			params = append(params, builderAddress.Bytes()...)
+		}
+	}
+
+	return params
+}
+
+func workerNew(
+	ctx context.Context,
+	head *types.Header,
+	victimTransaction *types.Transaction,
+	sbp SbpSaleArgs,
+	s *BundleAPI,
+	reqAndIndex string,
+	statedb *state.StateDB,
+	amountIn *big.Int) map[string]interface{} {
+
+	defer func() {
+		if r := recover(); r != nil {
+			dss := string(debug.Stack())
+			log.Info("recover...call_SandwichBestProfit", "reqAndIndex", reqAndIndex, "err", r, "stack", dss)
+		}
+	}()
+
+	result := make(map[string]interface{})
+
+	// 抢跑----------------------------------------------------------------------------------------
+	startTime := time.Now()
+	frontAmountOutMid, frontAmountOut, fErr := executeNew(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head)
 	costTime := time.Since(startTime).Milliseconds()
 
 	if sbp.LogEnable {
@@ -1576,7 +1876,7 @@ func worker(
 
 	// 跟跑----------------------------------------------------------------------------------------
 	backStartTime := time.Now()
-	backAmountOutMid, backAmountOut, bErr := execute(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head)
+	backAmountOutMid, backAmountOut, bErr := executeNew(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head)
 	backCostTime := time.Since(backStartTime).Milliseconds()
 
 	if sbp.LogEnable {
@@ -1631,7 +1931,7 @@ func worker(
 	return result
 }
 
-func execute(
+func executeNew(
 	ctx context.Context,
 	reqId string,
 	isFront bool,
@@ -1660,7 +1960,7 @@ func execute(
 			frontSaleConfig := NewSaleConfig(!isFront, true, true, false)
 			frontSaleOption := NewSaleOption(sbp.ZeroForOne2, sbp.Version2 == V3, sbp.ZeroForOne1, sbp.Version1 == V3)
 
-			data = encodeParamsSale(amountIn, sbp.PairOrPool1, sbp.PairOrPool2, sbp.Token1, sbp.Token2, sbp.Token3, frontSaleOption, frontSaleConfig, sbp.Fee1, sbp.Fee2, BigIntZeroValue, BigIntZeroValue, sbp.MinTokenOutBalance, sbp.BriberyAddress)
+			data = encodeParamsSaleNew(amountIn, sbp.PairOrPool1, sbp.PairOrPool2, sbp.Token1, sbp.Token2, sbp.Token3, frontSaleOption, frontSaleConfig, sbp.Fee1, sbp.Fee2, BigIntZeroValue, BigIntZeroValue, sbp.MinTokenOutBalance, sbp.BriberyAddress)
 		}
 
 	} else {
@@ -1676,7 +1976,7 @@ func execute(
 			backSaleConfig := NewSaleConfig(!isFront, true, true, false)
 			backSaleOption := NewSaleOption(!sbp.ZeroForOne1, sbp.Version1 == V3, !sbp.ZeroForOne2, sbp.Version2 == V3)
 
-			data = encodeParamsSale(amountIn, sbp.Token3, sbp.Token2, sbp.Token1, sbp.PairOrPool2, sbp.PairOrPool1, backSaleOption, backSaleConfig, sbp.Fee2, sbp.Fee1, BigIntZeroValue, BigIntZeroValue, sbp.MinTokenOutBalance, sbp.BriberyAddress)
+			data = encodeParamsSaleNew(amountIn, sbp.Token3, sbp.Token2, sbp.Token1, sbp.PairOrPool2, sbp.PairOrPool1, backSaleOption, backSaleConfig, sbp.Fee2, sbp.Fee1, BigIntZeroValue, BigIntZeroValue, sbp.MinTokenOutBalance, sbp.BriberyAddress)
 		}
 	}
 
@@ -1771,7 +2071,7 @@ func execute(
 }
 
 // execute_44g58pv
-func encodeParamsSale(
+func encodeParamsSaleNew(
 	amountIn *big.Int,
 
 	pairOrPool1 common.Address,
