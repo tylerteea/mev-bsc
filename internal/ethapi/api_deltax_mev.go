@@ -1611,7 +1611,7 @@ func execute(
 	amountIn *big.Int,
 	sdb *state.StateDB,
 	s *BundleAPI,
-	head *types.Header) (*big.Int, error) {
+	head *types.Header) (*big.Int, *big.Int, error) {
 
 	var data []byte
 
@@ -1633,7 +1633,12 @@ func execute(
 			frontMinTokenOutBalance := big.NewInt(0)
 			data = encodeParamsBuy(sbp.Version2, true, amountIn, sbp.PairOrPool2, sbp.Token2, sbp.Token3, frontConfig, sbp.Fee2, BigIntZeroValue, frontMinTokenOutBalance, sbp.BriberyAddress)
 		} else {
-			data = encodeParamsSale(isFront, amountIn, sbp.Token1, sbp.Token2, sbp.Token3, sbp.Fee1, sbp.PairOrPool1, sbp.ZeroForOne1, sbp.Fee2, sbp.PairOrPool2, sbp.ZeroForOne2, sbp.MinTokenOutBalance, sbp.BriberyAddress)
+			//data = encodeParamsSale(isFront, amountIn, sbp.Token1, sbp.Token2, sbp.Token3, sbp.Fee1, sbp.PairOrPool1, sbp.ZeroForOne1, sbp.Fee2, sbp.PairOrPool2, sbp.ZeroForOne2, sbp.MinTokenOutBalance, sbp.BriberyAddress)
+			// 模拟的时候都检查税，正式发不检查
+			frontSaleConfig := NewSaleConfig(!isFront, true, true, false)
+			frontSaleOption := NewSaleOption(sbp.ZeroForOne2, sbp.Version2 == V3, sbp.ZeroForOne1, sbp.Version1 == V3)
+
+			data = encodeParamsSaleNew(amountIn, sbp.PairOrPool1, sbp.PairOrPool2, sbp.Token1, sbp.Token2, sbp.Token3, frontSaleOption, frontSaleConfig, sbp.Fee1, sbp.Fee2, BigIntZeroValue, BigIntZeroValue, sbp.MinTokenOutBalance, sbp.BriberyAddress)
 		}
 
 	} else {
@@ -1650,7 +1655,12 @@ func execute(
 			}
 			data = encodeParamsBuy(sbp.Version2, false, amountIn, sbp.PairOrPool2, sbp.Token3, sbp.Token2, backConfig, sbp.Fee2, BigIntZeroValue, sbp.MinTokenOutBalance, sbp.BriberyAddress)
 		} else {
-			data = encodeParamsSale(isFront, amountIn, sbp.Token3, sbp.Token2, sbp.Token1, sbp.Fee2, sbp.PairOrPool2, !sbp.ZeroForOne2, sbp.Fee1, sbp.PairOrPool1, !sbp.ZeroForOne1, sbp.MinTokenOutBalance, sbp.BriberyAddress)
+			//data = encodeParamsSale(isFront, amountIn, sbp.Token3, sbp.Token2, sbp.Token1, sbp.Fee2, sbp.PairOrPool2, !sbp.ZeroForOne2, sbp.Fee1, sbp.PairOrPool1, !sbp.ZeroForOne1, sbp.MinTokenOutBalance, sbp.BriberyAddress)
+			// 模拟的时候都检查税，正式发不检查
+			backSaleConfig := NewSaleConfig(!isFront, true, true, false)
+			backSaleOption := NewSaleOption(!sbp.ZeroForOne1, sbp.Version1 == V3, !sbp.ZeroForOne2, sbp.Version2 == V3)
+
+			data = encodeParamsSaleNew(amountIn, sbp.Token3, sbp.Token2, sbp.Token1, sbp.PairOrPool2, sbp.PairOrPool1, backSaleOption, backSaleConfig, sbp.Fee2, sbp.Fee1, BigIntZeroValue, BigIntZeroValue, sbp.MinTokenOutBalance, sbp.BriberyAddress)
 		}
 	}
 
@@ -1690,14 +1700,14 @@ func execute(
 				)
 				log.Info("call_execute5", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "revertReason", revertReason.reason)
 			}
-			return nil, revertReason
+			return nil, nil, revertReason
 		}
 	}
 	if err != nil {
 		if sbp.LogEnable {
 			log.Info("call_execute6", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err)
 		}
-		return nil, err
+		return nil, nil, err
 	}
 	if callResult.Err != nil {
 		if sbp.LogEnable {
