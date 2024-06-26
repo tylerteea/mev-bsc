@@ -307,7 +307,7 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 		gasFees.Add(gasFees, gasFeesTx)
 		bundleHash.Write(tx.Hash().Bytes())
 		if result.Err != nil {
-			jsonResult["error"] = result.Err.Error()
+			jsonResult[errorString] = result.Err.Error()
 			revert := result.Revert()
 			if len(revert) > 0 {
 				reason, _ := abi.UnpackRevert(revert)
@@ -549,7 +549,7 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 		gasFees.Add(gasFees, gasFeesTx)
 		bundleHash.Write(tx.Hash().Bytes())
 		if result.Err != nil {
-			jsonResult["error"] = result.Err.Error()
+			jsonResult[errorString] = result.Err.Error()
 			revert := result.Revert()
 			if len(revert) > 0 {
 				reason, _ := abi.UnpackRevert(revert)
@@ -700,7 +700,7 @@ func DoSingleMulticall(ctx context.Context, b Backend, args TransactionArgs, sta
 	msg, err := args.ToMessage(globalGasCap, header.BaseFee)
 	if err != nil {
 		return map[string]interface{}{
-			"error": err,
+			errorString: err,
 		}
 	}
 
@@ -718,19 +718,19 @@ func DoSingleMulticall(ctx context.Context, b Backend, args TransactionArgs, sta
 	result, err := core.ApplyMessage(evm, msg, gp)
 	if err := state.Error(); err != nil {
 		return map[string]interface{}{
-			"error": err,
+			errorString: err,
 		}
 	}
 
 	// If the timer caused an abort, return an appropriate error message
 	if evm.Cancelled() {
 		return map[string]interface{}{
-			"error": fmt.Errorf("execution aborted (timeout = %v)", timeout),
+			errorString: fmt.Errorf("execution aborted (timeout = %v)", timeout),
 		}
 	}
 	if err != nil {
 		return map[string]interface{}{
-			"error": fmt.Errorf("err: %w (supplied gas %d)", err, msg.GasLimit),
+			errorString: fmt.Errorf("err: %w (supplied gas %d)", err, msg.GasLimit),
 		}
 	}
 	if len(result.Revert()) > 0 {
@@ -742,7 +742,7 @@ func DoSingleMulticall(ctx context.Context, b Backend, args TransactionArgs, sta
 	}
 	if result.Err != nil {
 		return map[string]interface{}{
-			"error": "execution reverted",
+			errorString: "execution reverted",
 		}
 	}
 	return map[string]interface{}{
@@ -790,8 +790,8 @@ func (s *BundleAPI) GetNowValidators(ctx context.Context, number *rpc.BlockNumbe
 
 	result := make(map[string]interface{})
 
-	result["error"] = "default"
-	result["reason"] = "default"
+	result[errorString] = "default"
+	result[reasonString] = "default"
 
 	log.Info("初始化parliaAPI", "number", number)
 
@@ -808,15 +808,15 @@ func (s *BundleAPI) GetNowValidators(ctx context.Context, number *rpc.BlockNumbe
 		nowEpoch.Add(nowEpoch, delayBlockNum)
 
 		if blockNum.Cmp(nowEpoch) >= 0 && header.Number.Cmp(nowEpoch) < 0 {
-			result["error"] = "blockNum_out_of_epoch_limit"
-			result["reason"] = "当前header属于上个epoch，但blockNum属于下个epoch,无法预测此种情况"
+			result[errorString] = "blockNum_out_of_epoch_limit"
+			result[reasonString] = "当前header属于上个epoch，但blockNum属于下个epoch,无法预测此种情况"
 			result["number"] = blockNum
 			return result
 		}
 
 		if new(big.Int).Sub(blockNum, header.Number).Cmp(epochNum) > 0 {
-			result["error"] = "blockNum_great_header_200"
-			result["reason"] = "请求的块号比最新header大200块"
+			result[errorString] = "blockNum_great_header_200"
+			result[reasonString] = "请求的块号比最新header大200块"
 			result["number"] = blockNum
 			return result
 		}
@@ -828,19 +828,19 @@ func (s *BundleAPI) GetNowValidators(ctx context.Context, number *rpc.BlockNumbe
 	result["number"] = blockNum
 
 	if header == nil {
-		result["error"] = "header_nil"
-		result["reason"] = "header_nil"
+		result[errorString] = "header_nil"
+		result[reasonString] = "header_nil"
 		return result
 	}
 
 	validators, err := s.b.Engine().GetNowValidators(s.chain, header)
 	if err == nil {
-		result["error"] = ""
-		result["reason"] = ""
+		result[errorString] = ""
+		result[reasonString] = ""
 		result["validators"] = validators
 	} else {
-		result["error"] = err
-		result["reason"] = err
+		result[errorString] = err
+		result[reasonString] = err
 	}
 
 	marshal, _ := json.Marshal(result)
@@ -857,19 +857,19 @@ func (s *BundleAPI) GetBuilderNew(ctx context.Context, number *rpc.BlockNumber) 
 	result := make(map[string]interface{})
 
 	result["number"] = number
-	result["error"] = "default"
-	result["reason"] = "default"
+	result[errorString] = "default"
+	result[reasonString] = "default"
 
 	validatorResult := s.GetNowValidators(ctx, number)
 
-	if validatorResult == nil || validatorResult["error"] != "" {
+	if validatorResult == nil || validatorResult[errorString] != "" {
 		return validatorResult
 	}
 
 	blockNum, ok := validatorResult["number"].(*big.Int)
 	if !ok {
-		result["error"] = "number_err"
-		result["reason"] = "number_err"
+		result[errorString] = "number_err"
+		result[reasonString] = "number_err"
 		result["number"] = blockNum
 		marshal, _ := json.Marshal(result)
 		log.Info("打印builder", "number", number, "builder", string(marshal), "cost_ms", time.Since(startTime).Milliseconds())
@@ -892,8 +892,8 @@ func (s *BundleAPI) GetBuilderNew(ctx context.Context, number *rpc.BlockNumber) 
 	result["number"] = blockNum
 
 	if targetEpoch == nil {
-		result["error"] = "targetEpoch_nil"
-		result["reason"] = "targetEpoch_nil"
+		result[errorString] = "targetEpoch_nil"
+		result[reasonString] = "targetEpoch_nil"
 	} else {
 		builderMap := make(map[int64]interface{})
 		for i := blockNum.Int64(); i < targetEpoch.Int64(); i++ {
@@ -902,7 +902,7 @@ func (s *BundleAPI) GetBuilderNew(ctx context.Context, number *rpc.BlockNumber) 
 
 			validatorRes := s.GetNowValidators(ctx, &blockNumber)
 
-			if validatorRes == nil || validatorRes["error"] != "" {
+			if validatorRes == nil || validatorRes[errorString] != "" {
 				log.Info("找不到验证者1", "number", i)
 				continue
 			}
@@ -915,8 +915,8 @@ func (s *BundleAPI) GetBuilderNew(ctx context.Context, number *rpc.BlockNumber) 
 			builderMap[i] = validatorsTmp
 			log.Info("找到验证者", "number", i, "builder", validatorsTmp)
 		}
-		result["error"] = ""
-		result["reason"] = ""
+		result[errorString] = ""
+		result[reasonString] = ""
 		result["builderMap"] = builderMap
 	}
 	marshal, _ := json.Marshal(result)
@@ -934,19 +934,19 @@ func (s *BundleAPI) GetBuilder(ctx context.Context, number *rpc.BlockNumber) map
 	result := make(map[string]interface{})
 
 	result["number"] = number
-	result["error"] = "default"
-	result["reason"] = "default"
+	result[errorString] = "default"
+	result[reasonString] = "default"
 
 	validatorResult := s.GetNowValidators(ctx, number)
 
-	if validatorResult == nil || validatorResult["error"] != "" {
+	if validatorResult == nil || validatorResult[errorString] != "" {
 		return validatorResult
 	}
 	validators, ok := validatorResult["validators"].([]common.Address)
 
 	if !ok {
-		result["error"] = "validator_err"
-		result["reason"] = "validator_err"
+		result[errorString] = "validator_err"
+		result[reasonString] = "validator_err"
 		marshal, _ := json.Marshal(result)
 		log.Info("打印builder", "number", number, "builder", string(marshal), "cost_ms", time.Since(startTime).Milliseconds())
 		return validatorResult
@@ -954,8 +954,8 @@ func (s *BundleAPI) GetBuilder(ctx context.Context, number *rpc.BlockNumber) map
 
 	blockNum, ok := validatorResult["number"].(*big.Int)
 	if !ok {
-		result["error"] = "number_err"
-		result["reason"] = "number_err"
+		result[errorString] = "number_err"
+		result[reasonString] = "number_err"
 		result["number"] = blockNum
 		marshal, _ := json.Marshal(result)
 		log.Info("打印builder", "number", number, "builder", string(marshal), "cost_ms", time.Since(startTime).Milliseconds())
@@ -978,16 +978,16 @@ func (s *BundleAPI) GetBuilder(ctx context.Context, number *rpc.BlockNumber) map
 	result["number"] = blockNum
 
 	if targetEpoch == nil {
-		result["error"] = "targetEpoch_nil"
-		result["reason"] = "targetEpoch_nil"
+		result[errorString] = "targetEpoch_nil"
+		result[reasonString] = "targetEpoch_nil"
 	} else {
 		builderMap := make(map[uint64]interface{})
 		for i := blockNum.Uint64(); i < targetEpoch.Uint64(); i++ {
 			offset := (i + 1) % uint64(len(validators))
 			builderMap[i] = validators[offset]
 		}
-		result["error"] = ""
-		result["reason"] = ""
+		result[errorString] = ""
+		result[reasonString] = ""
 		result["builderMap"] = builderMap
 	}
 	marshal, _ := json.Marshal(result)
@@ -1230,13 +1230,25 @@ func (s *BundleAPI) SandwichBestProfitMinimizeBuy(ctx context.Context, sbp SbpBu
 	return s.SandwichBestProfitMinimizeSale(ctx, sbpSaleArgs)
 }
 
+const (
+	frontAmountInString     = "frontAmountIn"
+	frontAmountOutString    = "frontAmountOut"
+	frontAmountOutMidString = "frontAmountOutMid"
+	backAmountInString      = "backAmountIn"
+	backAmountOutMidString  = "backAmountOutMid"
+	backAmountOutString     = "backAmountOut"
+	profitString            = "profit"
+	errorString             = "error"
+	reasonString            = "reason"
+)
+
 // SandwichBestProfitMinimizeSale profit calculate
 func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpSaleArgs) map[string]interface{} {
 
 	result := make(map[string]interface{})
 
-	result["error"] = "default"
-	result["reason"] = "default"
+	result[errorString] = "default"
+	result[reasonString] = "default"
 
 	now := time.Now()
 	um := now.UnixMilli()
@@ -1270,8 +1282,8 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 				oldResultJson, _ := json.Marshal(result)
 				log.Info("call_sbp_old_result_", "reqId", reqId, "result", string(oldResultJson))
 			}
-			result["error"] = "panic"
-			result["reason"] = r
+			result[errorString] = "panic"
+			result[reasonString] = r
 			if sbp.LogEnable {
 				newResultJson, _ := json.Marshal(result)
 				log.Info("call_sbp_defer_result_", "reqId", reqId, "result", string(newResultJson))
@@ -1280,8 +1292,8 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 	}(&result)
 
 	if sbp.Balance.Cmp(big.NewInt(0)) == 0 {
-		result["error"] = "args_err"
-		result["reason"] = "balance_is_0"
+		result[errorString] = "args_err"
+		result[reasonString] = "balance_is_0"
 		return result
 	}
 	balance := sbp.Balance
@@ -1294,8 +1306,8 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 
 	// 获取不到 直接返回
 	if victimTransaction == nil {
-		result["error"] = "tx_is_nil"
-		result["reason"] = "GetPoolTransaction and GetTransaction all nil : " + victimTxHash.Hex()
+		result[errorString] = "tx_is_nil"
+		result[reasonString] = "GetPoolTransaction and GetTransaction all nil : " + victimTxHash.Hex()
 		if sbp.LogEnable {
 			resultJson, _ := json.Marshal(result)
 			log.Info("call_sbp_2_", "reqId", reqId, "result", string(resultJson))
@@ -1370,8 +1382,8 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 			marshal, _ := json.Marshal(workerResults)
 			log.Info("call_worker_minimize_result_end", "reqId", reqIdMiniMize, "amountIn", amountInInt, "result", string(marshal))
 		}
-		if workerResults["error"] == nil && workerResults["profit"] != nil {
-			profit, ok := workerResults["profit"].(*big.Int)
+		if workerResults[errorString] == nil && workerResults[profitString] != nil {
+			profit, ok := workerResults[profitString].(*big.Int)
 			//if ok && profit > 0 {
 			if ok { // 让函数能够感知负值
 				if sbp.LogEnable {
@@ -1422,8 +1434,8 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 	log.Info("call_sbp_minimize_result", "reqId", reqId, "result", string(resJson))
 
 	if err != nil {
-		result["error"] = "minimize_err"
-		result["reason"] = err.Error()
+		result[errorString] = "minimize_err"
+		result[reasonString] = err.Error()
 		if sbp.LogEnable {
 			resultJson, _ := json.Marshal(result)
 			log.Info("call_sbp_minimize_err", "reqId", reqId, "result", string(resultJson))
@@ -1437,8 +1449,8 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 	maxProfitAmountIn.Int(quoteAmountIn)
 
 	if quoteAmountIn.Cmp(balance) > 0 || quoteAmountIn.Cmp(minAmountIn) < 0 {
-		result["error"] = "minimize_result_out_of_limit"
-		result["reason"] = quoteAmountIn
+		result[errorString] = "minimize_result_out_of_limit"
+		result[reasonString] = quoteAmountIn
 		if sbp.LogEnable {
 			resultJson, _ := json.Marshal(result)
 			log.Info("call_sbp_minimize_out_of_limit", "reqId", reqId, "result", string(resultJson))
@@ -1456,8 +1468,8 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 		log.Info("call_worker_result_end", "reqId", reqAndIndex, "amountInReal", quoteAmountIn, "result", string(marshal))
 	}
 
-	if workerResults["error"] == nil && workerResults["profit"] != nil {
-		profit, ok := workerResults["profit"].(*big.Int)
+	if workerResults[errorString] == nil && workerResults[profitString] != nil {
+		profit, ok := workerResults[profitString].(*big.Int)
 		if ok && profit.Cmp(big.NewInt(0)) > 0 {
 			result = workerResults
 		}
@@ -1494,12 +1506,12 @@ func worker(
 	costTime := time.Since(startTime).Milliseconds()
 
 	if sbp.LogEnable {
-		log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "amountIn", amountIn, "frontAmountOutMid", frontAmountOutMid, "frontAmountOut", frontAmountOut, "fErr", fErr, "cost_time", costTime)
+		log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "amountIn", amountIn, frontAmountOutMidString, frontAmountOutMid, frontAmountInString, frontAmountOut, "fErr", fErr, "cost_time", costTime)
 	}
 	if fErr != nil {
-		result["error"] = "frontCallErr"
-		result["reason"] = fErr.Error()
-		result["frontAmountIn"] = amountIn.String()
+		result[errorString] = "frontCallErr"
+		result[reasonString] = fErr.Error()
+		result[frontAmountInString] = amountIn.String()
 		return result
 	}
 
@@ -1509,17 +1521,17 @@ func worker(
 	}
 
 	if backAmountIn.Cmp(big.NewInt(0)) <= 0 {
-		result["error"] = "backAmountInZero"
-		result["reason"] = "backAmountInZero"
-		result["frontAmountIn"] = amountIn.String()
+		result[errorString] = "backAmountInZero"
+		result[reasonString] = "backAmountInZero"
+		result[frontAmountInString] = amountIn.String()
 		return result
 	}
 
 	if !sbp.BuyOrSale {
 		if frontAmountOutMid.Cmp(big.NewInt(0)) <= 0 {
-			result["error"] = "frontAmountOutMid_Zero"
-			result["reason"] = "frontAmountOutMid_Zero"
-			result["frontAmountIn"] = amountIn.String()
+			result[errorString] = "frontAmountOutMid_Zero"
+			result[reasonString] = "frontAmountOutMid_Zero"
+			result[frontAmountInString] = amountIn.String()
 			return result
 		}
 	}
@@ -1529,8 +1541,8 @@ func worker(
 	victimTxMsg, victimTxMsgErr := core.TransactionToMessage(victimTransaction, types.MakeSigner(s.b.ChainConfig(), head.Number, head.Time), head.BaseFee)
 
 	if victimTxMsgErr != nil {
-		result["error"] = "victimTxMsgErr"
-		result["reason"] = victimTxMsgErr
+		result[errorString] = "victimTxMsgErr"
+		result[reasonString] = victimTxMsgErr
 		return result
 	}
 
@@ -1543,8 +1555,8 @@ func worker(
 		vmEnv.Cancel()
 	})
 	if err != nil {
-		result["error"] = "victimPoolSubmit"
-		result["reason"] = err.Error()
+		result[errorString] = "victimPoolSubmit"
+		result[reasonString] = err.Error()
 		return result
 	}
 	gasPool := new(core.GasPool).AddGas(math.MaxUint64)
@@ -1557,21 +1569,21 @@ func worker(
 	}
 
 	if victimTxCallErr != nil {
-		result["error"] = "victimTxCallErr"
-		result["reason"] = victimTxCallErr.Error()
-		result["frontAmountIn"] = amountIn.String()
+		result[errorString] = "victimTxCallErr"
+		result[reasonString] = victimTxCallErr.Error()
+		result[frontAmountInString] = amountIn.String()
 		return result
 	}
 	if len(victimTxCallResult.Revert()) > 0 {
-		result["error"] = "execution_victimTx_reverted"
-		result["reason"] = victimTxCallResult.Err.Error()
-		result["frontAmountIn"] = amountIn.String()
+		result[errorString] = "execution_victimTx_reverted"
+		result[reasonString] = victimTxCallResult.Err.Error()
+		result[frontAmountInString] = amountIn.String()
 		return result
 	}
 	if victimTxCallResult.Err != nil {
-		result["error"] = "execution_victimTx_callResult_err"
-		result["reason"] = victimTxCallResult.Err.Error()
-		result["frontAmountIn"] = amountIn.String()
+		result[errorString] = "execution_victimTx_callResult_err"
+		result[reasonString] = victimTxCallResult.Err.Error()
+		result[frontAmountInString] = amountIn.String()
 		return result
 	}
 
@@ -1581,47 +1593,47 @@ func worker(
 	backCostTime := time.Since(backStartTime).Milliseconds()
 
 	if sbp.LogEnable {
-		log.Info("call_execute_back", "reqAndIndex", reqAndIndex, "backAmountIn", backAmountIn, "backAmountOutMid", backAmountOutMid, "backAmountOut", backAmountOut, "bErr", bErr, "cost_time", backCostTime)
+		log.Info("call_execute_back", "reqAndIndex", reqAndIndex, backAmountInString, backAmountIn, backAmountOutMidString, backAmountOutMid, backAmountOutString, backAmountOut, "bErr", bErr, "cost_time", backCostTime)
 	}
 	if bErr != nil || backAmountOut.Cmp(big.NewInt(0)) <= 0 {
-		result["error"] = "backCallErr"
-		result["reason"] = bErr.Error()
-		result["frontAmountIn"] = amountIn
-		result["frontAmountOutMid"] = frontAmountOutMid
-		result["frontAmountOut"] = frontAmountOut
-		result["backAmountIn"] = backAmountIn
-		result["backAmountOutMid"] = backAmountOutMid
-		result["backAmountOut"] = backAmountOut
+		result[errorString] = "backCallErr"
+		result[reasonString] = bErr.Error()
+		result[frontAmountInString] = amountIn
+		result[frontAmountOutMidString] = frontAmountOutMid
+		result[frontAmountInString] = frontAmountOut
+		result[backAmountInString] = backAmountIn
+		result[backAmountOutMidString] = backAmountOutMid
+		result[backAmountOutString] = backAmountOut
 		return result
 	}
 
 	if !sbp.BuyOrSale {
 		if backAmountOutMid.Cmp(big.NewInt(0)) <= 0 {
-			result["error"] = "backCallErr1"
-			result["reason"] = "backAmountOutMid_zero"
-			result["frontAmountIn"] = amountIn
-			result["frontAmountOutMid"] = frontAmountOutMid
-			result["frontAmountOut"] = frontAmountOut
-			result["backAmountIn"] = backAmountIn
-			result["backAmountOutMid"] = backAmountOutMid
-			result["backAmountOut"] = backAmountOut
+			result[errorString] = "backCallErr1"
+			result[reasonString] = "backAmountOutMid_zero"
+			result[frontAmountInString] = amountIn
+			result[frontAmountOutMidString] = frontAmountOutMid
+			result[frontAmountOutString] = frontAmountOut
+			result[backAmountInString] = backAmountIn
+			result[backAmountOutMidString] = backAmountOutMid
+			result[backAmountOutString] = backAmountOut
 			return result
 		}
 	}
 
 	profit := new(big.Int).Sub(backAmountOut, amountIn)
 
-	result["frontAmountIn"] = amountIn
-	result["frontAmountOut"] = frontAmountOut
-	result["frontAmountOutMid"] = frontAmountOutMid
-	result["backAmountIn"] = backAmountIn
-	result["backAmountOutMid"] = backAmountOutMid
-	result["backAmountOut"] = backAmountOut
-	result["profit"] = profit
+	result[frontAmountInString] = amountIn
+	result[frontAmountOutString] = frontAmountOut
+	result[frontAmountOutMidString] = frontAmountOutMid
+	result[backAmountInString] = backAmountIn
+	result[backAmountOutMidString] = backAmountOutMid
+	result[backAmountOutString] = backAmountOut
+	result[profitString] = profit
 
 	if profit.Cmp(big.NewInt(0)) <= 0 {
-		result["error"] = "profit_too_low"
-		result["reason"] = errors.New("profit_too_low")
+		result[errorString] = "profit_too_low"
+		result[reasonString] = errors.New("profit_too_low")
 	}
 
 	endTime := time.Since(startTime).Milliseconds()
