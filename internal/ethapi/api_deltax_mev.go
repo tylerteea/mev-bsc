@@ -1743,12 +1743,12 @@ func execute(
 			amountOut = new(big.Int).SetBytes(callResult.Return())
 			if amountOut.Cmp(big.NewInt(0)) <= 0 {
 				log.Info("call_execute8_买结果数据大小检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOutMid", amountOutMid.String(), "amountOut", amountOut.String())
-				return nil, nil, errors.New("买结果数据大小检验不通过")
+				return nil, nil, errors.New("买结果数据大小检验不通过1")
 			}
 
 		} else {
 			log.Info("call_execute9_买结果数据大小检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOutMid", amountOutMid.String(), "amountOut", amountOut.String())
-			return nil, nil, errors.New("买结果数据长度检验不通过")
+			return nil, nil, errors.New("买结果数据长度检验不通过2")
 		}
 	} else {
 
@@ -1757,11 +1757,11 @@ func execute(
 			amountOut = new(big.Int).SetBytes(callResult.Return()[32:64])
 			if amountOutMid.Cmp(big.NewInt(0)) <= 0 || amountOut.Cmp(big.NewInt(0)) <= 0 {
 				log.Info("call_execute10_卖结果数据大小检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOutMid", amountOutMid.String(), "amountOut", amountOut.String())
-				return nil, nil, errors.New("卖结果数据大小检验不通过")
+				return nil, nil, errors.New("卖结果数据大小检验不通过1")
 			}
 		} else {
 			log.Info("call_execute11_卖结果数据长度检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOutMid", amountOutMid.String(), "amountOut", amountOut.String())
-			return nil, nil, errors.New("卖结果数据长度检验不通过")
+			return nil, nil, errors.New("卖结果数据长度检验不通过2")
 		}
 	}
 	if sbp.LogEnable {
