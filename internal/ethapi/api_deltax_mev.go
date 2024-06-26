@@ -35,14 +35,16 @@ const (
 	V3 = int(3)
 
 	frontAmountInString     = "frontAmountIn"
-	frontAmountOutString    = "frontAmountOut"
 	frontAmountOutMidString = "frontAmountOutMid"
-	backAmountInString      = "backAmountIn"
-	backAmountOutMidString  = "backAmountOutMid"
-	backAmountOutString     = "backAmountOut"
-	profitString            = "profit"
-	errorString             = "error"
-	reasonString            = "reason"
+	frontAmountOutString    = "frontAmountOut"
+
+	backAmountInString     = "backAmountIn"
+	backAmountOutMidString = "backAmountOutMid"
+	backAmountOutString    = "backAmountOut"
+
+	profitString = "profit"
+	errorString  = "error"
+	reasonString = "reason"
 )
 
 var BigIntZeroValue = big.NewInt(0)
