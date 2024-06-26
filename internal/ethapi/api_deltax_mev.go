@@ -1770,62 +1770,6 @@ func execute(
 }
 
 // execute_44g58pv
-func encodeParamsSaleUsdt(
-	isFront bool,
-
-	amountIn *big.Int,
-
-	token1 common.Address,
-	token2 common.Address,
-	token3 common.Address,
-
-	fee1 *big.Int,
-	pairOrPool1 common.Address,
-	zeroForOne1 bool,
-
-	fee2 *big.Int,
-	pairOrPool2 common.Address,
-	zeroForOne2 bool,
-
-	minTokenOutBalance *big.Int,
-	builderAddress common.Address,
-) []byte {
-	params := make([]byte, 0)
-	params = append(params, []byte{0x00, 0x00, 0x00, 0x00}...)
-
-	params = append(params, fillBytes(14, amountIn.Bytes())...)
-
-	params = append(params, token1.Bytes()...)
-	params = append(params, token2.Bytes()...)
-	params = append(params, token3.Bytes()...)
-
-	params = append(params, fillBytes(2, fee1.Bytes())...)
-	params = append(params, pairOrPool1.Bytes()...)
-	if zeroForOne1 {
-		params = append(params, []byte{1}...)
-	} else {
-		params = append(params, []byte{0}...)
-	}
-
-	params = append(params, fillBytes(2, fee2.Bytes())...)
-	params = append(params, pairOrPool2.Bytes()...)
-	if zeroForOne2 {
-		params = append(params, []byte{1}...)
-	} else {
-		params = append(params, []byte{0}...)
-	}
-
-	if !isFront {
-		params = append(params, fillBytes(14, minTokenOutBalance.Bytes())...)
-		if builderAddress.Cmp(NullAddress) != 0 {
-			params = append(params, builderAddress.Bytes()...)
-		}
-	}
-
-	return params
-}
-
-// execute_44g58pv
 func encodeParamsSale(
 	amountIn *big.Int,
 
