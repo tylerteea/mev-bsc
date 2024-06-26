@@ -33,6 +33,16 @@ import (
 const (
 	V2 = int(2)
 	V3 = int(3)
+
+	frontAmountInString     = "frontAmountIn"
+	frontAmountOutString    = "frontAmountOut"
+	frontAmountOutMidString = "frontAmountOutMid"
+	backAmountInString      = "backAmountIn"
+	backAmountOutMidString  = "backAmountOutMid"
+	backAmountOutString     = "backAmountOut"
+	profitString            = "profit"
+	errorString             = "error"
+	reasonString            = "reason"
 )
 
 var BigIntZeroValue = big.NewInt(0)
@@ -1229,18 +1239,6 @@ func (s *BundleAPI) SandwichBestProfitMinimizeBuy(ctx context.Context, sbp SbpBu
 
 	return s.SandwichBestProfitMinimizeSale(ctx, sbpSaleArgs)
 }
-
-const (
-	frontAmountInString     = "frontAmountIn"
-	frontAmountOutString    = "frontAmountOut"
-	frontAmountOutMidString = "frontAmountOutMid"
-	backAmountInString      = "backAmountIn"
-	backAmountOutMidString  = "backAmountOutMid"
-	backAmountOutString     = "backAmountOut"
-	profitString            = "profit"
-	errorString             = "error"
-	reasonString            = "reason"
-)
 
 // SandwichBestProfitMinimizeSale profit calculate
 func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpSaleArgs) map[string]interface{} {
