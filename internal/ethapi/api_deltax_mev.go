@@ -1357,7 +1357,7 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 
 		startTime := time.Now()
 		stateDB := stateDBNew.Copy()
-		workerResults := worker(ctx, head, victimTransaction, sbp, s, reqId, stateDB, amountInInt)
+		workerResults := workerNew(ctx, head, victimTransaction, sbp, s, reqId, stateDB, amountInInt)
 		costTime := time.Since(startTime).Milliseconds()
 
 		if sbp.LogEnable {
@@ -1449,7 +1449,7 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 	reqAndIndex := reqId + "_end"
 
 	sdb := stateDBNew.Copy()
-	workerResults := worker(ctx, head, victimTransaction, sbp, s, reqAndIndex, sdb, quoteAmountIn)
+	workerResults := workerNew(ctx, head, victimTransaction, sbp, s, reqAndIndex, sdb, quoteAmountIn)
 
 	if sbp.LogEnable {
 		marshal, _ := json.Marshal(workerResults)
@@ -1490,7 +1490,7 @@ func worker(
 
 	// 抢跑----------------------------------------------------------------------------------------
 	startTime := time.Now()
-	frontAmountOut, fErr := execute(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head)
+	_, frontAmountOut, fErr := execute(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head)
 	costTime := time.Since(startTime).Milliseconds()
 
 	if sbp.LogEnable {
@@ -1568,7 +1568,7 @@ func worker(
 
 	// 跟跑----------------------------------------------------------------------------------------
 	backStartTime := time.Now()
-	backAmountOut, bErr := execute(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head)
+	_, backAmountOut, bErr := execute(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head)
 	backCostTime := time.Since(backStartTime).Milliseconds()
 
 	if sbp.LogEnable {
@@ -1713,13 +1713,13 @@ func execute(
 		if sbp.LogEnable {
 			log.Info("call_execute7", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", callResult.Err)
 		}
-		return nil, callResult.Err
+		return nil, nil, callResult.Err
 	}
 	amountOut := new(big.Int).SetBytes(callResult.Return())
 	if sbp.LogEnable {
 		log.Info("call_execute8", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "amountOut", amountOut.String())
 	}
-	return amountOut, nil
+	return nil, amountOut, nil
 }
 
 // execute_44g58pv
@@ -1799,7 +1799,7 @@ func workerNew(
 
 	// 抢跑----------------------------------------------------------------------------------------
 	startTime := time.Now()
-	frontAmountOutMid, frontAmountOut, fErr := executeNew(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head)
+	frontAmountOutMid, frontAmountOut, fErr := execute(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head)
 	costTime := time.Since(startTime).Milliseconds()
 
 	if sbp.LogEnable {
@@ -1886,7 +1886,7 @@ func workerNew(
 
 	// 跟跑----------------------------------------------------------------------------------------
 	backStartTime := time.Now()
-	backAmountOutMid, backAmountOut, bErr := executeNew(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head)
+	backAmountOutMid, backAmountOut, bErr := execute(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head)
 	backCostTime := time.Since(backStartTime).Milliseconds()
 
 	if sbp.LogEnable {
