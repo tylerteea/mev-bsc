@@ -1490,11 +1490,11 @@ func worker(
 
 	// 抢跑----------------------------------------------------------------------------------------
 	startTime := time.Now()
-	_, frontAmountOut, fErr := executeNew(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head)
+	frontAmountOutMid, frontAmountOut, fErr := executeNew(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head)
 	costTime := time.Since(startTime).Milliseconds()
 
 	if sbp.LogEnable {
-		log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "amountIn", amountIn, "frontAmountOut", frontAmountOut, "fErr", fErr, "cost_time", costTime)
+		log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "amountIn", amountIn, "frontAmountOutMid", frontAmountOutMid, "frontAmountOut", frontAmountOut, "fErr", fErr, "cost_time", costTime)
 	}
 	if fErr != nil {
 		result["error"] = "frontCallErr"
@@ -1513,6 +1513,15 @@ func worker(
 		result["reason"] = "backAmountInZero"
 		result["frontAmountIn"] = amountIn.String()
 		return result
+	}
+
+	if !sbp.BuyOrSale {
+		if frontAmountOutMid.Cmp(big.NewInt(0)) <= 0 {
+			result["error"] = "frontAmountOutMid_Zero"
+			result["reason"] = "frontAmountOutMid_Zero"
+			result["frontAmountIn"] = amountIn.String()
+			return result
+		}
 	}
 
 	// 受害者----------------------------------------------------------------------------------------
@@ -1568,11 +1577,11 @@ func worker(
 
 	// 跟跑----------------------------------------------------------------------------------------
 	backStartTime := time.Now()
-	_, backAmountOut, bErr := executeNew(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head)
+	backAmountOutMid, backAmountOut, bErr := executeNew(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head)
 	backCostTime := time.Since(backStartTime).Milliseconds()
 
 	if sbp.LogEnable {
-		log.Info("call_execute_back", "reqAndIndex", reqAndIndex, "backAmountIn", backAmountIn, "backAmountOut", backAmountOut, "bErr", bErr, "cost_time", backCostTime)
+		log.Info("call_execute_back", "reqAndIndex", reqAndIndex, "backAmountIn", backAmountIn, "backAmountOutMid", backAmountOutMid, "backAmountOut", backAmountOut, "bErr", bErr, "cost_time", backCostTime)
 	}
 	if bErr != nil || backAmountOut.Cmp(big.NewInt(0)) <= 0 {
 		result["error"] = "backCallErr"
