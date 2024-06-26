@@ -1746,7 +1746,7 @@ func execute(
 	}
 
 	lenR := len(callResult.Return())
-	log.Info("call_execute80_买结果数据长度", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR)
+	log.Info("call_execute80_结果数据长度", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR)
 
 	amountOutMid := big.NewInt(0)
 	amountOut := big.NewInt(0)
