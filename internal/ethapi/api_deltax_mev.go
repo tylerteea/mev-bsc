@@ -18,7 +18,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/holiman/uint256"
 	"math"
 	"math/big"
 	"runtime/debug"
@@ -33,8 +32,10 @@ import (
 
 const (
 	V2 = int(2)
+	V3 = int(3)
 )
 
+var BigIntZeroValue = big.NewInt(0)
 var epochNum = big.NewInt(200)
 var delayBlockNum = big.NewInt(10)
 var NullAddress = common.HexToAddress("0x0000000000000000000000000000000000000000")
@@ -181,7 +182,9 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 		}
 		txs = append(txs, tx)
 	}
-	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
+	defer func(start time.Time) {
+		log.Debug("callBundle Executing EVM call finished", "runtime", time.Since(start))
+	}(time.Now())
 
 	timeoutMilliSeconds := int64(5000)
 	if args.Timeout != nil {
@@ -192,6 +195,7 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 	if stateHead == nil || err != nil {
 		return nil, err
 	}
+	// 避免相互影响
 	state := stateHead.Copy()
 
 	if err := args.StateOverrides.Apply(state); err != nil {
@@ -238,9 +242,9 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 	// or, in case of unmetered gas, setup a context with a timeout.
 	var cancel context.CancelFunc
 	if timeout > 0 {
-		_, cancel = context.WithTimeout(ctx, timeout)
+		ctx, cancel = context.WithTimeout(ctx, timeout)
 	} else {
-		_, cancel = context.WithCancel(ctx)
+		ctx, cancel = context.WithCancel(ctx)
 	}
 	// Make sure the context is cancelled when the call has completed
 	// this makes sure resources are cleaned up.
@@ -253,7 +257,6 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 	gp := new(core.GasPool).AddGas(math.MaxUint64)
 
 	results := []map[string]interface{}{}
-	coinbaseBalanceBefore := state.GetBalance(coinbase)
 
 	bundleHash := sha3.NewLegacyKeccak256()
 	signer := types.MakeSigner(s.b.ChainConfig(), blockNumber, header.Time)
@@ -269,15 +272,10 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 			return nil, err
 		}
 
-		coinbaseBalanceBeforeTx := state.GetBalance(coinbase)
-
 		from, err := types.Sender(signer, tx)
 		state.Prepare(rules, from, coinbase, tx.To(), vm.ActivePrecompiles(rules), tx.AccessList())
 
-		used := header.GasUsed
-		log.Info("call_bundle_old_header_used", "reqId", tx.Hash(), "used", used)
-
-		receipt, result, err := ApplyTransactionWithResult(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, &header.GasUsed, vmconfig)
+		receipt, result, err := ApplyTransactionWithResultNew(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, &header.GasUsed, vmconfig)
 		if err != nil {
 			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
 		}
@@ -324,31 +322,21 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 		if args.SimulationLogs {
 			jsonResult["logs"] = receipt.Logs
 		}
-		coinbaseDiffTx := new(uint256.Int).Sub(state.GetBalance(coinbase), coinbaseBalanceBeforeTx)
-		jsonResult["coinbaseDiff"] = coinbaseDiffTx.String()
+
 		jsonResult["gasFees"] = gasFeesTx.String()
-		jsonResult["ethSentToCoinbase"] = new(uint256.Int).Sub(coinbaseDiffTx, uint256.NewInt(gasFeesTx.Uint64())).String()
-		jsonResult["gasPrice"] = new(uint256.Int).Div(coinbaseDiffTx, uint256.NewInt(receipt.GasUsed)).String() // tx.GasPrice().String()
 		jsonResult["gasUsed"] = receipt.GasUsed
 		results = append(results, jsonResult)
 	}
 
 	ret := map[string]interface{}{}
-	ret["results"] = results
-	coinbaseDiff := new(uint256.Int).Sub(state.GetBalance(coinbase), coinbaseBalanceBefore)
-	ret["coinbaseDiff"] = coinbaseDiff.String()
-	ret["gasFees"] = gasFees.String()
-	ret["ethSentToCoinbase"] = new(uint256.Int).Sub(coinbaseDiff, uint256.NewInt(gasFees.Uint64())).String()
-	ret["bundleGasPrice"] = new(uint256.Int).Div(coinbaseDiff, uint256.NewInt(totalGasUsed)).String() // new(big.Int).Div(gasFees, big.NewInt(int64(totalGasUsed))).String()
-	ret["totalGasUsed"] = totalGasUsed
-	ret["stateBlockNumber"] = parent.Number.Int64()
 
+	ret["results"] = results
+	ret["stateBlockNumber"] = header.Number.Int64()
 	ret["bundleHash"] = "0x" + common.Bytes2Hex(bundleHash.Sum(nil))
 
-	//// todo
-	//newResultJson, _ := json.Marshal(ret)
-	//log.Info("call_bundle_result", "ret", string(newResultJson))
+	newResultJson, _ := json.Marshal(ret)
 
+	log.Info("call_bundle_result", "ret", string(newResultJson))
 	return ret, nil
 }
 
@@ -1179,6 +1167,7 @@ type SbpSaleArgs struct {
 	PairOrPool1   common.Address `json:"pairOrPool1"`
 	ZeroForOne1   bool           `json:"zeroForOne1"`
 	Fee1          *big.Int       `json:"fee1"`
+	Version1      int            `json:"version1"`
 	PairOrPool2   common.Address `json:"pairOrPool2"`
 	ZeroForOne2   bool           `json:"zeroForOne2"`
 	Fee2          *big.Int       `json:"fee2"`
@@ -1189,7 +1178,6 @@ type SbpSaleArgs struct {
 	Token3SaleTax bool           `json:"token3SaleTax"`
 
 	AmountInMin        *big.Int       `json:"amountInMin"`
-	AmountOut          *big.Int       `json:"amountOut"`
 	MinTokenOutBalance *big.Int       `json:"minTokenOutBalance"`
 	BriberyAddress     common.Address `json:"briberyAddress"`
 	VictimTxHash       common.Hash    `json:"vTxHash"`
@@ -1216,12 +1204,12 @@ func (s *BundleAPI) SandwichBestProfitMinimizeBuy(ctx context.Context, sbp SbpBu
 		PairOrPool1:        common.Address{},
 		ZeroForOne1:        false,
 		Fee1:               nil,
+		Version1:           0,
 		PairOrPool2:        sbp.PairOrPool2,
 		ZeroForOne2:        sbp.ZeroForOne2,
 		Fee2:               sbp.Fee2,
 		Version2:           sbp.Version2,
 		AmountInMin:        sbp.AmountInMin,
-		AmountOut:          sbp.AmountOut,
 		MinTokenOutBalance: sbp.MinTokenOutBalance,
 		BriberyAddress:     sbp.BriberyAddress,
 		VictimTxHash:       sbp.VictimTxHash,
@@ -1501,11 +1489,11 @@ func worker(
 
 	// 抢跑----------------------------------------------------------------------------------------
 	startTime := time.Now()
-	frontAmountOut, fErr := execute(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head)
+	frontAmountOutMid, frontAmountOut, fErr := execute(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head)
 	costTime := time.Since(startTime).Milliseconds()
 
 	if sbp.LogEnable {
-		log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "amountIn", amountIn, "frontAmountOut", frontAmountOut, "fErr", fErr, "cost_time", costTime)
+		log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "amountIn", amountIn, "frontAmountOutMid", frontAmountOutMid, "frontAmountOut", frontAmountOut, "fErr", fErr, "cost_time", costTime)
 	}
 	if fErr != nil {
 		result["error"] = "frontCallErr"
@@ -1520,10 +1508,19 @@ func worker(
 	}
 
 	if backAmountIn.Cmp(big.NewInt(0)) <= 0 {
-		result["error"] = "backAmountInZero"
-		result["reason"] = "backAmountInZero"
+		result["error"] = "backAmountIn_Zero"
+		result["reason"] = "backAmountIn_Zero"
 		result["frontAmountIn"] = amountIn.String()
 		return result
+	}
+
+	if !sbp.BuyOrSale {
+		if frontAmountOutMid.Cmp(big.NewInt(0)) <= 0 {
+			result["error"] = "frontAmountOutMid_Zero"
+			result["reason"] = "frontAmountOutMid_Zero"
+			result["frontAmountIn"] = amountIn.String()
+			return result
+		}
 	}
 
 	// 受害者----------------------------------------------------------------------------------------
@@ -1579,27 +1576,47 @@ func worker(
 
 	// 跟跑----------------------------------------------------------------------------------------
 	backStartTime := time.Now()
-	backAmountOut, bErr := execute(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head)
+	backAmountOutMid, backAmountOut, bErr := execute(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head)
 	backCostTime := time.Since(backStartTime).Milliseconds()
 
 	if sbp.LogEnable {
-		log.Info("call_execute_back", "reqAndIndex", reqAndIndex, "backAmountIn", backAmountIn, "backAmountOut", backAmountOut, "bErr", bErr, "cost_time", backCostTime)
+		log.Info("call_execute_back", "reqAndIndex", reqAndIndex, "backAmountIn", backAmountIn, "backAmountOutMid", backAmountOutMid, "backAmountOut", backAmountOut, "bErr", bErr, "cost_time", backCostTime)
 	}
 	if bErr != nil || backAmountOut.Cmp(big.NewInt(0)) <= 0 {
 		result["error"] = "backCallErr"
 		result["reason"] = bErr.Error()
-		result["frontAmountIn"] = amountIn.String()
-		result["frontAmountOut"] = frontAmountOut.String()
-		result["backAmountIn"] = backAmountIn.String()
+		result["frontAmountIn"] = amountIn
+		result["frontAmountOutMid"] = frontAmountOutMid
+		result["frontAmountOut"] = frontAmountOut
+		result["backAmountIn"] = backAmountIn
+		result["backAmountOutMid"] = backAmountOutMid
+		result["backAmountOut"] = backAmountOut
 		return result
 	}
+
+	if !sbp.BuyOrSale {
+		if backAmountOutMid.Cmp(big.NewInt(0)) <= 0 {
+			result["error"] = "backCallErr"
+			result["reason"] = "backAmountOutMid_zero"
+			result["frontAmountIn"] = amountIn
+			result["frontAmountOutMid"] = frontAmountOutMid
+			result["frontAmountOut"] = frontAmountOut
+			result["backAmountIn"] = backAmountIn
+			result["backAmountOutMid"] = backAmountOutMid
+			result["backAmountOut"] = backAmountOut
+			return result
+		}
+	}
+
 	profit := new(big.Int).Sub(backAmountOut, amountIn)
 
 	result["frontAmountIn"] = amountIn
+	result["frontAmountOutMid"] = frontAmountOutMid
 	result["frontAmountOut"] = frontAmountOut
 	result["backAmountIn"] = backAmountIn
+	result["backAmountOutMid"] = backAmountOutMid
 	result["backAmountOut"] = backAmountOut
-	result["profit"] = profit
+	result["grossProfit"] = profit
 
 	if profit.Cmp(big.NewInt(0)) <= 0 {
 		result["error"] = "profit_too_low"
@@ -1622,7 +1639,7 @@ func execute(
 	amountIn *big.Int,
 	sdb *state.StateDB,
 	s *BundleAPI,
-	head *types.Header) (*big.Int, error) {
+	head *types.Header) (*big.Int, *big.Int, error) {
 
 	var data []byte
 
@@ -1633,35 +1650,33 @@ func execute(
 
 		if sbp.BuyOrSale {
 
-			var frontConfig *BuyConfig
-			if sbp.Version2 == V2 {
-				// 模拟的时候都检查税，正式发不检查
-				//frontConfig = NewBuyConfig(sbp.Token3BuyTax, true, false, sbp.ZeroForOne2)
-				frontConfig = NewBuyConfig(true, true, false, sbp.ZeroForOne2)
-			} else {
-				frontConfig = NewBuyConfig(true, true, false, sbp.ZeroForOne2)
-			}
+			// 模拟的时候都检查税，正式发不检查
+			frontBuyConfig := NewBuyConfig(true, true, false, sbp.ZeroForOne2)
 			frontMinTokenOutBalance := big.NewInt(0)
-			data = encodeParamsBuy(sbp.Version2, true, amountIn, sbp.PairOrPool2, sbp.Token2, sbp.Token3, frontConfig, sbp.Fee2, sbp.AmountOut, frontMinTokenOutBalance, sbp.BriberyAddress)
+			data = encodeParamsBuy(sbp.Version2, true, amountIn, sbp.PairOrPool2, sbp.Token2, sbp.Token3, frontBuyConfig, sbp.Fee2, BigIntZeroValue, frontMinTokenOutBalance, sbp.BriberyAddress)
 		} else {
-			data = encodeParamsSale(isFront, amountIn, sbp.Token1, sbp.Token2, sbp.Token3, sbp.Fee1, sbp.PairOrPool1, sbp.ZeroForOne1, sbp.Fee2, sbp.PairOrPool2, sbp.ZeroForOne2, sbp.MinTokenOutBalance, sbp.BriberyAddress)
+
+			// 模拟的时候都检查税，正式发不检查
+			frontSaleConfig := NewSaleConfig(!isFront, true, true, false)
+			frontSaleOption := NewSaleOption(sbp.ZeroForOne2, sbp.Version2 == V3, sbp.ZeroForOne1, sbp.Version1 == V3)
+
+			data = encodeParamsSale(amountIn, sbp.PairOrPool1, sbp.PairOrPool2, sbp.Token1, sbp.Token2, sbp.Token3, frontSaleOption, frontSaleConfig, sbp.Fee1, sbp.Fee2, BigIntZeroValue, BigIntZeroValue, sbp.MinTokenOutBalance, sbp.BriberyAddress)
 		}
 
 	} else {
 
 		if sbp.BuyOrSale {
 
-			var backConfig *BuyConfig
-			if sbp.Version2 == V2 {
-				// 模拟的时候都检查税，正式发不检查
-				//backConfig = NewBuyConfig(sbp.Token3SaleTax, true, false, !sbp.ZeroForOne2)
-				backConfig = NewBuyConfig(true, true, false, !sbp.ZeroForOne2)
-			} else {
-				backConfig = NewBuyConfig(true, true, false, !sbp.ZeroForOne2)
-			}
-			data = encodeParamsBuy(sbp.Version2, false, amountIn, sbp.PairOrPool2, sbp.Token3, sbp.Token2, backConfig, sbp.Fee2, sbp.AmountOut, sbp.MinTokenOutBalance, sbp.BriberyAddress)
+			// 模拟的时候都检查税，正式发不检查
+			backBuyConfig := NewBuyConfig(true, true, false, !sbp.ZeroForOne2)
+			data = encodeParamsBuy(sbp.Version2, false, amountIn, sbp.PairOrPool2, sbp.Token3, sbp.Token2, backBuyConfig, sbp.Fee2, BigIntZeroValue, sbp.MinTokenOutBalance, sbp.BriberyAddress)
 		} else {
-			data = encodeParamsSale(isFront, amountIn, sbp.Token3, sbp.Token2, sbp.Token1, sbp.Fee2, sbp.PairOrPool2, !sbp.ZeroForOne2, sbp.Fee1, sbp.PairOrPool1, !sbp.ZeroForOne1, sbp.MinTokenOutBalance, sbp.BriberyAddress)
+
+			// 模拟的时候都检查税，正式发不检查
+			backSaleConfig := NewSaleConfig(!isFront, true, true, false)
+			backSaleOption := NewSaleOption(!sbp.ZeroForOne1, sbp.Version1 == V3, !sbp.ZeroForOne2, sbp.Version2 == V3)
+
+			data = encodeParamsSale(amountIn, sbp.Token3, sbp.Token2, sbp.Token1, sbp.PairOrPool2, sbp.PairOrPool1, backSaleOption, backSaleConfig, sbp.Fee2, sbp.Fee1, BigIntZeroValue, BigIntZeroValue, sbp.MinTokenOutBalance, sbp.BriberyAddress)
 		}
 	}
 
@@ -1701,30 +1716,61 @@ func execute(
 				)
 				log.Info("call_execute5", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "revertReason", revertReason.reason)
 			}
-			return nil, revertReason
+			return nil, nil, revertReason
 		}
 	}
 	if err != nil {
 		if sbp.LogEnable {
 			log.Info("call_execute6", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err)
 		}
-		return nil, err
+		return nil, nil, err
 	}
 	if callResult.Err != nil {
 		if sbp.LogEnable {
 			log.Info("call_execute7", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", callResult.Err)
 		}
-		return nil, callResult.Err
+		return nil, nil, callResult.Err
 	}
-	amountOut := new(big.Int).SetBytes(callResult.Return())
+
+	lenR := len(callResult.Return())
+
+	amountOutMid := big.NewInt(0)
+	amountOut := big.NewInt(0)
+
+	if sbp.BuyOrSale {
+		if lenR == 32 {
+			amountOut = new(big.Int).SetBytes(callResult.Return())
+			if amountOut.Cmp(big.NewInt(0)) <= 0 {
+				log.Info("call_execute8", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOutMid", amountOutMid.String(), "amountOut", amountOut.String())
+				return nil, nil, errors.New("买结果数据大小检验不通过")
+			}
+
+		} else {
+			log.Info("call_execute8", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOutMid", amountOutMid.String(), "amountOut", amountOut.String())
+			return nil, nil, errors.New("买结果数据长度检验不通过")
+		}
+	} else {
+
+		if lenR == 64 {
+			amountOutMid = new(big.Int).SetBytes(callResult.Return()[:32])
+			amountOut = new(big.Int).SetBytes(callResult.Return()[32:64])
+			if amountOutMid.Cmp(big.NewInt(0)) <= 0 || amountOut.Cmp(big.NewInt(0)) <= 0 {
+				log.Info("call_execute8", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOutMid", amountOutMid.String(), "amountOut", amountOut.String())
+				return nil, nil, errors.New("卖结果数据大小检验不通过")
+			}
+		} else {
+			log.Info("call_execute9", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOutMid", amountOutMid.String(), "amountOut", amountOut.String())
+			return nil, nil, errors.New("卖结果数据长度检验不通过")
+		}
+	}
 	if sbp.LogEnable {
-		log.Info("call_execute8", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "amountOut", amountOut.String())
+		log.Info("call_execute10", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "amountOutMid", amountOutMid.String(), "amountOut", amountOut.String())
 	}
-	return amountOut, nil
+	return amountOutMid, amountOut, nil
 }
 
 // execute_44g58pv
-func encodeParamsSale(
+func encodeParamsSaleUsdt(
 	isFront bool,
 
 	amountIn *big.Int,
@@ -1780,7 +1826,7 @@ func encodeParamsSale(
 }
 
 // execute_44g58pv
-func encodeParamsSaleNew(
+func encodeParamsSale(
 	amountIn *big.Int,
 
 	pairOrPool1 common.Address,
