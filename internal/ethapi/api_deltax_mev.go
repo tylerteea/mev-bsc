@@ -1357,7 +1357,7 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 
 		startTime := time.Now()
 		stateDB := stateDBNew.Copy()
-		workerResults := workerNew(ctx, head, victimTransaction, sbp, s, reqId, stateDB, amountInInt)
+		workerResults := worker(ctx, head, victimTransaction, sbp, s, reqId, stateDB, amountInInt)
 		costTime := time.Since(startTime).Milliseconds()
 
 		if sbp.LogEnable {
@@ -1449,7 +1449,7 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 	reqAndIndex := reqId + "_end"
 
 	sdb := stateDBNew.Copy()
-	workerResults := workerNew(ctx, head, victimTransaction, sbp, s, reqAndIndex, sdb, quoteAmountIn)
+	workerResults := worker(ctx, head, victimTransaction, sbp, s, reqAndIndex, sdb, quoteAmountIn)
 
 	if sbp.LogEnable {
 		marshal, _ := json.Marshal(workerResults)
@@ -1490,7 +1490,7 @@ func worker(
 
 	// 抢跑----------------------------------------------------------------------------------------
 	startTime := time.Now()
-	_, frontAmountOut, fErr := execute(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head)
+	_, frontAmountOut, fErr := executeNew(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head)
 	costTime := time.Since(startTime).Milliseconds()
 
 	if sbp.LogEnable {
@@ -1568,7 +1568,7 @@ func worker(
 
 	// 跟跑----------------------------------------------------------------------------------------
 	backStartTime := time.Now()
-	_, backAmountOut, bErr := execute(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head)
+	_, backAmountOut, bErr := executeNew(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head)
 	backCostTime := time.Since(backStartTime).Milliseconds()
 
 	if sbp.LogEnable {
