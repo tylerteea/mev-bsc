@@ -1689,7 +1689,7 @@ func execute(
 			backSaleConfig := NewSaleConfig(!isFront, true, true, false)
 			backSaleOption := NewSaleOption(!sbp.ZeroForOne1, sbp.Version1 == V3, !sbp.ZeroForOne2, sbp.Version2 == V3)
 
-			data = encodeParamsSale(amountIn, sbp.Token3, sbp.Token2, sbp.Token1, sbp.PairOrPool2, sbp.PairOrPool1, backSaleOption, backSaleConfig, sbp.Fee2, sbp.Fee1, BigIntZeroValue, BigIntZeroValue, sbp.MinTokenOutBalance, sbp.BriberyAddress)
+			data = encodeParamsSale(amountIn, sbp.PairOrPool2, sbp.PairOrPool1, sbp.Token3, sbp.Token2, sbp.Token1, backSaleOption, backSaleConfig, sbp.Fee2, sbp.Fee1, BigIntZeroValue, BigIntZeroValue, sbp.MinTokenOutBalance, sbp.BriberyAddress)
 		}
 	}
 
@@ -1838,8 +1838,12 @@ func encodeParamsSale(
 			params = append(params, fillBytes(2, fee2.Bytes())...)
 		}
 	} else {
-		params = append(params, fillBytes(14, amountOut1.Bytes())...)
-		params = append(params, fillBytes(14, amountOut2.Bytes())...)
+		if !option.Version1IsV3 {
+			params = append(params, fillBytes(14, amountOut1.Bytes())...)
+		}
+		if !option.Version2IsV3 {
+			params = append(params, fillBytes(14, amountOut2.Bytes())...)
+		}
 	}
 
 	if config.IsBackRun {
