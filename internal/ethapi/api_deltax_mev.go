@@ -1831,8 +1831,12 @@ func encodeParamsSale(
 	params = append(params, fillBytes(1, saleConfigToBigInt(config).Bytes())...)
 
 	if config.CalcAmountOut {
-		params = append(params, fillBytes(2, fee1.Bytes())...)
-		params = append(params, fillBytes(2, fee2.Bytes())...)
+		if !option.Version1IsV3 {
+			params = append(params, fillBytes(2, fee1.Bytes())...)
+		}
+		if !option.Version2IsV3 {
+			params = append(params, fillBytes(2, fee2.Bytes())...)
+		}
 	} else {
 		params = append(params, fillBytes(14, amountOut1.Bytes())...)
 		params = append(params, fillBytes(14, amountOut2.Bytes())...)
