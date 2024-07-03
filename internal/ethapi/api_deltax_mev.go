@@ -390,7 +390,7 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 		}
 	}()
 
-	log.Info("CallBundleCheckBalance_start", "reqId", reqId)
+	log.Info("CallBundleCheckBalance_0", "reqId", reqId)
 
 	if len(args.Txs) == 0 {
 		return nil, errors.New("bundle missing txs")
@@ -409,10 +409,14 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 	for _, encodedTx := range args.Txs {
 		tx := new(types.Transaction)
 		if err := tx.UnmarshalBinary(encodedTx); err != nil {
+			log.Info("CallBundleCheckBalance_1", "reqId", reqId, "err", err)
 			return nil, err
 		}
 		txs = append(txs, tx)
 	}
+
+	log.Info("CallBundleCheckBalance_2", "reqId", reqId)
+
 	defer func(start time.Time) {
 		log.Debug("callBundle Executing EVM call finished", "reqId", reqId, "runtime", time.Since(start))
 	}(time.Now())
@@ -428,6 +432,8 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 	}
 	// 避免相互影响
 	state := stateHead.Copy()
+
+	log.Info("CallBundleCheckBalance_3", "reqId", reqId)
 
 	if err := args.StateOverrides.Apply(state); err != nil {
 		return nil, err
@@ -457,6 +463,8 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 	} else if s.b.ChainConfig().IsLondon(big.NewInt(args.BlockNumber.Int64())) {
 		baseFee = eip1559.CalcBaseFee(s.b.ChainConfig(), parent)
 	}
+
+	log.Info("CallBundleCheckBalance_4", "reqId", reqId)
 
 	header := &types.Header{
 		ParentHash:    parent.Hash(),
@@ -497,6 +505,8 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 	isPostMerge := header.Difficulty.Cmp(common.Big0) == 0
 	rules := s.b.ChainConfig().Rules(header.Number, isPostMerge, header.Time)
 
+	log.Info("CallBundleCheckBalance_5", "reqId", reqId)
+
 	//-------------------------------------------
 
 	balancesBefore, err := getTokenBalanceByContract(ctx, s, args.MevTokens, args.MevContract, state, header)
@@ -528,6 +538,8 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 	balancesBeforeMap[args.MevToken] = minTokenOutBalance
 
 	//-------------------------------------------
+
+	log.Info("CallBundleCheckBalance_6", "reqId", reqId)
 
 	for _, tx := range txs {
 		// Check if the context was cancelled (eg. timed-out)
@@ -562,6 +574,7 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 
 		gasPrice, err := tx.EffectiveGasTip(header.BaseFee)
 		if err != nil {
+			log.Info("CallBundleCheckBalance_7", "reqId", reqId)
 			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
 		}
 		gasFeesTx := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), gasPrice)
@@ -592,6 +605,8 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 	}
 
 	//-------------------------------------------
+
+	log.Info("CallBundleCheckBalance_8", "reqId", reqId)
 
 	balancesAfter, err := getTokenBalanceByContract(ctx, s, args.MevTokens, args.MevContract, state, header)
 
