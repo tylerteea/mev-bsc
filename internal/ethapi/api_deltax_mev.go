@@ -370,7 +370,7 @@ type CallBundleCheckArgs struct {
 	GrossProfit            *big.Int              `json:"grossProfit"`
 	MinTokenOutBalance     *big.Int              `json:"minTokenOutBalance"`
 	MevTokens              []common.Address      `json:"mevTokens"`
-	Victim                 common.Hash           `json:"victim"`
+	ReqId                  string                `json:"reqId"`
 }
 
 // CallBundleCheckBalance will simulate a bundle of transactions at the top of a given block
@@ -388,7 +388,9 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 		}
 	}()
 
-	reqId := args.Victim.String() + "_" + args.MevContract.String()
+	reqId := args.ReqId
+
+	log.Info("CallBundleCheckBalance_start", "reqId", reqId)
 
 	if len(args.Txs) == 0 {
 		return nil, errors.New("bundle missing txs")
