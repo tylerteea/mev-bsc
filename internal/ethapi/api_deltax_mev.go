@@ -544,6 +544,7 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 	for _, tx := range txs {
 		// Check if the context was cancelled (eg. timed-out)
 		if err := ctx.Err(); err != nil {
+			log.Info("call_bundle_balance_err7", "reqId", reqId, "err", err)
 			return nil, err
 		}
 
@@ -552,12 +553,14 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 
 		receipt, result, err := ApplyTransactionWithResultNew(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, &header.GasUsed, vmconfig)
 		if err != nil {
+			log.Info("call_bundle_balance_err8", "reqId", reqId, "err", err)
 			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
 		}
 
 		txHash := tx.Hash().String()
 
 		if err != nil {
+			log.Info("call_bundle_balance_err9", "reqId", reqId, "err", err)
 			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
 		}
 		to := "0x"
@@ -574,7 +577,7 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 
 		gasPrice, err := tx.EffectiveGasTip(header.BaseFee)
 		if err != nil {
-			log.Info("CallBundleCheckBalance_7", "reqId", reqId)
+			log.Info("CallBundleCheckBalance_10", "reqId", reqId)
 			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
 		}
 		gasFeesTx := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), gasPrice)
