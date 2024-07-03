@@ -383,14 +383,14 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 
 	reqId := args.ReqId
 
-	defer func() {
+	defer func(start time.Time) {
 		if r := recover(); r != nil {
 			dss := string(debug.Stack())
 			log.Info("recover...CallBundleCheckBalance", "err", r, "stack", dss, "reqId", reqId)
 		}
 
-		log.Info("CallBundleCheckBalance_defer", "reqId", reqId)
-	}()
+		log.Info("CallBundleCheckBalance_end_defer", "reqId", reqId, "runtime", time.Since(start))
+	}(time.Now())
 
 	log.Info("CallBundleCheckBalance_0", "reqId", reqId)
 
@@ -417,12 +417,6 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 		txs = append(txs, tx)
 	}
 
-	log.Info("CallBundleCheckBalance_2", "reqId", reqId)
-
-	defer func(start time.Time) {
-		log.Debug("callBundle Executing EVM call finished", "reqId", reqId, "runtime", time.Since(start))
-	}(time.Now())
-
 	timeoutMilliSeconds := int64(5000)
 	if args.Timeout != nil {
 		timeoutMilliSeconds = *args.Timeout
@@ -434,8 +428,6 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 	}
 	// 避免相互影响
 	state := stateHead.Copy()
-
-	log.Info("CallBundleCheckBalance_3", "reqId", reqId)
 
 	if err := args.StateOverrides.Apply(state); err != nil {
 		return nil, err
@@ -465,8 +457,6 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 	} else if s.b.ChainConfig().IsLondon(big.NewInt(args.BlockNumber.Int64())) {
 		baseFee = eip1559.CalcBaseFee(s.b.ChainConfig(), parent)
 	}
-
-	log.Info("CallBundleCheckBalance_4", "reqId", reqId)
 
 	header := &types.Header{
 		ParentHash:    parent.Hash(),
@@ -507,8 +497,6 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 	isPostMerge := header.Difficulty.Cmp(common.Big0) == 0
 	rules := s.b.ChainConfig().Rules(header.Number, isPostMerge, header.Time)
 
-	log.Info("CallBundleCheckBalance_5", "reqId", reqId)
-
 	//-------------------------------------------
 
 	balancesBefore, err := getTokenBalanceByContract(ctx, s, args.MevTokens, args.MevContract, state, header)
@@ -541,11 +529,7 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 
 	//-------------------------------------------
 
-	log.Info("CallBundleCheckBalance_6", "reqId", reqId)
-
 	for _, tx := range txs {
-
-		log.Info("CallBundleCheckBalance_7", "reqId", reqId, "err", err)
 
 		// Check if the context was cancelled (eg. timed-out)
 		if err := ctx.Err(); err != nil {
@@ -553,27 +537,20 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 			return nil, err
 		}
 
-		log.Info("CallBundleCheckBalance_9", "reqId", reqId, "err", err)
-
 		from, err := types.Sender(signer, tx)
-		log.Info("CallBundleCheckBalance_10", "reqId", reqId, "err", err)
 
 		state.Prepare(rules, from, coinbase, tx.To(), vm.ActivePrecompiles(rules), tx.AccessList())
-		log.Info("CallBundleCheckBalance_11", "reqId", reqId, "err", err)
 
 		receipt, result, err := ApplyTransactionWithResultNew(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, &header.GasUsed, vmconfig)
 		if err != nil {
 			log.Info("CallBundleCheckBalance_12", "reqId", reqId, "err", err)
 			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
 		}
-		log.Info("CallBundleCheckBalance_13", "reqId", reqId, "err", err)
 
 		if err != nil {
 			log.Info("call_bundle_balance_err14", "reqId", reqId, "err", err)
 			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
 		}
-
-		log.Info("CallBundleCheckBalance_15", "reqId", reqId, "err", err)
 
 		to := "0x"
 		if tx.To() != nil {
@@ -592,8 +569,6 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 			log.Info("CallBundleCheckBalance_16", "reqId", reqId, "err", err)
 			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
 		}
-
-		log.Info("CallBundleCheckBalance_17", "reqId", reqId, "err", err)
 
 		gasFeesTx := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), gasPrice)
 
@@ -623,8 +598,6 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 	}
 
 	//-------------------------------------------
-
-	log.Info("CallBundleCheckBalance_20", "reqId", reqId)
 
 	balancesAfter, err := getTokenBalanceByContract(ctx, s, args.MevTokens, args.MevContract, state, header)
 
