@@ -388,6 +388,8 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 			dss := string(debug.Stack())
 			log.Info("recover...CallBundleCheckBalance", "err", r, "stack", dss, "reqId", reqId)
 		}
+
+		log.Info("CallBundleCheckBalance_defer", "reqId", reqId)
 	}()
 
 	log.Info("CallBundleCheckBalance_0", "reqId", reqId)
@@ -542,33 +544,43 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 	log.Info("CallBundleCheckBalance_6", "reqId", reqId)
 
 	for _, tx := range txs {
+
+		log.Info("CallBundleCheckBalance_7", "reqId", reqId, "err", err)
+
 		// Check if the context was cancelled (eg. timed-out)
 		if err := ctx.Err(); err != nil {
-			log.Info("call_bundle_balance_err7", "reqId", reqId, "err", err)
+			log.Info("CallBundleCheckBalance_8", "reqId", reqId, "err", err)
 			return nil, err
 		}
 
+		log.Info("CallBundleCheckBalance_9", "reqId", reqId, "err", err)
+
 		from, err := types.Sender(signer, tx)
+		log.Info("CallBundleCheckBalance_10", "reqId", reqId, "err", err)
+
 		state.Prepare(rules, from, coinbase, tx.To(), vm.ActivePrecompiles(rules), tx.AccessList())
+		log.Info("CallBundleCheckBalance_11", "reqId", reqId, "err", err)
 
 		receipt, result, err := ApplyTransactionWithResultNew(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, &header.GasUsed, vmconfig)
 		if err != nil {
-			log.Info("call_bundle_balance_err8", "reqId", reqId, "err", err)
+			log.Info("CallBundleCheckBalance_12", "reqId", reqId, "err", err)
 			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
 		}
-
-		txHash := tx.Hash().String()
+		log.Info("CallBundleCheckBalance_13", "reqId", reqId, "err", err)
 
 		if err != nil {
-			log.Info("call_bundle_balance_err9", "reqId", reqId, "err", err)
+			log.Info("call_bundle_balance_err14", "reqId", reqId, "err", err)
 			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
 		}
+
+		log.Info("CallBundleCheckBalance_15", "reqId", reqId, "err", err)
+
 		to := "0x"
 		if tx.To() != nil {
 			to = tx.To().String()
 		}
 		jsonResult := map[string]interface{}{
-			"txHash":      txHash,
+			"txHash":      tx.Hash().String(),
 			"gasUsed":     receipt.GasUsed,
 			"fromAddress": from.String(),
 			"toAddress":   to,
@@ -577,9 +589,12 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 
 		gasPrice, err := tx.EffectiveGasTip(header.BaseFee)
 		if err != nil {
-			log.Info("CallBundleCheckBalance_10", "reqId", reqId)
+			log.Info("CallBundleCheckBalance_16", "reqId", reqId, "err", err)
 			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
 		}
+
+		log.Info("CallBundleCheckBalance_17", "reqId", reqId, "err", err)
+
 		gasFeesTx := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), gasPrice)
 
 		// gasFeesTx := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), tx.GasPrice())
@@ -609,7 +624,7 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 
 	//-------------------------------------------
 
-	log.Info("CallBundleCheckBalance_8", "reqId", reqId)
+	log.Info("CallBundleCheckBalance_20", "reqId", reqId)
 
 	balancesAfter, err := getTokenBalanceByContract(ctx, s, args.MevTokens, args.MevContract, state, header)
 
