@@ -381,14 +381,14 @@ type CallBundleCheckArgs struct {
 // nonce and ensuring validity
 func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleCheckArgs) (map[string]interface{}, error) {
 
+	reqId := args.ReqId
+
 	defer func() {
 		if r := recover(); r != nil {
 			dss := string(debug.Stack())
-			log.Info("recover...getTokenBalanceByContract", "err", r, "stack", dss)
+			log.Info("recover...CallBundleCheckBalance", "err", r, "stack", dss, "reqId", reqId)
 		}
 	}()
-
-	reqId := args.ReqId
 
 	log.Info("CallBundleCheckBalance_start", "reqId", reqId)
 
