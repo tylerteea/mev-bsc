@@ -168,6 +168,7 @@ type CallBundleArgs struct {
 	SimulationLogs         bool                  `json:"simulationLogs"`
 	StateOverrides         *StateOverride        `json:"stateOverrides"`
 	BaseFee                *big.Int              `json:"baseFee"`
+	ReqId                  string                `json:"reqId"`
 }
 
 // CallBundle will simulate a bundle of transactions at the top of a given block
@@ -177,6 +178,19 @@ type CallBundleArgs struct {
 // The sender is responsible for signing the transactions and using the correct
 // nonce and ensuring validity
 func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[string]interface{}, error) {
+
+	reqId := args.ReqId
+
+	defer func(start time.Time) {
+		if r := recover(); r != nil {
+			dss := string(debug.Stack())
+			log.Info("recover...callBundle", "err", r, "stack", dss, "reqId", reqId)
+		}
+
+		log.Info("callBundle_end_defer", "reqId", reqId, "runtime", time.Since(start))
+	}(time.Now())
+
+	log.Info("callBundle_start", "reqId", reqId)
 
 	if len(args.Txs) == 0 {
 		return nil, errors.New("bundle missing txs")
@@ -194,9 +208,6 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 		}
 		txs = append(txs, tx)
 	}
-	defer func(start time.Time) {
-		log.Debug("callBundle Executing EVM call finished", "runtime", time.Since(start))
-	}(time.Now())
 
 	timeoutMilliSeconds := int64(5000)
 	if args.Timeout != nil {
@@ -347,8 +358,7 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 	ret["bundleHash"] = "0x" + common.Bytes2Hex(bundleHash.Sum(nil))
 
 	newResultJson, _ := json.Marshal(ret)
-
-	log.Info("call_bundle_result", "ret", string(newResultJson))
+	log.Info("call_bundle_result", "reqId", reqId, "ret", string(newResultJson))
 	return ret, nil
 }
 
@@ -2097,23 +2107,6 @@ func doMevCall(ctx context.Context, b Backend, args *TransactionArgs, msg *core.
 func timeCost(reqId string, start time.Time) {
 	tc := time.Since(start)
 	log.Info("call_cost", "reqId", reqId, "ms", tc.Milliseconds())
-}
-
-func ApplyTransactionWithResult(config *params.ChainConfig, bc core.ChainContext, author *common.Address, gp *core.GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, cfg vm.Config, receiptProcessors ...core.ReceiptProcessor) (*types.Receipt, *core.ExecutionResult, error) {
-	msg, err := core.TransactionToMessage(tx, types.MakeSigner(config, header.Number, header.Time), header.BaseFee)
-	if err != nil {
-		return nil, nil, err
-	}
-	// Create a new context to be used in the EVM environment
-	blockContext := core.NewEVMBlockContext(header, bc, author)
-	txContext := core.NewEVMTxContext(msg)
-	vmenv := vm.NewEVM(blockContext, txContext, statedb, config, cfg)
-	defer func() {
-		ite := vmenv.Interpreter()
-		vm.EVMInterpreterPool.Put(ite)
-		vm.EvmPool.Put(vmenv)
-	}()
-	return applyTransactionWithResult(msg, config, gp, statedb, header.Number, header.Hash(), tx, usedGas, vmenv, receiptProcessors...)
 }
 
 func ApplyTransactionWithResultNew(config *params.ChainConfig, bc core.ChainContext, author *common.Address, gp *core.GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, cfg vm.Config, receiptProcessors ...core.ReceiptProcessor) (*types.Receipt, *core.ExecutionResult, error) {
