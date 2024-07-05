@@ -31,8 +31,10 @@ import (
 )
 
 const (
-	V2 = int(2)
-	V3 = int(3)
+	V2       = int(0)
+	V22      = int(2)
+	V3       = int(1)
+	Simulate = true
 
 	frontAmountInString     = "frontAmountIn"
 	frontAmountOutMidString = "frontAmountOutMid"
@@ -1068,17 +1070,17 @@ type BuyConfig struct {
 	CheckTax      bool
 	CalcAmountOut bool
 	FeeToBuilder  bool
-	ZeroForOne    bool
+	ZeroForOne    int
 }
 
 func NewBuyConfig(
 	checkTax bool,
 	calcAmountOut bool,
 	feeToBuilder bool,
-	zeroForOne bool,
+	zeroForOne int,
 ) *BuyConfig {
 	return &BuyConfig{
-		Simulate:      true,
+		Simulate:      Simulate,
 		CheckTax:      checkTax,
 		CalcAmountOut: calcAmountOut,
 		FeeToBuilder:  feeToBuilder,
@@ -1087,23 +1089,23 @@ func NewBuyConfig(
 }
 
 func buyConfigToBigInt(config *BuyConfig) *big.Int {
-	configInt := int64(0)
+	configInt := 0
 	if config.Simulate {
-		configInt += 16
+		configInt += 1 << 4
 	}
 	if config.CheckTax {
-		configInt += 8
+		configInt += 1 << 3
 	}
 	if config.CalcAmountOut {
-		configInt += 4
+		configInt += 1 << 2
 	}
 	if config.FeeToBuilder {
-		configInt += 2
+		configInt += 1 << 1
 	}
-	if config.ZeroForOne {
-		configInt += 1
-	}
-	return big.NewInt(configInt)
+
+	configInt += config.ZeroForOne << 0
+
+	return big.NewInt(int64(configInt))
 }
 
 //--------------------------------------------------------------------------------
@@ -1124,7 +1126,7 @@ func NewSaleConfig(
 ) *SaleConfig {
 	return &SaleConfig{
 		IsBackRun:     isBackRun,
-		Simulate:      true,
+		Simulate:      Simulate,
 		CheckTax:      checkTax,
 		CalcAmountOut: calcAmountOut,
 		FeeToBuilder:  feeToBuilder,
@@ -1134,19 +1136,19 @@ func NewSaleConfig(
 func saleConfigToBigInt(config *SaleConfig) *big.Int {
 	configInt := int64(0)
 	if config.IsBackRun {
-		configInt += 32
+		configInt += 1 << 5
 	}
 	if config.Simulate {
-		configInt += 16
+		configInt += 1 << 4
 	}
 	if config.CheckTax {
-		configInt += 8
+		configInt += 1 << 3
 	}
 	if config.CalcAmountOut {
-		configInt += 4
+		configInt += 1 << 2
 	}
 	if config.FeeToBuilder {
-		configInt += 2
+		configInt += 1 << 1
 	}
 	return big.NewInt(configInt)
 }
@@ -1154,41 +1156,44 @@ func saleConfigToBigInt(config *SaleConfig) *big.Int {
 //==============================
 
 type SaleOption struct {
-	ZeroForOne2  bool
-	Version2IsV3 bool
-	ZeroForOne1  bool
-	Version1IsV3 bool
+	ZeroForOne2 int
+	Version2    int
+	ZeroForOne1 int
+	Version1    int
 }
 
 func NewSaleOption(
-	zeroForOne2 bool,
-	version2IsV3 bool,
-	zeroForOne1 bool,
-	version1IsV3 bool,
+	zeroForOne2 int,
+	version2 int,
+	zeroForOne1 int,
+	version1 int,
 ) *SaleOption {
 	return &SaleOption{
-		ZeroForOne2:  zeroForOne2,
-		Version2IsV3: version2IsV3,
-		ZeroForOne1:  zeroForOne1,
-		Version1IsV3: version1IsV3,
+		ZeroForOne2: zeroForOne2,
+		Version2:    version2,
+		ZeroForOne1: zeroForOne1,
+		Version1:    version1,
 	}
 }
 
 func saleOptionToBigInt(config *SaleOption) *big.Int {
-	configInt := int64(0)
-	if config.ZeroForOne2 {
-		configInt += 8
+
+	configInt := 0
+
+	configInt += config.ZeroForOne2 << 5
+	configInt += config.Version2 << 3
+	configInt += config.ZeroForOne1 << 2
+	configInt += config.Version1 << 0
+
+	return big.NewInt(int64(configInt))
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	} else {
+		return 0
 	}
-	if config.Version2IsV3 {
-		configInt += 4
-	}
-	if config.ZeroForOne1 {
-		configInt += 2
-	}
-	if config.Version1IsV3 {
-		configInt += 1
-	}
-	return big.NewInt(configInt)
 }
 
 //------------------------------------------------------------------------------------------
@@ -1689,14 +1694,14 @@ func execute(
 		if sbp.BuyOrSale {
 
 			// 模拟的时候都检查税，正式发不检查
-			frontBuyConfig := NewBuyConfig(true, true, false, sbp.ZeroForOne2)
+			frontBuyConfig := NewBuyConfig(true, true, false, boolToInt(sbp.ZeroForOne2))
 			frontMinTokenOutBalance := big.NewInt(0)
 			data = encodeParamsBuy(sbp.Version2, true, amountIn, sbp.PairOrPool2, sbp.Token2, sbp.Token3, frontBuyConfig, sbp.Fee2, BigIntZeroValue, frontMinTokenOutBalance, sbp.BriberyAddress)
 		} else {
 
 			// 模拟的时候都检查税，正式发不检查
 			frontSaleConfig := NewSaleConfig(!isFront, true, true, false)
-			frontSaleOption := NewSaleOption(sbp.ZeroForOne2, sbp.Version2 == V3, sbp.ZeroForOne1, sbp.Version1 == V3)
+			frontSaleOption := NewSaleOption(boolToInt(sbp.ZeroForOne2), sbp.Version2, boolToInt(sbp.ZeroForOne1), sbp.Version1)
 
 			data = encodeParamsSale(amountIn, sbp.PairOrPool1, sbp.PairOrPool2, sbp.Token1, sbp.Token2, sbp.Token3, frontSaleOption, frontSaleConfig, sbp.Fee1, sbp.Fee2, BigIntZeroValue, BigIntZeroValue, sbp.MinTokenOutBalance, sbp.BriberyAddress)
 		}
@@ -1706,13 +1711,13 @@ func execute(
 		if sbp.BuyOrSale {
 
 			// 模拟的时候都检查税，正式发不检查
-			backBuyConfig := NewBuyConfig(true, true, false, !sbp.ZeroForOne2)
+			backBuyConfig := NewBuyConfig(true, true, false, boolToInt(!sbp.ZeroForOne2))
 			data = encodeParamsBuy(sbp.Version2, false, amountIn, sbp.PairOrPool2, sbp.Token3, sbp.Token2, backBuyConfig, sbp.Fee2, BigIntZeroValue, sbp.MinTokenOutBalance, sbp.BriberyAddress)
 		} else {
 
 			// 模拟的时候都检查税，正式发不检查
 			backSaleConfig := NewSaleConfig(!isFront, true, true, false)
-			backSaleOption := NewSaleOption(!sbp.ZeroForOne1, sbp.Version1 == V3, !sbp.ZeroForOne2, sbp.Version2 == V3)
+			backSaleOption := NewSaleOption(boolToInt(!sbp.ZeroForOne1), sbp.Version1, boolToInt(!sbp.ZeroForOne2), sbp.Version2)
 
 			data = encodeParamsSale(amountIn, sbp.PairOrPool2, sbp.PairOrPool1, sbp.Token3, sbp.Token2, sbp.Token1, backSaleOption, backSaleConfig, sbp.Fee2, sbp.Fee1, BigIntZeroValue, BigIntZeroValue, sbp.MinTokenOutBalance, sbp.BriberyAddress)
 		}
@@ -1855,18 +1860,21 @@ func encodeParamsSale(
 	params = append(params, fillBytes(1, saleOptionToBigInt(option).Bytes())...)
 	params = append(params, fillBytes(1, saleConfigToBigInt(config).Bytes())...)
 
+	version1IsV2 := option.Version1 == V2 || option.Version1 == V22
+	version2IsV2 := option.Version2 == V2 || option.Version2 == V22
+
 	if config.CalcAmountOut {
-		if !option.Version1IsV3 {
+		if version1IsV2 {
 			params = append(params, fillBytes(2, fee1.Bytes())...)
 		}
-		if !option.Version2IsV3 {
+		if version2IsV2 {
 			params = append(params, fillBytes(2, fee2.Bytes())...)
 		}
 	} else {
-		if !option.Version1IsV3 {
+		if version1IsV2 {
 			params = append(params, fillBytes(14, amountOut1.Bytes())...)
 		}
-		if !option.Version2IsV3 {
+		if version2IsV2 {
 			params = append(params, fillBytes(14, amountOut2.Bytes())...)
 		}
 	}
@@ -1894,11 +1902,11 @@ func encodeParamsBuy(
 	builderAddress common.Address,
 ) []byte {
 
-	if version == V2 {
+	if version == V2 || version == V22 {
 		if isFront {
-			return v2BuyFrontEncodeParams(amountIn, pairOrPool, tokenIn, tokenOut, config, fee, amountOut)
+			return v2BuyFrontEncodeParams(amountIn, pairOrPool, tokenIn, tokenOut, version, config, fee, amountOut)
 		} else {
-			return v2BuyBackEncodeParams(amountIn, pairOrPool, tokenIn, tokenOut, config, fee, amountOut, minTokenOutBalance, builderAddress)
+			return v2BuyBackEncodeParams(amountIn, pairOrPool, tokenIn, tokenOut, version, config, fee, amountOut, minTokenOutBalance, builderAddress)
 		}
 	} else {
 		if isFront {
@@ -1914,6 +1922,7 @@ func v2BuyFrontEncodeParams(
 	pair common.Address,
 	tokenIn common.Address,
 	tokenOut common.Address,
+	version int,
 	config *BuyConfig,
 	fee *big.Int,
 	amountOut *big.Int,
@@ -1926,6 +1935,7 @@ func v2BuyFrontEncodeParams(
 	params = append(params, tokenIn.Bytes()...)
 	params = append(params, tokenOut.Bytes()...)
 
+	params = append(params, fillBytes(1, big.NewInt(int64(version)).Bytes())...)
 	params = append(params, fillBytes(1, buyConfigToBigInt(config).Bytes())...)
 
 	if config.CalcAmountOut {
@@ -1942,6 +1952,7 @@ func v2BuyBackEncodeParams(
 	pair common.Address,
 	tokenIn common.Address,
 	tokenOut common.Address,
+	version int,
 	config *BuyConfig,
 	fee *big.Int,
 	amountOut *big.Int,
@@ -1956,6 +1967,7 @@ func v2BuyBackEncodeParams(
 	params = append(params, tokenIn.Bytes()...)
 	params = append(params, tokenOut.Bytes()...)
 
+	params = append(params, fillBytes(1, big.NewInt(int64(version)).Bytes())...)
 	params = append(params, fillBytes(1, buyConfigToBigInt(config).Bytes())...)
 
 	if config.CalcAmountOut {
