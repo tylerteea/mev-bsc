@@ -1860,23 +1860,12 @@ func encodeParamsSale(
 	params = append(params, fillBytes(1, saleOptionToBigInt(option).Bytes())...)
 	params = append(params, fillBytes(1, saleConfigToBigInt(config).Bytes())...)
 
-	version1IsV2 := option.Version1 == V2 || option.Version1 == V22
-	version2IsV2 := option.Version2 == V2 || option.Version2 == V22
-
 	if config.CalcAmountOut {
-		if version1IsV2 {
-			params = append(params, fillBytes(2, fee1.Bytes())...)
-		}
-		if version2IsV2 {
-			params = append(params, fillBytes(2, fee2.Bytes())...)
-		}
+		params = append(params, fillBytes(2, fee1.Bytes())...)
+		params = append(params, fillBytes(2, fee2.Bytes())...)
 	} else {
-		if version1IsV2 {
-			params = append(params, fillBytes(14, amountOut1.Bytes())...)
-		}
-		if version2IsV2 {
-			params = append(params, fillBytes(14, amountOut2.Bytes())...)
-		}
+		params = append(params, fillBytes(14, amountOut1.Bytes())...)
+		params = append(params, fillBytes(14, amountOut2.Bytes())...)
 	}
 
 	if config.IsBackRun {
@@ -1910,7 +1899,7 @@ func encodeParamsBuy(
 		}
 	} else {
 		if isFront {
-			return v3BuyFrontEncodeParams(amountIn, pairOrPool, tokenIn, tokenOut, config)
+			return v3BuyFrontEncodeParams(amountIn, pairOrPool, tokenIn, tokenOut, config, amountOut)
 		} else {
 			return v3BuyBackEncodeParams(amountIn, pairOrPool, tokenIn, tokenOut, config, minTokenOutBalance, builderAddress)
 		}
@@ -1991,6 +1980,7 @@ func v3BuyFrontEncodeParams(
 	tokenIn common.Address,
 	tokenOut common.Address,
 	config *BuyConfig,
+	amountOut *big.Int,
 ) []byte {
 	params := make([]byte, 0)
 	params = append(params, []byte{0x00, 0x00, 0x00, 0x04}...)
@@ -2001,6 +1991,7 @@ func v3BuyFrontEncodeParams(
 	params = append(params, tokenOut.Bytes()...)
 
 	params = append(params, fillBytes(1, buyConfigToBigInt(config).Bytes())...)
+	params = append(params, fillBytes(14, amountOut.Bytes())...)
 
 	return params
 }
