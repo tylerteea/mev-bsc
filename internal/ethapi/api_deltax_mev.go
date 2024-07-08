@@ -646,36 +646,30 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 
 	checkResult["balancesBefore"] = balancesBeforeMap
 	checkResult["balancesAfter"] = balancesAfterMap
+
+	ret["errMsg"] = ""
+	ret["results"] = results
+	ret["stateBlockNumber"] = header.Number.Int64()
+	ret["bundleHash"] = "0x" + common.Bytes2Hex(bundleHash.Sum(nil))
+
 	if isSuccess {
-		ret["errMsg"] = ""
-		ret["results"] = results
-		ret["stateBlockNumber"] = header.Number.Int64()
-		ret["bundleHash"] = "0x" + common.Bytes2Hex(bundleHash.Sum(nil))
 		checkResult["check_balance"] = "success"
-		checkResultJson, _ := json.Marshal(checkResult)
-		ret["check_result"] = string(checkResultJson)
-
-		newResultJson, _ := json.Marshal(ret)
-
-		log.Info("call_bundle_result", "reqId", reqId, "ret", string(newResultJson))
-		return ret, nil
+		log.Info("call_bundle_余额最终校验成功", "reqId", reqId)
 	} else {
 
-		ret["results"] = results
-		ret["stateBlockNumber"] = header.Number.Int64()
-		ret["bundleHash"] = "0x" + common.Bytes2Hex(bundleHash.Sum(nil))
+		ret["errMsg"] = "check_balance_fail"
 
 		checkResult["check_balance"] = "fail"
-		checkResultJson, _ := json.Marshal(checkResult)
-		ret["check_result"] = string(checkResultJson)
-
-		newResultJson, _ := json.Marshal(ret)
-		errMsg := string(newResultJson)
-		ret["errMsg"] = errMsg
-
-		log.Info("call_bundle_余额最终校验失败", "reqId", reqId, "ret", errMsg)
-		return nil, errors.New(errMsg)
+		log.Info("call_bundle_余额最终校验失败", "reqId", reqId)
 	}
+
+	checkResultJson, _ := json.Marshal(checkResult)
+	ret["check_result"] = string(checkResultJson)
+
+	newResultJson, _ := json.Marshal(ret)
+	log.Info("call_bundle_result_balance", "reqId", reqId, "ret", string(newResultJson))
+
+	return ret, nil
 }
 
 //--------------------------------------------------------Multicall--------------------------------------------------------
