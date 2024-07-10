@@ -1365,7 +1365,7 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 			if sbp.LogEnable {
 				log.Info("call_sbp_6", "reqId", reqId, "amountInFloat", amountInFloat)
 			}
-			return 0.0
+			return 0.0 - amountInFloat
 		}
 		if sbp.LogEnable {
 			log.Info("call_sbp_7", "reqId", reqId, "amountInFloat", amountInFloat)
@@ -1388,7 +1388,9 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 			if sbp.LogEnable {
 				log.Info("call_sbp_9", "reqId", reqId, "amountInFloat", amountInFloat)
 			}
-			return 0.0
+			sub, _ := new(big.Int).Sub(minAmountIn, amountInInt).Float64()
+
+			return sub
 		}
 
 		startTime := time.Now()
@@ -1408,7 +1410,6 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 		}
 		if workerResults[errorString] == nil && workerResults[profitString] != nil {
 			profit, ok := workerResults[profitString].(*big.Int)
-			//if ok && profit > 0 {
 			if ok { // 让函数能够感知负值
 				if sbp.LogEnable {
 					log.Info("call_sbp_10", "reqId", reqId, "amountInFloat", amountInFloat)
@@ -1472,7 +1473,10 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSale(ctx context.Context, sbp SbpS
 	quoteAmountIn := new(big.Int)
 	maxProfitAmountIn.Int(quoteAmountIn)
 
-	if quoteAmountIn.Cmp(balance) > 0 || quoteAmountIn.Cmp(minAmountIn) < 0 {
+	//大于等于0的过滤掉
+	f := res.F
+
+	if quoteAmountIn.Cmp(balance) > 0 || quoteAmountIn.Cmp(minAmountIn) < 0 || f >= 0 {
 		result[errorString] = "minimize_result_out_of_limit"
 		result[reasonString] = quoteAmountIn
 		if sbp.LogEnable {
