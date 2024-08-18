@@ -921,7 +921,7 @@ func (srv *Server) postHandshakeChecks(peers map[enode.ID]*Peer, inboundCount in
 
 func (srv *Server) addPeerChecks(peers map[enode.ID]*Peer, inboundCount int, c *conn) error {
 	// Drop connections with no matching protocols.
-	if len(srv.Protocols) > 0 && countMatchingProtocolsBsc(srv.Protocols, c.caps) == 0 {
+	if len(srv.Protocols) > 0 && countMatchingProtocolsBscAndBlockRozar(srv.Protocols, c.caps, c) == 0 {
 		return DiscUselessPeer
 	}
 
