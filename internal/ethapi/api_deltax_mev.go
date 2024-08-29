@@ -2184,6 +2184,8 @@ type Sbp4MemeArgs struct {
 	Contract           common.Address `json:"contract"`
 	Balance            *big.Int       `json:"balance"`
 	Token1             common.Address `json:"token1"`
+	K                  *big.Int       `json:"k"`
+	T                  *big.Int       `json:"t"`
 	AmountInMin        *big.Int       `json:"amountInMin"`
 	MinTokenOutBalance *big.Int       `json:"minTokenOutBalance"`
 	VictimTxHash       common.Hash    `json:"vTxHash"`
@@ -2280,6 +2282,9 @@ func (s *BundleAPI) SandwichBestProfit4Meme(ctx context.Context, sbp Sbp4MemeArg
 
 	pow1018 := big.NewFloat(math.Pow10(18))
 
+	threeInt := new(big.Int).Mul(sbp.K, OneE18)
+	threeInt.Div(threeInt, sbp.T)
+
 	bestInFunc := func(x []float64) float64 {
 		defer func() {
 			if err := recover(); err != nil {
@@ -2327,7 +2332,7 @@ func (s *BundleAPI) SandwichBestProfit4Meme(ctx context.Context, sbp Sbp4MemeArg
 
 		startTime := time.Now()
 		stateDB := stateDBNew.Copy()
-		workerResults := worker4meme(ctx, head, victimTransaction, sbp, s, reqId, stateDB, amountInInt)
+		workerResults := worker4meme(ctx, head, victimTransaction, sbp, s, reqId, stateDB, amountInInt, threeInt)
 		costTime := time.Since(startTime).Milliseconds()
 
 		if sbp.LogEnable {
@@ -2431,7 +2436,7 @@ func (s *BundleAPI) SandwichBestProfit4Meme(ctx context.Context, sbp Sbp4MemeArg
 	reqAndIndex := reqId + "_end"
 
 	sdb := stateDBNew.Copy()
-	workerResults := worker4meme(ctx, head, victimTransaction, sbp, s, reqAndIndex, sdb, quoteAmountIn)
+	workerResults := worker4meme(ctx, head, victimTransaction, sbp, s, reqAndIndex, sdb, quoteAmountIn, threeInt)
 
 	if sbp.LogEnable {
 		marshal, _ := json.Marshal(workerResults)
@@ -2459,7 +2464,9 @@ func worker4meme(
 	s *BundleAPI,
 	reqAndIndex string,
 	statedb *state.StateDB,
-	amountIn *big.Int) map[string]interface{} {
+	amountIn *big.Int,
+	threeInt *big.Int,
+) map[string]interface{} {
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -2473,7 +2480,7 @@ func worker4meme(
 	eoaBalanceBefore := statedb.GetBalance(sbp.Eoa).ToBig()
 
 	// 抢跑----------------------------------------------------------------------------------------
-	fErr := execute4meme(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head)
+	fErr := execute4meme(ctx, reqAndIndex, true, sbp, amountIn, threeInt, statedb, s, head)
 
 	if sbp.LogEnable {
 		log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "amountIn", amountIn, "fErr", fErr)
@@ -2546,7 +2553,7 @@ func worker4meme(
 		return result
 	}
 
-	bErr := execute4meme(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head)
+	bErr := execute4meme(ctx, reqAndIndex, false, sbp, backAmountIn, threeInt, statedb, s, head)
 	eoaBalanceAfter := statedb.GetBalance(sbp.Eoa).ToBig()
 
 	if sbp.LogEnable {
@@ -2586,6 +2593,7 @@ func execute4meme(
 	isFront bool,
 	sbp Sbp4MemeArgs,
 	amountIn *big.Int,
+	threeInt *big.Int,
 	sdb *state.StateDB,
 	s *BundleAPI,
 	head *types.Header) error {
@@ -2605,7 +2613,7 @@ func execute4meme(
 		log.Info("call_execute2", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "data_hex", common.Bytes2Hex(data))
 	}
 
-	value := calc4MemeValue(amountIn)
+	value := calc4MemeValue(amountIn, threeInt, sbp.K, sbp.T)
 
 	bytes := hexutil.Bytes(data)
 	callArgs := &TransactionArgs{
@@ -2663,9 +2671,32 @@ func execute4meme(
 	return nil
 }
 
-func calc4MemeValue(amountIn *big.Int) *big.Int {
+var (
+	OneE18, _ = new(big.Int).SetString("1000000000000000000", 10)
+	MinFee    = new(big.Int).SetInt64(1000000000000000)
+	FeeRate   = new(big.Int).SetInt64(50)
+	Int10000  = new(big.Int).SetInt64(10000)
+)
 
-	return nil
+func calc4MemeValue(amountIn, threeInt, K, T *big.Int) *big.Int {
+
+	firstInt := new(big.Int).Mul(K, OneE18)
+	secondInt := new(big.Int).Div(firstInt, T)
+	secondInt.Add(amountIn, secondInt)
+	secondInt.Div(firstInt, secondInt)
+	secondInt.Sub(T, secondInt)
+	secondInt.Sub(T, secondInt)
+	secondInt.Div(firstInt, secondInt)
+	secondInt.Sub(secondInt, threeInt)
+
+	firstInt.Mul(secondInt, FeeRate)
+	firstInt.Div(firstInt, Int10000)
+	if firstInt.Cmp(MinFee) > 0 {
+		secondInt.Add(secondInt, firstInt)
+	} else {
+		secondInt.Add(secondInt, MinFee)
+	}
+	return secondInt
 }
 
 func encodeParams4MemeFront(
