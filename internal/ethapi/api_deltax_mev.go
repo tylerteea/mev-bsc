@@ -2200,6 +2200,8 @@ type Sbp4MemeArgs struct {
 	LogEnable       bool           `json:"logEnable"`
 }
 
+var Pow1018 = big.NewFloat(math.Pow10(18))
+
 // SandwichBestProfit4Meme profit calculate
 func (s *BundleAPI) SandwichBestProfit4Meme(ctx context.Context, sbp Sbp4MemeArgs) map[string]interface{} {
 
@@ -2209,14 +2211,8 @@ func (s *BundleAPI) SandwichBestProfit4Meme(ctx context.Context, sbp Sbp4MemeArg
 	result[reasonString] = "default"
 
 	now := time.Now()
-	um := now.UnixMilli()
 
-	var reqId string
-	if sbp.ReqId != "" {
-		reqId = sbp.ReqId
-	} else {
-		reqId = strconv.FormatInt(um, 10)
-	}
+	reqId := sbp.ReqId
 
 	defer timeCost(reqId, now)
 
@@ -2281,8 +2277,6 @@ func (s *BundleAPI) SandwichBestProfit4Meme(ctx context.Context, sbp Sbp4MemeArg
 		log.Info("call_sbp_4_", "reqId", reqId, "blockNumber", number.BlockNumber.Int64(), "number", head.Number, "hash", head.Hash(), "parentHash", head.ParentHash)
 	}
 
-	pow1018 := big.NewFloat(math.Pow10(18))
-
 	threeInt := new(big.Int).Mul(sbp.K, OneE18)
 	threeInt.Div(threeInt, sbp.T)
 
@@ -2308,7 +2302,7 @@ func (s *BundleAPI) SandwichBestProfit4Meme(ctx context.Context, sbp Sbp4MemeArg
 		}
 
 		amountIn := new(big.Float).SetFloat64(amountInFloat)
-		amountIn.Mul(amountIn, pow1018)
+		amountIn.Mul(amountIn, Pow1018)
 
 		amountInInt := new(big.Int)
 		amountIn.Int(amountInInt)
@@ -2420,7 +2414,7 @@ func (s *BundleAPI) SandwichBestProfit4Meme(ctx context.Context, sbp Sbp4MemeArg
 
 	x := res.X[0]
 	maxProfitAmountIn := big.NewFloat(x)
-	maxProfitAmountIn.Mul(maxProfitAmountIn, pow1018)
+	maxProfitAmountIn.Mul(maxProfitAmountIn, Pow1018)
 	quoteAmountIn := new(big.Int)
 	maxProfitAmountIn.Int(quoteAmountIn)
 
@@ -2472,7 +2466,7 @@ func worker4meme(
 	defer func() {
 		if r := recover(); r != nil {
 			dss := string(debug.Stack())
-			log.Info("recover...call_SandwichBestProfit", "reqAndIndex", reqAndIndex, "err", r, "stack", dss)
+			log.Info("recover...call_worker4meme", "reqAndIndex", reqAndIndex, "err", r, "stack", dss)
 		}
 	}()
 
@@ -2755,6 +2749,24 @@ func encodeParams4MemeBack(
 	return params
 }
 
+var (
+	inAddrType, _ = abi.NewType("address", "address", nil)
+	inp           = []abi.Argument{
+		{
+			Name: "account",
+			Type: inAddrType,
+		},
+	}
+
+	balanceType, _ = abi.NewType("uint256", "uint256", nil)
+	oup            = []abi.Argument{
+		{
+			Name: "",
+			Type: balanceType,
+		},
+	}
+)
+
 func getERC20TokenBalance(ctx context.Context, s *BundleAPI, token common.Address, account common.Address, state *state.StateDB, header *types.Header) (*big.Int, error) {
 
 	defer func() {
@@ -2765,21 +2777,6 @@ func getERC20TokenBalance(ctx context.Context, s *BundleAPI, token common.Addres
 
 	reqId := "getERC20TokenBalance_" + token.String() + "_" + account.String()
 
-	inAddrType, _ := abi.NewType("address", "address", nil)
-	inp := []abi.Argument{
-		{
-			Name: "account",
-			Type: inAddrType,
-		},
-	}
-
-	balanceType, _ := abi.NewType("uint256", "uint256", nil)
-	oup := []abi.Argument{
-		{
-			Name: "",
-			Type: balanceType,
-		},
-	}
 	newMethod := abi.NewMethod("balanceOf", "balanceOf", abi.Function, "pure", false, false, inp, oup)
 	pack, err := newMethod.Inputs.Pack(account)
 	var data = append(newMethod.ID, pack...)
