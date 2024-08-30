@@ -2183,23 +2183,21 @@ func applyTransactionWithResult(msg *core.Message, config *params.ChainConfig, g
 //----------------------------------4meme-------------------------------------------------------------------------------
 
 type Sbp4MemeArgs struct {
-	Eoa                common.Address `json:"eoa"`
-	Contract           common.Address `json:"contract"`
-	Balance            *big.Int       `json:"balance"`
-	Token1             common.Address `json:"token1"`
-	K                  *big.Int       `json:"k"`
-	T                  *big.Int       `json:"t"`
-	AmountInMin        *big.Int       `json:"amountInMin"`
-	MinTokenOutBalance *big.Int       `json:"minTokenOutBalance"`
-	VictimTxHash       common.Hash    `json:"vTxHash"`
-	Steps              *big.Int       `json:"steps"`
-	ReqId              string         `json:"reqId"`
-	FuncEvaluations    int            `json:"funcEvaluations"`
-	RunTimeout         int            `json:"runTimeout"`
-	Iterations         int            `json:"iterations"`
-	Concurrent         int            `json:"concurrent"`
-	InitialValues      float64        `json:"initialValues"`
-	LogEnable          bool           `json:"logEnable"`
+	Eoa             common.Address `json:"eoa"`
+	Contract        common.Address `json:"contract"`
+	Balance         *big.Int       `json:"balance"`
+	Token1          common.Address `json:"token1"`
+	K               *big.Int       `json:"k"`
+	T               *big.Int       `json:"t"`
+	AmountInMin     *big.Int       `json:"amountInMin"`
+	VictimTxHash    common.Hash    `json:"vTxHash"`
+	ReqId           string         `json:"reqId"`
+	FuncEvaluations int            `json:"funcEvaluations"`
+	RunTimeout      int            `json:"runTimeout"`
+	Iterations      int            `json:"iterations"`
+	Concurrent      int            `json:"concurrent"`
+	InitialValues   float64        `json:"initialValues"`
+	LogEnable       bool           `json:"logEnable"`
 }
 
 // SandwichBestProfit4Meme profit calculate
@@ -2733,7 +2731,8 @@ func encodeParams4MemeFront(
 	minAmountOut *big.Int,
 ) []byte {
 
-	params := []byte{0x00, 0x00, 0x00, 0x01}
+	//3deec419
+	params := []byte{0x3d, 0xee, 0xc4, 0x19}
 
 	params = append(params, tokenIn.Bytes()...)
 	params = append(params, fillBytes(14, amountIn.Bytes())...)
