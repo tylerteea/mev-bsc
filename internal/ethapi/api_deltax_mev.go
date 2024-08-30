@@ -2186,7 +2186,7 @@ type Sbp4MemeArgs struct {
 	Eoa             common.Address `json:"eoa"`
 	Contract        common.Address `json:"contract"`
 	Balance         *big.Int       `json:"balance"`
-	Token1          common.Address `json:"token1"`
+	Token           common.Address `json:"token"`
 	K               *big.Int       `json:"k"`
 	T               *big.Int       `json:"t"`
 	AmountInMin     *big.Int       `json:"amountInMin"`
@@ -2545,7 +2545,7 @@ func worker4meme(
 	}
 
 	//-----------token balance ------------------------------------------------------------------------
-	tokenBalance, tbErr := getERC20TokenBalance(ctx, s, sbp.Token1, sbp.Eoa, statedb, head)
+	tokenBalance, tbErr := getERC20TokenBalance(ctx, s, sbp.Token, sbp.Eoa, statedb, head)
 	if tbErr != nil || tokenBalance == nil || tokenBalance.Cmp(BigIntZeroValue) == 0 {
 		result[errorString] = "get_token_balance_err"
 		result[reasonString] = tbErr.Error()
@@ -2560,7 +2560,7 @@ func worker4meme(
 
 		approveCallArgs := &TransactionArgs{
 			From: &sbp.Eoa,
-			To:   &sbp.Token1,
+			To:   &sbp.Token,
 			Data: &ApproveBytes4Meme,
 		}
 
@@ -2630,10 +2630,10 @@ func execute4meme(
 		log.Info("call_execute1", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
 	}
 	if isFront {
-		data = encodeParams4MemeFront(sbp.Token1, amountIn, BigIntZeroValue)
+		data = encodeParams4MemeFront(sbp.Token, amountIn, BigIntZeroValue)
 		value = (*hexutil.Big)(calc4MemeValue(amountIn, threeInt, sbp.K, sbp.T))
 	} else {
-		data = encodeParams4MemeBack(sbp.Token1, amountIn)
+		data = encodeParams4MemeBack(sbp.Token, amountIn)
 		value = ZeroHexBig
 	}
 
