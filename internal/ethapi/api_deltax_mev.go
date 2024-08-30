@@ -52,6 +52,7 @@ const (
 var ZeroHexBig = new(hexutil.Big)
 var BigIntZeroValue = big.NewInt(0)
 var BigIntOne = big.NewInt(1)
+var GweiOne = big.NewInt(1_000_000_000)
 var epochNum = big.NewInt(200)
 var delayBlockNum = big.NewInt(10)
 var NullAddress = common.HexToAddress("0x0000000000000000000000000000000000000000")
@@ -2570,7 +2571,7 @@ func worker4meme(
 
 	// 跟跑----------------------------------------------------------------------------------------
 
-	backAmountIn := tokenBalance.Sub(tokenBalance, BigIntOne)
+	backAmountIn := tokenBalance.Sub(tokenBalance, GweiOne)
 
 	bErr := execute4meme(ctx, reqAndIndex, false, sbp, backAmountIn, threeInt, statedb, s, head)
 	eoaBalanceAfter := statedb.GetBalance(sbp.Eoa).ToBig()
