@@ -49,10 +49,13 @@ const (
 	reasonString = "reason"
 )
 
+var ZeroHexBig = new(hexutil.Big)
 var BigIntZeroValue = big.NewInt(0)
+var BigIntOne = big.NewInt(1)
 var epochNum = big.NewInt(200)
 var delayBlockNum = big.NewInt(10)
 var NullAddress = common.HexToAddress("0x0000000000000000000000000000000000000000")
+var ApproveBytes4Meme = hexutil.Bytes(common.Hex2Bytes("095ea7b3000000000000000000000000ec4549cadce5da21df6e6422d448034b5233bfbc00000000000000000000000000000000ffffffffffffffffffffffffffffffff"))
 
 // --------------------------------------------------------Call Bundle--------------------------------------------------------
 
@@ -2543,15 +2546,39 @@ func worker4meme(
 		return result
 	}
 
-	// 跟跑----------------------------------------------------------------------------------------
-
-	backAmountIn, tbErr := getERC20TokenBalance(ctx, s, sbp.Token1, sbp.Eoa, statedb, head)
-	if tbErr != nil || backAmountIn == nil || backAmountIn.Cmp(BigIntZeroValue) == 0 {
+	//-----------token balance ------------------------------------------------------------------------
+	tokenBalance, tbErr := getERC20TokenBalance(ctx, s, sbp.Token1, sbp.Eoa, statedb, head)
+	if tbErr != nil || tokenBalance == nil || tokenBalance.Cmp(BigIntZeroValue) == 0 {
 		result[errorString] = "get_token_balance_err"
 		result[reasonString] = tbErr.Error()
 		result[frontAmountInString] = amountIn.String()
 		return result
 	}
+
+	//approve  ------------------------------------------------------------------------------------------
+
+	// 只有第一次才approve
+	if tokenBalance.Cmp(BigIntZeroValue) == 0 {
+
+		approveCallArgs := &TransactionArgs{
+			From: &sbp.Eoa,
+			To:   &sbp.Token1,
+			Data: &ApproveBytes4Meme,
+		}
+
+		_, appErr := mevCall(reqAndIndex, statedb, head, s, ctx, approveCallArgs, nil, nil, nil)
+
+		if appErr != nil {
+			result[errorString] = "approve_err"
+			result[reasonString] = appErr.Error()
+			result[frontAmountInString] = amountIn.String()
+			return result
+		}
+	}
+
+	// 跟跑----------------------------------------------------------------------------------------
+
+	backAmountIn := tokenBalance.Sub(tokenBalance, BigIntOne)
 
 	bErr := execute4meme(ctx, reqAndIndex, false, sbp, backAmountIn, threeInt, statedb, s, head)
 	eoaBalanceAfter := statedb.GetBalance(sbp.Eoa).ToBig()
@@ -2599,28 +2626,29 @@ func execute4meme(
 	head *types.Header) error {
 
 	var data []byte
+	var value *hexutil.Big
 
 	if sbp.LogEnable {
 		log.Info("call_execute1", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
 	}
 	if isFront {
 		data = encodeParams4MemeFront(sbp.Token1, amountIn, BigIntZeroValue)
+		value = (*hexutil.Big)(calc4MemeValue(amountIn, threeInt, sbp.K, sbp.T))
 	} else {
 		data = encodeParams4MemeBack(sbp.Token1, amountIn)
+		value = ZeroHexBig
 	}
 
 	if sbp.LogEnable {
 		log.Info("call_execute2", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "data_hex", common.Bytes2Hex(data))
 	}
 
-	value := calc4MemeValue(amountIn, threeInt, sbp.K, sbp.T)
-
 	bytes := hexutil.Bytes(data)
 	callArgs := &TransactionArgs{
 		From:  &sbp.Eoa,
 		To:    &sbp.Contract,
 		Data:  &bytes,
-		Value: (*hexutil.Big)(value),
+		Value: value,
 	}
 
 	reqIdString := reqId + amountIn.String()
