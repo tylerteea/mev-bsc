@@ -2561,6 +2561,10 @@ func worker4meme(
 
 		_, appErr := mevCall(reqAndIndex, statedb, head, s, ctx, approveCallArgs, nil, nil, nil)
 
+		if sbp.LogEnable {
+			log.Info("call_execute_approve", "reqAndIndex", reqAndIndex, "appErr", appErr)
+		}
+
 		if appErr != nil {
 			result[errorString] = "approve_err"
 			result[reasonString] = appErr.Error()
@@ -2618,30 +2622,35 @@ func execute4meme(
 	s *BundleAPI,
 	head *types.Header) error {
 
-	var data []byte
-	var value *hexutil.Big
+	var callArgs *TransactionArgs
 
 	if sbp.LogEnable {
 		log.Info("call_execute1", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
 	}
 	if isFront {
-		data = encodeParams4MemeFront(sbp.Token, amountIn, BigIntZeroValue)
-		value = (*hexutil.Big)(calc4MemeValue(amountIn, threeInt, sbp.K, sbp.T))
+		data := encodeParams4MemeFront(sbp.Token, amountIn, BigIntZeroValue)
+		value := (*hexutil.Big)(calc4MemeValue(amountIn, threeInt, sbp.K, sbp.T))
+		bytes := hexutil.Bytes(data)
+		callArgs = &TransactionArgs{
+			From:  &sbp.Eoa,
+			To:    &sbp.Contract,
+			Data:  &bytes,
+			Value: value,
+		}
+		if sbp.LogEnable {
+			log.Info("call_execute2", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "value", value.String(), "data_hex", common.Bytes2Hex(data))
+		}
 	} else {
-		data = encodeParams4MemeBack(sbp.Token, amountIn)
-		value = ZeroHexBig
-	}
-
-	if sbp.LogEnable {
-		log.Info("call_execute2", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "data_hex", common.Bytes2Hex(data))
-	}
-
-	bytes := hexutil.Bytes(data)
-	callArgs := &TransactionArgs{
-		From:  &sbp.Eoa,
-		To:    &sbp.Contract,
-		Data:  &bytes,
-		Value: value,
+		data := encodeParams4MemeBack(sbp.Token, amountIn)
+		bytes := hexutil.Bytes(data)
+		callArgs = &TransactionArgs{
+			From: &sbp.Eoa,
+			To:   &sbp.Contract,
+			Data: &bytes,
+		}
+		if sbp.LogEnable {
+			log.Info("call_execute2", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "data_hex", common.Bytes2Hex(data))
+		}
 	}
 
 	reqIdString := reqId + amountIn.String()
