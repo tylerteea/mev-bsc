@@ -2475,18 +2475,18 @@ func worker4meme(
 
 	eoaBalanceBefore := statedb.GetBalance(sbp.Eoa).ToBig()
 	//-----------token balance before ------------------------------------------------------------------------
-	tokenBalanceBefore, tbErr := getERC20TokenBalance(ctx, s, sbp.Token, sbp.Eoa, statedb, head)
-	if tbErr != nil || tokenBalanceBefore == nil {
-		result[errorString] = "get_token_balance_err"
-		result[reasonString] = tbErr.Error()
-		result[frontAmountInString] = amountIn.String()
-		return result
-	}
-
-	needApprove := true
-	if tokenBalanceBefore.Cmp(BigIntZeroValue) > 0 {
-		needApprove = false
-	}
+	//tokenBalanceBefore, tbErr := getERC20TokenBalance(ctx, s, sbp.Token, sbp.Eoa, statedb, head)
+	//if tbErr != nil || tokenBalanceBefore == nil {
+	//	result[errorString] = "get_token_balance_err"
+	//	result[reasonString] = tbErr.Error()
+	//	result[frontAmountInString] = amountIn.String()
+	//	return result
+	//}
+	//
+	//needApprove := true
+	//if tokenBalanceBefore.Cmp(BigIntZeroValue) > 0 {
+	//	needApprove = false
+	//}
 
 	// 抢跑----------------------------------------------------------------------------------------
 	fErr := execute4meme(ctx, reqAndIndex, true, sbp, amountIn, threeInt, statedb, s, head)
@@ -2555,25 +2555,25 @@ func worker4meme(
 	//approve  ------------------------------------------------------------------------------------------
 
 	// 只有第一次才approve
-	if needApprove {
-		approveCallArgs := &TransactionArgs{
-			From: &sbp.Eoa,
-			To:   &sbp.Token,
-			Data: &ApproveBytes4Meme,
-		}
-		_, appErr := mevCall(reqAndIndex, statedb, head, s, ctx, approveCallArgs, nil, nil, nil)
-
-		if sbp.LogEnable {
-			log.Info("call_execute_approve", "reqAndIndex", reqAndIndex, "appErr", appErr)
-		}
-
-		if appErr != nil {
-			result[errorString] = "approve_err"
-			result[reasonString] = appErr.Error()
-			result[frontAmountInString] = amountIn.String()
-			return result
-		}
+	//if needApprove {
+	approveCallArgs := &TransactionArgs{
+		From: &sbp.Eoa,
+		To:   &sbp.Token,
+		Data: &ApproveBytes4Meme,
 	}
+	_, appErr := mevCall(reqAndIndex, statedb, head, s, ctx, approveCallArgs, nil, nil, nil)
+
+	if sbp.LogEnable {
+		log.Info("call_execute_approve", "reqAndIndex", reqAndIndex, "appErr", appErr)
+	}
+
+	if appErr != nil {
+		result[errorString] = "approve_err"
+		result[reasonString] = appErr.Error()
+		result[frontAmountInString] = amountIn.String()
+		return result
+	}
+	//}
 
 	//-----------token balance ------------------------------------------------------------------------
 	tokenBalance, tbErr := getERC20TokenBalance(ctx, s, sbp.Token, sbp.Eoa, statedb, head)
@@ -2585,7 +2585,8 @@ func worker4meme(
 	}
 
 	// 跟跑----------------------------------------------------------------------------------------¬
-	backAmountIn := tokenBalance.Sub(tokenBalance, GweiOne)
+	//backAmountIn := tokenBalance.Sub(tokenBalance, GweiOne)
+	backAmountIn := tokenBalance
 
 	bErr := execute4meme(ctx, reqAndIndex, false, sbp, backAmountIn, threeInt, statedb, s, head)
 	eoaBalanceAfter := statedb.GetBalance(sbp.Eoa).ToBig()
