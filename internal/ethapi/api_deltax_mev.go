@@ -341,6 +341,12 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 			if len(revert) > 0 {
 				reason, _ := abi.UnpackRevert(revert)
 				jsonResult["revert"] = reason
+			} else {
+				//if len(reqId) == len("36d74f9c-f504-4af5-9791-e1d24e50bdb") {
+				newResultJson1, _ := json.Marshal(result)
+				newResultJson2, _ := json.Marshal(receipt)
+				log.Info("call_bundle_err", "reqId", reqId, "result", string(newResultJson1), "receipt", string(newResultJson2))
+				//}
 			}
 		} else {
 			dst := make([]byte, hex.EncodedLen(len(result.Return())))
@@ -365,6 +371,7 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 
 	newResultJson, _ := json.Marshal(ret)
 	log.Info("call_bundle_result", "reqId", reqId, "ret", string(newResultJson))
+
 	return ret, nil
 }
 
