@@ -336,6 +336,8 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 		gasFees.Add(gasFees, gasFeesTx)
 		bundleHash.Write(tx.Hash().Bytes())
 		if result.Err != nil {
+			err111 := result.Err
+
 			jsonResult[errorString] = result.Err.Error()
 			revert := result.Revert()
 			if len(revert) > 0 {
@@ -345,7 +347,8 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 				//if len(reqId) == len("36d74f9c-f504-4af5-9791-e1d24e50bdb") {
 				newResultJson1, _ := json.Marshal(result)
 				newResultJson2, _ := json.Marshal(receipt)
-				log.Info("call_bundle_err", "reqId", reqId, "result", string(newResultJson1), "receipt", string(newResultJson2))
+
+				log.Info("call_bundle_err", "reqId", reqId, "result", string(newResultJson1), "receipt", string(newResultJson2), "err", fmt.Errorf("error type: %T", err111), "err111", fmt.Errorf("error type: %w", err111))
 				//}
 			}
 		} else {
