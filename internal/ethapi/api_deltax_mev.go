@@ -187,14 +187,12 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 
 	reqId := args.ReqId
 
-	defer func(start time.Time) {
+	defer func() {
 		if r := recover(); r != nil {
 			dss := string(debug.Stack())
 			log.Info("recover...callBundle", "err", r, "stack", dss, "reqId", reqId)
 		}
-
-		log.Info("callBundle_end_defer", "reqId", reqId, "runtime", time.Since(start))
-	}(time.Now())
+	}()
 
 	log.Info("callBundle_start", "reqId", reqId)
 
@@ -336,20 +334,11 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 		gasFees.Add(gasFees, gasFeesTx)
 		bundleHash.Write(tx.Hash().Bytes())
 		if result.Err != nil {
-			err111 := result.Err
-
 			jsonResult[errorString] = result.Err.Error()
 			revert := result.Revert()
 			if len(revert) > 0 {
 				reason, _ := abi.UnpackRevert(revert)
 				jsonResult["revert"] = reason
-			} else {
-				//if len(reqId) == len("36d74f9c-f504-4af5-9791-e1d24e50bdb") {
-				newResultJson1, _ := json.Marshal(result)
-				newResultJson2, _ := json.Marshal(receipt)
-
-				log.Info("call_bundle_err", "reqId", reqId, "result", string(newResultJson1), "receipt", string(newResultJson2), "err", fmt.Errorf("error type: %T", err111), "err111", fmt.Errorf("error type: %w", err111))
-				//}
 			}
 		} else {
 			dst := make([]byte, hex.EncodedLen(len(result.Return())))
@@ -372,8 +361,8 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 	ret["stateBlockNumber"] = header.Number.Int64()
 	ret["bundleHash"] = "0x" + common.Bytes2Hex(bundleHash.Sum(nil))
 
-	newResultJson, _ := json.Marshal(ret)
-	log.Info("call_bundle_result", "reqId", reqId, "ret", string(newResultJson))
+	//newResultJson, _ := json.Marshal(ret)
+	//log.Info("call_bundle_result", "reqId", reqId, "ret", string(newResultJson))
 
 	return ret, nil
 }
