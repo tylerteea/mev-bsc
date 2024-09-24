@@ -2,6 +2,7 @@ package ethapi
 
 import (
 	"github.com/ethereum/go-ethereum/common"
+	"math"
 	"math/big"
 )
 
@@ -39,7 +40,7 @@ type (
 		Version     int
 	}
 
-	commonPathInfo struct {
+	CommonPathInfo struct {
 		TokenIn     common.Address
 		TokenOut    common.Address
 		PairsOrPool common.Address
@@ -125,9 +126,9 @@ func saleConfigNewToBigInt(config *SaleConfigNew) *big.Int {
 
 //-------------------------------------------------------------------
 
-func lenAndIntSizeToBigInt(len int) *big.Int {
+func lenAndIntSizeToBigInt(intSize, len int) *big.Int {
 	result := 0
-	result += lsh4
+	result += intSize << 4
 	result += len
 	return big.NewInt(int64(result))
 }
@@ -195,7 +196,7 @@ func SandwichEncodeParamsBuy(
 
 func SandwichEncodeParamsSale(
 	config *SaleConfigNew,
-	pathInfos []*commonPathInfo,
+	pathInfos []*CommonPathInfo,
 	amountIn *big.Int,
 	minTokenOutBalance *big.Int,
 	builderAddress common.Address,
@@ -231,12 +232,12 @@ func SandwichEncodeParamsSale(
 
 	numberHeap := []byte{0x00}
 
-	zeroHex := common.Bytes2Hex(SandwichBigIntZeroValue.Bytes())
+	zeroHex := SandwichBigIntZeroValue.String()
 	numberMap[zeroHex] = SandwichBigIntZeroValue.Bytes()
 
 	params := make([]byte, 0)
 	params = append(params, sandwichSelectorSale...)
-	params = append(params, fillBytes(1, lenAndIntSizeToBigInt(len(pathInfos)).Bytes())...)
+	params = append(params, fillBytes(1, lenAndIntSizeToBigInt(intSize, len(pathInfos)).Bytes())...)
 	params = append(params, fillBytes(1, saleConfigNewToBigInt(config).Bytes())...)
 	params = append(params, fillBytes(1, getIndexAndSetNumber(intSize, shortNumberSize, amountIn, &numberHeap, numberMap))...)
 	params = append(params, fillBytes(1, getIndexAndSetNumber(intSize, shortNumberSize, minTokenOutBalance, &numberHeap, numberMap))...)
@@ -260,12 +261,31 @@ func SandwichEncodeParamsSale(
 
 	params = append(params, finalToken.Bytes()...)
 
-	briberyWeiByte := fillBytes(1, getIndexAndSetNumber(intSize, shortNumberSize, briberyWei, &numberHeap, numberMap))
+	var briberyWeiByte []byte
+
+	if config.FeeToBuilder {
+		briberyWeiByte = fillBytes(1, getIndexAndSetNumber(intSize, shortNumberSize, briberyWei, &numberHeap, numberMap))
+	}
 
 	params = append(params, numberHeap...)
 
-	params = append(params, builderAddress.Bytes()...)
-	params = append(params, briberyWeiByte...)
+	if config.FeeToBuilder {
+		params = append(params, builderAddress.Bytes()...)
+		params = append(params, briberyWeiByte...)
+	}
+
+	//config_marshal, _ := json.Marshal(config)
+	//pathInfos_marshal, _ := json.Marshal(pathInfos)
+
+	//logger.WithMethod("searcher.sandwich.callBundle").
+	//	WithField("VictimLength", common.Bytes2Hex(params)).
+	//	WithField("config_marshal", string(config_marshal)).
+	//	WithField("pathInfos_marshal", string(pathInfos_marshal)).
+	//	WithField("amountIn", amountIn.String()).
+	//	WithField("minTokenOutBalance", minTokenOutBalance.String()).
+	//	WithField("builderAddress", builderAddress.String()).
+	//	WithField("briberyWei", briberyWei.String()).
+	//	Errorf("SandwichEncodeParamsSale构造参数")
 
 	return params
 }
@@ -357,7 +377,7 @@ func encodeParamsSaleNew(
 	briberyWei *big.Int,
 ) []byte {
 
-	commonPathInfo1 := &commonPathInfo{
+	commonPathInfo1 := &CommonPathInfo{
 		TokenIn:     token1,
 		TokenOut:    token2,
 		PairsOrPool: pairOrPool1,
@@ -369,7 +389,7 @@ func encodeParamsSaleNew(
 		AmountOut:   amountOut1,
 	}
 
-	commonPathInfo2 := &commonPathInfo{
+	commonPathInfo2 := &CommonPathInfo{
 		TokenIn:     token2,
 		TokenOut:    token3,
 		PairsOrPool: pairOrPool2,
@@ -381,7 +401,7 @@ func encodeParamsSaleNew(
 		AmountOut:   amountOut2,
 	}
 
-	var commonPathInfos []*commonPathInfo
+	var commonPathInfos []*CommonPathInfo
 	commonPathInfos = append(commonPathInfos, commonPathInfo1)
 	commonPathInfos = append(commonPathInfos, commonPathInfo2)
 
@@ -413,4 +433,32 @@ func encodeParamsBuyNew(
 	params := SandwichEncodeParamsBuy(configNew, pairOrPool, amountIn, amountOut, minTokenOutBalance, tokenIn, builderAddress, briberyWei, tokenOut, fee, SandwichNullAddress)
 
 	return params
+}
+
+func GetShortNumber(number *big.Int) *big.Int {
+
+	number2text := number.Text(2)
+
+	var shortNumString string
+
+	offset := 0
+	if len(number2text) > shortNumberSize4 {
+		shortNumString = number2text[:shortNumberSize4]
+		offset = len(number2text[shortNumberSize4:])
+	} else {
+		shortNumString = number2text
+	}
+
+	shortNumInt, _ := new(big.Int).SetString(shortNumString, 2)
+
+	twoOffsetFloat := new(big.Float).SetFloat64(math.Pow(2, float64(offset)))
+
+	twoOffsetInt := new(big.Int)
+
+	twoOffsetFloat.Int(twoOffsetInt)
+
+	shortNumInt.Mul(shortNumInt, twoOffsetInt)
+
+	return shortNumInt
+
 }
