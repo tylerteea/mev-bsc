@@ -439,15 +439,13 @@ func GetShortNumber(number *big.Int) *big.Int {
 
 	number2text := number.Text(2)
 
-	var shortNumString string
-
-	offset := 0
-	if len(number2text) > shortNumberSize4 {
-		shortNumString = number2text[:shortNumberSize4]
-		offset = len(number2text[shortNumberSize4:])
-	} else {
-		shortNumString = number2text
+	if len(number2text) <= shortNumberSize4 {
+		return number
 	}
+
+	shortNumString := number2text[:shortNumberSize4]
+
+	offset := len(number2text[shortNumberSize4:])
 
 	shortNumInt, _ := new(big.Int).SetString(shortNumString, 2)
 
