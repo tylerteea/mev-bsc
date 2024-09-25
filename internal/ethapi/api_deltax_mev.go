@@ -1382,7 +1382,7 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSaleNew(ctx context.Context, sbp S
 
 	stateDBNew, head, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
 
-	nextBlockNum := big.NewInt(number.BlockNumber.Int64() + 1)
+	nextBlockNum := new(big.Int).Add(head.Number, BigIntOne)
 
 	if sbp.LogEnable {
 		log.Info("call_sbp_4_", "reqId", reqId, "blockNumber", number.BlockNumber.Int64(), "number", head.Number, "hash", head.Hash(), "parentHash", head.ParentHash)
