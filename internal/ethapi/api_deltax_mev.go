@@ -44,6 +44,16 @@ const (
 	backAmountOutMidString = "backAmountOutMid"
 	backAmountOutString    = "backAmountOut"
 
+	front_amount_in_1  = "frontAmountIn1"
+	front_amount_out_1 = "frontAmountOut1"
+	front_amount_in_2  = "frontAmountIn2"
+	front_amount_out_2 = "frontAmountOut2"
+
+	back_amount_in_1  = "backAmountIn1"
+	back_amount_out_1 = "backAmountOut1"
+	back_amount_in_2  = "backAmountIn2"
+	back_amount_out_2 = "backAmountOut2"
+
 	profitString = "profit"
 	errorString  = "error"
 	reasonString = "reason"
@@ -1415,12 +1425,11 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSaleNew(ctx context.Context, sbp S
 		amountInInt := new(big.Int)
 		amountIn.Int(amountInInt)
 
-		f, _ := amountIn.Float64()
-
 		if amountInInt.Cmp(balance) > 0 {
 			if sbp.LogEnable {
 				log.Info("call_sbp_8", "reqId", reqId, "amountInFloat", amountInFloat)
 			}
+			f, _ := amountIn.Float64()
 			return f
 		}
 
@@ -1433,6 +1442,7 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSaleNew(ctx context.Context, sbp S
 		}
 
 		stateDB := stateDBNew.Copy()
+
 		workerResults := workerNew(ctx, head, nextBlockNum, victimTransaction, sbp, s, reqId, stateDB, amountInInt)
 
 		if sbp.LogEnable {
@@ -1460,6 +1470,7 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSaleNew(ctx context.Context, sbp S
 		if sbp.LogEnable {
 			log.Info("call_sbp_12", "reqId", reqId, "amountInFloat", amountInFloat)
 		}
+		f, _ := amountIn.Float64()
 		return f
 	}
 
@@ -1973,42 +1984,18 @@ func workerNew(
 	result := make(map[string]interface{})
 
 	// 抢跑----------------------------------------------------------------------------------------
-	frontAmountOutMid, frontAmountOut, fErr := executeNew(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head, nextBlockNum)
+	amountIn = GetShortNumber(amountIn)
+	frontContractReturn, fErr := executeNew(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head, nextBlockNum)
 
 	if sbp.LogEnable {
-		log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "amountIn", amountIn, frontAmountOutMidString, frontAmountOutMid, frontAmountInString, frontAmountOut, "fErr", fErr)
+		marshal, _ := json.Marshal(frontContractReturn)
+		log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "amountIn", amountIn, frontContractReturn, string(marshal), "fErr", fErr)
 	}
 	if fErr != nil {
 		result[errorString] = "frontCallErr"
 		result[reasonString] = fErr.Error()
 		result[frontAmountInString] = amountIn.String()
 		return result
-	}
-
-	var backAmountIn *big.Int
-
-	// 如果是买，则截短返回值
-	if sbp.BuyOrSale {
-		frontAmountOut = GetShortNumber(frontAmountOut)
-		backAmountIn = frontAmountOut
-	} else {
-		backAmountIn = frontAmountOut
-	}
-
-	if backAmountIn.Cmp(BigIntZeroValue) <= 0 {
-		result[errorString] = "backAmountInZero"
-		result[reasonString] = "backAmountInZero"
-		result[frontAmountInString] = amountIn.String()
-		return result
-	}
-
-	if !sbp.BuyOrSale {
-		if frontAmountOutMid.Cmp(BigIntZeroValue) <= 0 {
-			result[errorString] = "frontAmountOutMid_Zero"
-			result[reasonString] = "frontAmountOutMid_Zero"
-			result[frontAmountInString] = amountIn.String()
-			return result
-		}
 	}
 
 	// 受害者----------------------------------------------------------------------------------------
@@ -2055,50 +2042,49 @@ func workerNew(
 		return result
 	}
 
+	backAmountIn := GetShortNumber(frontContractReturn.Diff)
 	// 跟跑----------------------------------------------------------------------------------------
-	backAmountOutMid, backAmountOut, bErr := executeNew(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head, nextBlockNum)
+	backContractReturn, bErr := executeNew(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head, nextBlockNum)
 
 	if sbp.LogEnable {
-		log.Info("call_execute_back", "reqAndIndex", reqAndIndex, backAmountInString, backAmountIn, backAmountOutMidString, backAmountOutMid, backAmountOutString, backAmountOut, "bErr", bErr)
+		marshal, _ := json.Marshal(backContractReturn)
+		log.Info("call_execute_back", "reqAndIndex", reqAndIndex, backAmountInString, backAmountIn, "backContractReturn", string(marshal), "bErr", bErr)
 	}
-	if bErr != nil || backAmountOut.Cmp(BigIntZeroValue) <= 0 {
+	if bErr != nil {
 		result[errorString] = "backCallErr"
 		result[reasonString] = bErr.Error()
 		result[frontAmountInString] = amountIn
-		result[frontAmountOutMidString] = frontAmountOutMid
-		result[frontAmountInString] = frontAmountOut
-		result[backAmountInString] = backAmountIn
-		result[backAmountOutMidString] = backAmountOutMid
-		result[backAmountOutString] = backAmountOut
 		return result
 	}
 
-	if !sbp.BuyOrSale {
-		if backAmountOutMid.Cmp(BigIntZeroValue) <= 0 {
-			result[errorString] = "backCallErr1"
-			result[reasonString] = "backAmountOutMid_zero"
-			result[frontAmountInString] = amountIn
-			result[frontAmountOutMidString] = frontAmountOutMid
-			result[frontAmountOutString] = frontAmountOut
-			result[backAmountInString] = backAmountIn
-			result[backAmountOutMidString] = backAmountOutMid
-			result[backAmountOutString] = backAmountOut
-			return result
-		}
-	} else {
+	finalBackAmountOut := backContractReturn.Diff
+	if sbp.BuyOrSale {
 		if sbp.Version2 != V3 {
-			backAmountOut = GetShortNumber(backAmountOut)
+			finalBackAmountOut = GetShortNumber(backContractReturn.Diff)
 		}
 	}
 
-	profit := new(big.Int).Sub(backAmountOut, amountIn)
+	profit := new(big.Int).Sub(finalBackAmountOut, frontContractReturn.PathAmounts[0].AmountIn)
 
-	result[frontAmountInString] = amountIn
-	result[frontAmountOutString] = frontAmountOut
-	result[frontAmountOutMidString] = frontAmountOutMid
-	result[backAmountInString] = backAmountIn
-	result[backAmountOutMidString] = backAmountOutMid
-	result[backAmountOutString] = backAmountOut
+	if sbp.BuyOrSale {
+		result[front_amount_in_1] = frontContractReturn.PathAmounts[0].AmountIn
+		result[front_amount_out_1] = frontContractReturn.PathAmounts[0].AmountOut
+
+		result[back_amount_in_1] = backContractReturn.PathAmounts[0].AmountIn
+		result[back_amount_out_1] = backContractReturn.PathAmounts[0].AmountOut
+
+	} else {
+		result[front_amount_in_1] = frontContractReturn.PathAmounts[0].AmountIn
+		result[front_amount_out_1] = frontContractReturn.PathAmounts[0].AmountOut
+		result[front_amount_in_2] = frontContractReturn.PathAmounts[1].AmountIn
+		result[front_amount_out_2] = frontContractReturn.PathAmounts[1].AmountOut
+
+		result[back_amount_in_1] = backContractReturn.PathAmounts[0].AmountIn
+		result[back_amount_out_1] = backContractReturn.PathAmounts[0].AmountOut
+		result[back_amount_in_2] = backContractReturn.PathAmounts[1].AmountIn
+		result[back_amount_out_2] = backContractReturn.PathAmounts[1].AmountOut
+	}
+
 	result[profitString] = profit
 
 	if profit.Cmp(BigIntZeroValue) <= 0 {
@@ -2260,6 +2246,17 @@ func execute(
 	return amountOutMid, amountOut, nil
 }
 
+type ContractResult struct {
+	PathAmounts []*PathAmount
+	Diff        *big.Int
+}
+
+type PathAmount struct {
+	AmountIn  *big.Int
+	AmountOut *big.Int
+	Step      int
+}
+
 func executeNew(
 	ctx context.Context,
 	reqId string,
@@ -2270,7 +2267,7 @@ func executeNew(
 	s *BundleAPI,
 	head *types.Header,
 	nextBlockNum *big.Int,
-) (*big.Int, *big.Int, error) {
+) (*ContractResult, error) {
 
 	var data []byte
 
@@ -2326,7 +2323,7 @@ func executeNew(
 		Value: (*hexutil.Big)(nextBlockNum),
 	}
 
-	reqIdString := reqId + amountIn.String()
+	reqIdString := reqId + "_" + amountIn.String()
 
 	callResult, err := mevCall(reqIdString, sdb, head, s, ctx, callArgs, nil, nil, nil)
 	if sbp.LogEnable {
@@ -2352,67 +2349,126 @@ func executeNew(
 				)
 				log.Info("call_execute5", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "revertReason", revertReason.reason)
 			}
-			return nil, nil, revertReason
+			return nil, revertReason
 		}
 	}
 	if err != nil {
 		if sbp.LogEnable {
 			log.Info("call_execute6", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err)
 		}
-		return nil, nil, err
+		return nil, err
 	}
 	if callResult.Err != nil {
 		if sbp.LogEnable {
 			log.Info("call_execute7", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", callResult.Err)
 		}
-		return nil, nil, callResult.Err
+		return nil, callResult.Err
 	}
 
 	lenR := len(callResult.Return())
 	if sbp.LogEnable {
 		log.Info("call_execute80_结果数据长度", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR)
 	}
-	amountOutMid := BigIntZeroValue
-	amountOut := BigIntZeroValue
+
+	var contractResult *ContractResult
 
 	if sbp.BuyOrSale {
-		if lenR == 32 {
-			amountOut = new(big.Int).SetBytes(callResult.Return())
-			if amountOut.Cmp(BigIntZeroValue) <= 0 {
+		if lenR == 64 {
+
+			amountOut := new(big.Int).SetBytes(callResult.Return()[:32])
+			diff := new(big.Int).SetBytes(callResult.Return()[32:64])
+
+			if amountOut.Cmp(BigIntZeroValue) <= 0 || diff.Cmp(BigIntZeroValue) <= 0 {
 				if sbp.LogEnable {
-					log.Info("call_execute8_买结果数据大小检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOutMid", amountOutMid.String(), "amountOut", amountOut.String())
+					log.Info("call_execute8_买结果数据大小检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOut", amountOut.String(), "diff", diff.String())
 				}
-				return nil, nil, errors.New("买结果数据大小检验不通过1")
+				return nil, errors.New("买结果数据大小检验不通过1")
+			}
+
+			pathAmount := &PathAmount{
+				AmountIn:  amountIn,
+				AmountOut: amountOut,
+				Step:      1,
+			}
+
+			pathAmounts := []*PathAmount{pathAmount}
+
+			contractResult = &ContractResult{
+				PathAmounts: pathAmounts,
+				Diff:        diff,
 			}
 
 		} else {
 			if sbp.LogEnable {
-				log.Info("call_execute9_买结果数据大小检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOutMid", amountOutMid.String(), "amountOut", amountOut.String())
+				log.Info("call_execute9_买结果数据大小检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR)
 			}
-			return nil, nil, errors.New("买结果数据长度检验不通过2")
+			return nil, errors.New("买结果数据长度检验不通过2")
 		}
 	} else {
 
-		if lenR == 64 {
-			amountOutMid = new(big.Int).SetBytes(callResult.Return()[:32])
-			amountOut = new(big.Int).SetBytes(callResult.Return()[32:64])
-			if amountOutMid.Cmp(BigIntZeroValue) <= 0 || amountOut.Cmp(BigIntZeroValue) <= 0 {
+		if lenR == 160 {
+			amountIn1 := new(big.Int).SetBytes(callResult.Return()[:32])
+			amountOut1 := new(big.Int).SetBytes(callResult.Return()[32:64])
+			amountIn2 := new(big.Int).SetBytes(callResult.Return()[64:96])
+			amountOut2 := new(big.Int).SetBytes(callResult.Return()[96:128])
+			diff := new(big.Int).SetBytes(callResult.Return()[128:160])
+
+			if amountIn1.Cmp(BigIntZeroValue) <= 0 ||
+				amountOut1.Cmp(BigIntZeroValue) <= 0 ||
+				amountIn2.Cmp(BigIntZeroValue) <= 0 ||
+				amountOut2.Cmp(BigIntZeroValue) <= 0 ||
+				diff.Cmp(BigIntZeroValue) <= 0 ||
+				amountIn.Cmp(amountIn1) != 0 {
+
 				if sbp.LogEnable {
-					log.Info("call_execute10_卖结果数据大小检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOutMid", amountOutMid.String(), "amountOut", amountOut.String())
+					log.Info("call_execute10_卖结果数据大小检验不通过",
+						"reqId", reqId,
+						"amountIn", amountIn,
+						"isFront", isFront,
+						"callResult_len", lenR,
+						"amountIn1", amountIn1,
+						"amountOut1", amountOut1,
+						"amountIn2", amountIn2,
+						"amountOut2", amountOut2,
+						"diff", diff,
+					)
 				}
-				return nil, nil, errors.New("卖结果数据大小检验不通过1")
+				return nil, errors.New("卖结果数据大小检验不通过1")
 			}
+
+			pathAmount1 := &PathAmount{
+				AmountIn:  amountIn1,
+				AmountOut: amountOut1,
+				Step:      1,
+			}
+			pathAmount2 := &PathAmount{
+				AmountIn:  amountIn2,
+				AmountOut: amountOut2,
+				Step:      2,
+			}
+
+			pathAmounts := []*PathAmount{pathAmount1, pathAmount2}
+
+			contractResult = &ContractResult{
+				PathAmounts: pathAmounts,
+				Diff:        diff,
+			}
+
 		} else {
 			if sbp.LogEnable {
-				log.Info("call_execute11_卖结果数据长度检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOutMid", amountOutMid.String(), "amountOut", amountOut.String())
+				log.Info("call_execute11_卖结果数据长度检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR)
 			}
-			return nil, nil, errors.New("卖结果数据长度检验不通过2")
+			return nil, errors.New("卖结果数据长度检验不通过2")
 		}
 	}
 	if sbp.LogEnable {
-		log.Info("call_execute20", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "amountOutMid", amountOutMid.String(), "amountOut", amountOut.String())
+		log.Info("call_execute20", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
 	}
-	return amountOutMid, amountOut, nil
+
+	if contractResult == nil {
+		return nil, errors.New("获取合约结果失败")
+	}
+	return contractResult, nil
 }
 
 // execute_44g58pv
