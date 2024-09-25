@@ -2330,7 +2330,7 @@ func executeNew(
 
 	callResult, err := mevCall(reqIdString, sdb, head, s, ctx, callArgs, nil, nil, nil)
 	if sbp.LogEnable {
-		log.Info("call_execute3", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err, "callResult", callResult)
+		log.Info("call_execute3", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err, "callResult", callResult, "eoa", sbp.Eoa.String(), "contract", sbp.Contract.String())
 	}
 	if callResult != nil {
 
