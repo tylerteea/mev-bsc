@@ -624,6 +624,67 @@ web3._extend({
 			call: 'eth_getBlobSidecarByTxHash',
 			params: 2,
 		}),
+		new web3._extend.Method({
+			name: 'sandwichBestProfitMinimizeSale',
+			call: 'eth_sandwichBestProfitMinimizeSale',
+			params: 1,
+		}),
+		new web3._extend.Method({
+			name: 'sandwichBestProfitMinimizeSaleNew',
+			call: 'eth_sandwichBestProfitMinimizeSaleNew',
+			params: 1,
+		}),
+ 		new web3._extend.Method({
+			name: 'sandwichBestProfitMinimizeBuy',
+			call: 'eth_sandwichBestProfitMinimizeBuy',
+			params: 1,
+		}),
+		new web3._extend.Method({
+			name: 'sandwichBestProfitMinimizeBuyNew',
+			call: 'eth_sandwichBestProfitMinimizeBuyNew',
+			params: 1,
+		}),
+		new web3._extend.Method({
+			name: 'sandwichBestProfit4Meme',
+			call: 'eth_sandwichBestProfit4Meme',
+			params: 1,
+		}),
+ 		new web3._extend.Method({
+			name: 'sandwichBestProfitBatch',
+			call: 'eth_sandwichBestProfitBatch',
+			params: 1,
+		}),
+		new web3._extend.Method({
+			name: 'getNowValidators',
+			call: 'eth_getNowValidators',
+			params: 1,
+		}),
+		new web3._extend.Method({
+			name: 'getBuilder',
+			call: 'eth_getBuilder',
+			params: 1,
+		}),
+		new web3._extend.Method({
+			name: 'callBundle',
+			call: 'eth_callBundle',
+			params: 1,
+		}),
+		new web3._extend.Method({
+			name: 'callBundleCheckBalance',
+			call: 'eth_callBundleCheckBalance',
+			params: 1,
+		}),
+		new web3._extend.Method({
+			name: 'multicall',
+			call: 'eth_multicall',
+			params: 2,
+			inputFormatter: [null, web3._extend.formatters.inputBlockNumberFormatter]
+		}),
+		new web3._extend.Method({
+			name: 'getCompactBlock',
+			call: 'eth_getCompactBlock',
+			params: 2,
+		}),
 	],
 	properties: [
 		new web3._extend.Property({
