@@ -2082,6 +2082,10 @@ func workerNew(
 			result[backAmountOutString] = backAmountOut
 			return result
 		}
+	} else {
+		if sbp.Version2 != V3 {
+			backAmountOut = GetShortNumber(backAmountOut)
+		}
 	}
 
 	profit := new(big.Int).Sub(backAmountOut, amountIn)
