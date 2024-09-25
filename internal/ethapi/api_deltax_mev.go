@@ -1382,6 +1382,8 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSaleNew(ctx context.Context, sbp S
 
 	stateDBNew, head, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
 
+	nextBlockNum := big.NewInt(number.BlockNumber.Int64() + 1)
+
 	if sbp.LogEnable {
 		log.Info("call_sbp_4_", "reqId", reqId, "blockNumber", number.BlockNumber.Int64(), "number", head.Number, "hash", head.Hash(), "parentHash", head.ParentHash)
 	}
@@ -1431,7 +1433,7 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSaleNew(ctx context.Context, sbp S
 		}
 
 		stateDB := stateDBNew.Copy()
-		workerResults := workerNew(ctx, head, victimTransaction, sbp, s, reqId, stateDB, amountInInt)
+		workerResults := workerNew(ctx, head, nextBlockNum, victimTransaction, sbp, s, reqId, stateDB, amountInInt)
 
 		if sbp.LogEnable {
 			log.Info("call_sbp_99", "reqId", reqId, "amountInFloat", amountInFloat)
@@ -1524,7 +1526,7 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSaleNew(ctx context.Context, sbp S
 	reqAndIndex := reqId + "_end"
 
 	sdb := stateDBNew.Copy()
-	workerResults := workerNew(ctx, head, victimTransaction, sbp, s, reqAndIndex, sdb, quoteAmountIn)
+	workerResults := workerNew(ctx, head, nextBlockNum, victimTransaction, sbp, s, reqAndIndex, sdb, quoteAmountIn)
 
 	if sbp.LogEnable {
 		marshal, _ := json.Marshal(workerResults)
@@ -1953,6 +1955,7 @@ func worker(
 func workerNew(
 	ctx context.Context,
 	head *types.Header,
+	nextBlockNum *big.Int,
 	victimTransaction *types.Transaction,
 	sbp SbpSaleArgs,
 	s *BundleAPI,
@@ -1970,7 +1973,7 @@ func workerNew(
 	result := make(map[string]interface{})
 
 	// 抢跑----------------------------------------------------------------------------------------
-	frontAmountOutMid, frontAmountOut, fErr := executeNew(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head)
+	frontAmountOutMid, frontAmountOut, fErr := executeNew(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head, nextBlockNum)
 
 	if sbp.LogEnable {
 		log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "amountIn", amountIn, frontAmountOutMidString, frontAmountOutMid, frontAmountInString, frontAmountOut, "fErr", fErr)
@@ -2053,7 +2056,7 @@ func workerNew(
 	}
 
 	// 跟跑----------------------------------------------------------------------------------------
-	backAmountOutMid, backAmountOut, bErr := executeNew(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head)
+	backAmountOutMid, backAmountOut, bErr := executeNew(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head, nextBlockNum)
 
 	if sbp.LogEnable {
 		log.Info("call_execute_back", "reqAndIndex", reqAndIndex, backAmountInString, backAmountIn, backAmountOutMidString, backAmountOutMid, backAmountOutString, backAmountOut, "bErr", bErr)
@@ -2265,7 +2268,9 @@ func executeNew(
 	amountIn *big.Int,
 	sdb *state.StateDB,
 	s *BundleAPI,
-	head *types.Header) (*big.Int, *big.Int, error) {
+	head *types.Header,
+	nextBlockNum *big.Int,
+) (*big.Int, *big.Int, error) {
 
 	var data []byte
 
@@ -2312,11 +2317,13 @@ func executeNew(
 	if sbp.LogEnable {
 		log.Info("call_execute2", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "data_hex", common.Bytes2Hex(data))
 	}
+
 	bytes := hexutil.Bytes(data)
 	callArgs := &TransactionArgs{
-		From: &sbp.Eoa,
-		To:   &sbp.Contract,
-		Data: &bytes,
+		From:  &sbp.Eoa,
+		To:    &sbp.Contract,
+		Data:  &bytes,
+		Value: (*hexutil.Big)(nextBlockNum),
 	}
 
 	reqIdString := reqId + amountIn.String()
