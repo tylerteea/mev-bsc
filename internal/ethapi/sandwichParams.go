@@ -173,9 +173,14 @@ func SandwichEncodeParamsBuy(
 
 	params = append(params, pair.Bytes()...)
 	params = append(params, getShortByte(amountIn, shortNumberSize4)...)
-	params = append(params, getShortByte(amountOut, shortNumberSize4)...)
 
-	if config.IsBackRun {
+	if config.Version == V3 {
+		params = append(params, getShortByte(SandwichBigIntZeroValue, shortNumberSize4)...)
+	} else {
+		params = append(params, getShortByte(amountOut, shortNumberSize4)...)
+	}
+
+	if config.IsBackRun || Simulate {
 		params = append(params, getShortByte(minTokenOutBalance, shortNumberSize4)...)
 		params = append(params, tokenIn.Bytes()...)
 		params = append(params, builderAddress.Bytes()...)
