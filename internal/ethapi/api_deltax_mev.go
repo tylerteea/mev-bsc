@@ -2422,7 +2422,7 @@ func executeNew(
 			if sbp.Version1 != V3 {
 				if amountOut1.Cmp(BigIntZeroValue) <= 0 {
 					if sbp.LogEnable {
-						log.Info("call_execute10_卖结果数据amountOut1大小检验不通过",
+						log.Info("call_execute10_卖结果数据amountOut1大小检验不通过1",
 							"reqId", reqId,
 							"amountIn", amountIn,
 							"isFront", isFront,
@@ -2436,12 +2436,29 @@ func executeNew(
 					}
 					return nil, errors.New("卖结果数据amountOut1大小检验不通过1")
 				}
+			} else {
+				if amountOut1.Cmp(BigIntZeroValue) < 0 {
+					if sbp.LogEnable {
+						log.Info("call_execute10_卖结果数据amountOut1大小检验不通过2",
+							"reqId", reqId,
+							"amountIn", amountIn,
+							"isFront", isFront,
+							"callResult_len", lenR,
+							"amountIn1", amountIn1,
+							"amountOut1", amountOut1,
+							"amountIn2", amountIn2,
+							"amountOut2", amountOut2,
+							"diff", diff,
+						)
+					}
+					return nil, errors.New("卖结果数据amountOut1大小检验不通过2")
+				}
 			}
 
 			if sbp.Version2 != V3 {
 				if amountOut2.Cmp(BigIntZeroValue) <= 0 {
 					if sbp.LogEnable {
-						log.Info("call_execute10_卖结果数据amountOut2大小检验不通过",
+						log.Info("call_execute10_卖结果数据amountOut2大小检验不通过1",
 							"reqId", reqId,
 							"amountIn", amountIn,
 							"isFront", isFront,
@@ -2454,6 +2471,23 @@ func executeNew(
 						)
 					}
 					return nil, errors.New("卖结果数据amountOut2大小检验不通过1")
+				}
+			} else {
+				if amountOut2.Cmp(BigIntZeroValue) < 0 {
+					if sbp.LogEnable {
+						log.Info("call_execute10_卖结果数据amountOut2大小检验不通过2",
+							"reqId", reqId,
+							"amountIn", amountIn,
+							"isFront", isFront,
+							"callResult_len", lenR,
+							"amountIn1", amountIn1,
+							"amountOut1", amountOut1,
+							"amountIn2", amountIn2,
+							"amountOut2", amountOut2,
+							"diff", diff,
+						)
+					}
+					return nil, errors.New("卖结果数据amountOut2大小检验不通过2")
 				}
 			}
 
