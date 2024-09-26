@@ -48,11 +48,13 @@ const (
 	front_amount_out_1 = "frontAmountOut1"
 	front_amount_in_2  = "frontAmountIn2"
 	front_amount_out_2 = "frontAmountOut2"
+	front_diff         = "frontDiff"
 
 	back_amount_in_1  = "backAmountIn1"
 	back_amount_out_1 = "backAmountOut1"
 	back_amount_in_2  = "backAmountIn2"
 	back_amount_out_2 = "backAmountOut2"
+	back_diff         = "backDiff"
 
 	profitString = "profit"
 	errorString  = "error"
@@ -2069,20 +2071,24 @@ func workerNew(
 	if sbp.BuyOrSale {
 		result[front_amount_in_1] = frontContractReturn.PathAmounts[0].AmountIn
 		result[front_amount_out_1] = frontContractReturn.PathAmounts[0].AmountOut
+		result[front_diff] = frontContractReturn.Diff
 
 		result[back_amount_in_1] = backContractReturn.PathAmounts[0].AmountIn
 		result[back_amount_out_1] = backContractReturn.PathAmounts[0].AmountOut
+		result[back_diff] = backContractReturn.Diff
 
 	} else {
 		result[front_amount_in_1] = frontContractReturn.PathAmounts[0].AmountIn
 		result[front_amount_out_1] = frontContractReturn.PathAmounts[0].AmountOut
 		result[front_amount_in_2] = frontContractReturn.PathAmounts[1].AmountIn
 		result[front_amount_out_2] = frontContractReturn.PathAmounts[1].AmountOut
+		result[front_diff] = frontContractReturn.Diff
 
 		result[back_amount_in_1] = backContractReturn.PathAmounts[0].AmountIn
 		result[back_amount_out_1] = backContractReturn.PathAmounts[0].AmountOut
 		result[back_amount_in_2] = backContractReturn.PathAmounts[1].AmountIn
 		result[back_amount_out_2] = backContractReturn.PathAmounts[1].AmountOut
+		result[back_diff] = backContractReturn.Diff
 	}
 
 	result[profitString] = profit
