@@ -1986,7 +1986,6 @@ func workerNew(
 	result := make(map[string]interface{})
 
 	// 抢跑----------------------------------------------------------------------------------------
-	amountIn = GetShortNumber(amountIn)
 	frontContractReturn, fErr := executeNew(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head, nextBlockNum)
 
 	if sbp.LogEnable {
@@ -2044,7 +2043,7 @@ func workerNew(
 		return result
 	}
 
-	backAmountIn := GetShortNumber(frontContractReturn.Diff)
+	backAmountIn := frontContractReturn.Diff
 	// 跟跑----------------------------------------------------------------------------------------
 	backContractReturn, bErr := executeNew(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head, nextBlockNum)
 
@@ -2059,7 +2058,9 @@ func workerNew(
 		return result
 	}
 
-	backContractReturn.Diff = GetShortNumber(backContractReturn.Diff)
+	if sbp.BuyOrSale && sbp.Version2 != V3 {
+		backContractReturn.Diff = GetShortNumber(backContractReturn.Diff)
+	}
 
 	profit := new(big.Int).Sub(backContractReturn.Diff, frontContractReturn.PathAmounts[0].AmountIn)
 
@@ -2282,6 +2283,7 @@ func executeNew(
 
 		if sbp.BuyOrSale {
 
+			amountIn = GetShortNumber(amountIn)
 			// 模拟的时候都检查税，正式发不检查
 			frontBuyConfig := NewBuyConfig(true, true, false, boolToInt(sbp.ZeroForOne2))
 			frontMinTokenOutBalance := BigIntZeroValue
@@ -2299,6 +2301,7 @@ func executeNew(
 
 		if sbp.BuyOrSale {
 
+			amountIn = GetShortNumber(amountIn)
 			// 模拟的时候都检查税，正式发不检查
 			backBuyConfig := NewBuyConfig(true, true, false, boolToInt(!sbp.ZeroForOne2))
 			data = encodeParamsBuyNew(sbp.Version2, false, amountIn, sbp.PairOrPool2, sbp.Token3, sbp.Token2, backBuyConfig, sbp.Fee2, BigIntZeroValue, sbp.MinTokenOutBalance, sbp.BriberyAddress, briberyWei)
