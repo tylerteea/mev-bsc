@@ -2293,7 +2293,7 @@ func executeNew(
 			frontSaleConfig := NewSaleConfig(!isFront, true, true, false)
 			frontSaleOption := NewSaleOption(boolToInt(sbp.ZeroForOne2), sbp.Version2, boolToInt(sbp.ZeroForOne1), sbp.Version1)
 
-			data = encodeParamsSaleNew(amountIn, sbp.PairOrPool1, sbp.PairOrPool2, sbp.Token1, sbp.Token2, sbp.Token3, frontSaleOption, frontSaleConfig, sbp.Fee1, sbp.Fee2, BigIntZeroValue, BigIntZeroValue, sbp.MinTokenOutBalance, sbp.BriberyAddress, briberyWei)
+			data = encodeParamsSaleNew(amountIn, BigIntZeroValue, BigIntZeroValue, BigIntZeroValue, sbp.PairOrPool1, sbp.PairOrPool2, sbp.Token1, sbp.Token2, sbp.Token3, frontSaleOption, frontSaleConfig, sbp.Fee1, sbp.Fee2, sbp.MinTokenOutBalance, sbp.BriberyAddress, briberyWei)
 		}
 	} else {
 
@@ -2308,7 +2308,7 @@ func executeNew(
 			backSaleConfig := NewSaleConfig(!isFront, true, true, false)
 			backSaleOption := NewSaleOption(boolToInt(!sbp.ZeroForOne1), sbp.Version1, boolToInt(!sbp.ZeroForOne2), sbp.Version2)
 
-			data = encodeParamsSaleNew(amountIn, sbp.PairOrPool2, sbp.PairOrPool1, sbp.Token3, sbp.Token2, sbp.Token1, backSaleOption, backSaleConfig, sbp.Fee2, sbp.Fee1, BigIntZeroValue, BigIntZeroValue, sbp.MinTokenOutBalance, sbp.BriberyAddress, briberyWei)
+			data = encodeParamsSaleNew(amountIn, BigIntZeroValue, BigIntZeroValue, BigIntZeroValue, sbp.PairOrPool2, sbp.PairOrPool1, sbp.Token3, sbp.Token2, sbp.Token1, backSaleOption, backSaleConfig, sbp.Fee2, sbp.Fee1, sbp.MinTokenOutBalance, sbp.BriberyAddress, briberyWei)
 		}
 	}
 

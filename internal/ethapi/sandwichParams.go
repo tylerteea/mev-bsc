@@ -359,7 +359,10 @@ func getShortByte(number *big.Int, shortNumberSize int) []byte {
 }
 
 func encodeParamsSaleNew(
-	amountIn *big.Int,
+	amountIn1 *big.Int,
+	amountOut1 *big.Int,
+	amountIn2 *big.Int,
+	amountOut2 *big.Int,
 
 	pairOrPool1 common.Address,
 	pairOrPool2 common.Address,
@@ -374,9 +377,6 @@ func encodeParamsSaleNew(
 	fee1 *big.Int,
 	fee2 *big.Int,
 
-	amountOut1 *big.Int,
-	amountOut2 *big.Int,
-
 	minTokenOutBalance *big.Int,
 	builderAddress common.Address,
 	briberyWei *big.Int,
@@ -390,7 +390,7 @@ func encodeParamsSaleNew(
 		Version:     option.Version1,
 		CheckTax:    true,
 		Fee:         fee1,
-		AmountIn:    amountIn,
+		AmountIn:    amountIn1,
 		AmountOut:   amountOut1,
 	}
 
@@ -402,7 +402,7 @@ func encodeParamsSaleNew(
 		Version:     option.Version2,
 		CheckTax:    true,
 		Fee:         fee2,
-		AmountIn:    amountOut1,
+		AmountIn:    amountIn2,
 		AmountOut:   amountOut2,
 	}
 
@@ -412,7 +412,7 @@ func encodeParamsSaleNew(
 
 	configNew := NewSaleConfigNew(config.CalcAmountOut, config.IsBackRun, config.FeeToBuilder)
 
-	result := SandwichEncodeParamsSale(configNew, commonPathInfos, amountIn, minTokenOutBalance, builderAddress, briberyWei)
+	result := SandwichEncodeParamsSale(configNew, commonPathInfos, amountIn1, minTokenOutBalance, builderAddress, briberyWei)
 
 	return result
 }
