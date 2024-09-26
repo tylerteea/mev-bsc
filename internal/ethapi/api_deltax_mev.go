@@ -2059,14 +2059,9 @@ func workerNew(
 		return result
 	}
 
-	finalBackAmountOut := backContractReturn.Diff
-	if sbp.BuyOrSale {
-		if sbp.Version2 != V3 {
-			finalBackAmountOut = GetShortNumber(backContractReturn.Diff)
-		}
-	}
+	backContractReturn.Diff = GetShortNumber(backContractReturn.Diff)
 
-	profit := new(big.Int).Sub(finalBackAmountOut, frontContractReturn.PathAmounts[0].AmountIn)
+	profit := new(big.Int).Sub(backContractReturn.Diff, frontContractReturn.PathAmounts[0].AmountIn)
 
 	if sbp.BuyOrSale {
 		result[front_amount_in_1] = frontContractReturn.PathAmounts[0].AmountIn
