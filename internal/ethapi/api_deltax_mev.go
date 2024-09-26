@@ -2379,11 +2379,20 @@ func executeNew(
 			amountOut := new(big.Int).SetBytes(callResult.Return()[:32])
 			diff := new(big.Int).SetBytes(callResult.Return()[32:64])
 
-			if amountOut.Cmp(BigIntZeroValue) <= 0 || diff.Cmp(BigIntZeroValue) <= 0 {
+			if diff.Cmp(BigIntZeroValue) <= 0 {
 				if sbp.LogEnable {
-					log.Info("call_execute8_买结果数据大小检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOut", amountOut.String(), "diff", diff.String())
+					log.Info("call_execute8_买结果数据diff检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOut", amountOut, "diff", diff)
 				}
-				return nil, errors.New("买结果数据大小检验不通过1")
+				return nil, errors.New("买结果数据diff检验不通过1")
+			}
+
+			if sbp.Version2 != V3 {
+				if amountOut.Cmp(BigIntZeroValue) <= 0 {
+					if sbp.LogEnable {
+						log.Info("call_execute8_v2买结果数据大小检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOut", amountOut, "diff", diff)
+					}
+					return nil, errors.New("v2买结果数据大小检验不通过1")
+				}
 			}
 
 			pathAmount := &PathAmount{
@@ -2391,14 +2400,10 @@ func executeNew(
 				AmountOut: amountOut,
 				Step:      1,
 			}
-
-			pathAmounts := []*PathAmount{pathAmount}
-
 			contractResult = &ContractResult{
-				PathAmounts: pathAmounts,
+				PathAmounts: []*PathAmount{pathAmount},
 				Diff:        diff,
 			}
-
 		} else {
 			if sbp.LogEnable {
 				log.Info("call_execute9_买结果数据大小检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR)
@@ -2414,13 +2419,45 @@ func executeNew(
 			amountOut2 := new(big.Int).SetBytes(callResult.Return()[96:128])
 			diff := new(big.Int).SetBytes(callResult.Return()[128:160])
 
-			if amountIn1.Cmp(BigIntZeroValue) <= 0 ||
-				amountOut1.Cmp(BigIntZeroValue) <= 0 ||
-				amountIn2.Cmp(BigIntZeroValue) <= 0 ||
-				amountOut2.Cmp(BigIntZeroValue) <= 0 ||
-				diff.Cmp(BigIntZeroValue) <= 0 ||
-				amountIn.Cmp(amountIn1) != 0 {
+			if sbp.Version1 != V3 {
+				if amountOut1.Cmp(BigIntZeroValue) <= 0 {
+					if sbp.LogEnable {
+						log.Info("call_execute10_卖结果数据amountOut1大小检验不通过",
+							"reqId", reqId,
+							"amountIn", amountIn,
+							"isFront", isFront,
+							"callResult_len", lenR,
+							"amountIn1", amountIn1,
+							"amountOut1", amountOut1,
+							"amountIn2", amountIn2,
+							"amountOut2", amountOut2,
+							"diff", diff,
+						)
+					}
+					return nil, errors.New("卖结果数据amountOut1大小检验不通过1")
+				}
+			}
 
+			if sbp.Version2 != V3 {
+				if amountOut2.Cmp(BigIntZeroValue) <= 0 {
+					if sbp.LogEnable {
+						log.Info("call_execute10_卖结果数据amountOut2大小检验不通过",
+							"reqId", reqId,
+							"amountIn", amountIn,
+							"isFront", isFront,
+							"callResult_len", lenR,
+							"amountIn1", amountIn1,
+							"amountOut1", amountOut1,
+							"amountIn2", amountIn2,
+							"amountOut2", amountOut2,
+							"diff", diff,
+						)
+					}
+					return nil, errors.New("卖结果数据amountOut2大小检验不通过1")
+				}
+			}
+
+			if amountIn1.Cmp(BigIntZeroValue) <= 0 || amountIn2.Cmp(BigIntZeroValue) <= 0 || diff.Cmp(BigIntZeroValue) <= 0 {
 				if sbp.LogEnable {
 					log.Info("call_execute10_卖结果数据大小检验不通过",
 						"reqId", reqId,
@@ -2448,13 +2485,10 @@ func executeNew(
 				Step:      2,
 			}
 
-			pathAmounts := []*PathAmount{pathAmount1, pathAmount2}
-
 			contractResult = &ContractResult{
-				PathAmounts: pathAmounts,
+				PathAmounts: []*PathAmount{pathAmount1, pathAmount2},
 				Diff:        diff,
 			}
-
 		} else {
 			if sbp.LogEnable {
 				log.Info("call_execute11_卖结果数据长度检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR)
