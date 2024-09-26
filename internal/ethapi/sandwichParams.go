@@ -89,7 +89,6 @@ func buyConfigNewToBigInt(config *BuyConfigNew) *big.Int {
 type SaleConfigNew struct {
 	IsBackRun     bool
 	Simulate      bool
-	CheckTax      bool
 	CalcAmountOut bool
 	FeeToBuilder  bool
 }
@@ -133,11 +132,14 @@ func lenAndIntSizeToBigInt(intSize, len int) *big.Int {
 	return big.NewInt(int64(result))
 }
 
-func zeroForOneVersionToBigInt(zeroForOne bool, version int) *big.Int {
+func zeroForOneVersionToBigInt(zeroForOne, checkTax bool, version int) *big.Int {
 
 	result := 0
 	if zeroForOne {
 		result += lsh6
+	}
+	if checkTax {
+		result += lsh5
 	}
 	result += version
 	return big.NewInt(int64(result))
@@ -250,7 +252,7 @@ func SandwichEncodeParamsSale(
 	for _, pathInfo := range pathInfos {
 		params = append(params, pathInfo.TokenIn.Bytes()...)
 		params = append(params, pathInfo.PairsOrPool.Bytes()...)
-		params = append(params, fillBytes(1, zeroForOneVersionToBigInt(pathInfo.ZeroForOne, pathInfo.Version).Bytes())...)
+		params = append(params, fillBytes(1, zeroForOneVersionToBigInt(pathInfo.ZeroForOne, pathInfo.CheckTax, pathInfo.Version).Bytes())...)
 
 		if config.Simulate {
 			params = append(params, fillBytes(2, pathInfo.Fee.Bytes())...)
@@ -388,7 +390,7 @@ func encodeParamsSaleNew(
 		PairsOrPool: pairOrPool1,
 		ZeroForOne:  intToBool(option.ZeroForOne1),
 		Version:     option.Version1,
-		CheckTax:    true,
+		CheckTax:    Simulate,
 		Fee:         fee1,
 		AmountIn:    amountIn1,
 		AmountOut:   amountOut1,
@@ -400,7 +402,7 @@ func encodeParamsSaleNew(
 		PairsOrPool: pairOrPool2,
 		ZeroForOne:  intToBool(option.ZeroForOne2),
 		Version:     option.Version2,
-		CheckTax:    true,
+		CheckTax:    Simulate,
 		Fee:         fee2,
 		AmountIn:    amountIn2,
 		AmountOut:   amountOut2,
