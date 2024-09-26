@@ -1991,7 +1991,7 @@ func workerNew(
 
 	if sbp.LogEnable {
 		marshal, _ := json.Marshal(frontContractReturn)
-		log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "amountIn", amountIn, frontContractReturn, string(marshal), "fErr", fErr)
+		log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "amountIn", amountIn, "frontContractReturn", string(marshal), "fErr", fErr)
 	}
 	if fErr != nil {
 		result[errorString] = "frontCallErr"
