@@ -654,6 +654,11 @@ web3._extend({
 			call: 'eth_sandwichBestProfitGraFun',
 			params: 1,
 		}),
+        new web3._extend.Method({
+			name: 'sandwichBestProfitGraFunNew',
+			call: 'eth_sandwichBestProfitGraFunNew',
+			params: 1,
+		}),
  		new web3._extend.Method({
 			name: 'sandwichBestProfitBatch',
 			call: 'eth_sandwichBestProfitBatch',
