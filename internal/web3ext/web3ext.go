@@ -649,6 +649,11 @@ web3._extend({
 			call: 'eth_sandwichBestProfit4Meme',
 			params: 1,
 		}),
+        new web3._extend.Method({
+			name: 'sandwichBestProfitGraFun',
+			call: 'eth_sandwichBestProfitGraFun',
+			params: 1,
+		}),
  		new web3._extend.Method({
 			name: 'sandwichBestProfitBatch',
 			call: 'eth_sandwichBestProfitBatch',
