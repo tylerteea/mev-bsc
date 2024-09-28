@@ -371,9 +371,16 @@ func workerGraFunNew(
 
 	//-----------token balance ------------------------------------------------------------------------
 	tokenBalance, tbErr := getERC20TokenBalance(ctx, s, sbp.Token, sbp.Eoa, statedb, head)
-	if tbErr != nil || tokenBalance == nil || tokenBalance.Cmp(BigIntZeroValue) == 0 {
+	if tbErr != nil {
 		result[errorString] = "get_token_balance_err"
 		result[reasonString] = tbErr.Error()
+		result[frontAmountInString] = amountIn.String()
+		return result
+	}
+
+	if tokenBalance == nil || tokenBalance.Cmp(BigIntZeroValue) == 0 {
+		result[errorString] = "get_token_balance_0_err"
+		result[reasonString] = "get_token_balance_0_err"
 		result[frontAmountInString] = amountIn.String()
 		return result
 	}
