@@ -21,8 +21,24 @@ import (
 	"time"
 )
 
+type SbpGraFunArgsNew struct {
+	Eoa             common.Address `json:"eoa"`
+	Contract        common.Address `json:"contract"`
+	Balance         *big.Int       `json:"balance"`
+	Token           common.Address `json:"token"`
+	AmountInMin     *big.Int       `json:"amountInMin"`
+	VictimTxHash    common.Hash    `json:"vTxHash"`
+	ReqId           string         `json:"reqId"`
+	FuncEvaluations int            `json:"funcEvaluations"`
+	RunTimeout      int            `json:"runTimeout"`
+	Iterations      int            `json:"iterations"`
+	Concurrent      int            `json:"concurrent"`
+	InitialValues   float64        `json:"initialValues"`
+	LogEnable       bool           `json:"logEnable"`
+}
+
 // SandwichBestProfitGraFunNew profit calculate
-func (s *BundleAPI) SandwichBestProfitGraFunNew(ctx context.Context, sbp SbpGraFunArgs) map[string]interface{} {
+func (s *BundleAPI) SandwichBestProfitGraFunNew(ctx context.Context, sbp SbpGraFunArgsNew) map[string]interface{} {
 
 	result := make(map[string]interface{})
 
@@ -274,7 +290,7 @@ func workerGraFunNew(
 	head *types.Header,
 	nextBlockNum *big.Int,
 	victimTransaction *types.Transaction,
-	sbp SbpGraFunArgs,
+	sbp SbpGraFunArgsNew,
 	s *BundleAPI,
 	reqAndIndex string,
 	statedb *state.StateDB,
@@ -290,7 +306,7 @@ func workerGraFunNew(
 
 	result := make(map[string]interface{})
 
-	eoaBalanceBefore := statedb.GetBalance(sbp.Eoa).ToBig()
+	caBalanceBefore := statedb.GetBalance(sbp.Contract).ToBig()
 	//-----------token balance before ------------------------------------------------------------------------
 	//tokenBalanceBefore, tbErr := getERC20TokenBalance(ctx, s, sbp.Token, sbp.Eoa, statedb, head)
 	//if tbErr != nil || tokenBalanceBefore == nil {
@@ -370,7 +386,7 @@ func workerGraFunNew(
 	}
 
 	//-----------token balance ------------------------------------------------------------------------
-	tokenBalance, tbErr := getERC20TokenBalance(ctx, s, sbp.Token, sbp.Eoa, statedb, head)
+	tokenBalance, tbErr := getERC20TokenBalance(ctx, s, sbp.Token, sbp.Contract, statedb, head)
 	if tbErr != nil {
 		result[errorString] = "get_token_balance_err"
 		result[reasonString] = tbErr.Error()
@@ -389,12 +405,12 @@ func workerGraFunNew(
 	backAmountIn := tokenBalance
 
 	bErr := executeGraFunNew(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head, nextBlockNum)
-	eoaBalanceAfter := statedb.GetBalance(sbp.Eoa).ToBig()
+	caBalanceAfter := statedb.GetBalance(sbp.Contract).ToBig()
 
 	if sbp.LogEnable {
-		log.Info("call_execute_back", "reqAndIndex", reqAndIndex, backAmountInString, backAmountIn, backAmountOutString, eoaBalanceAfter, "bErr", bErr)
+		log.Info("call_execute_back", "reqAndIndex", reqAndIndex, backAmountInString, backAmountIn, backAmountOutString, caBalanceAfter, "bErr", bErr)
 	}
-	if bErr != nil || eoaBalanceAfter.Cmp(BigIntZeroValue) <= 0 {
+	if bErr != nil || caBalanceAfter.Cmp(BigIntZeroValue) <= 0 {
 		result[errorString] = "backCallErr"
 		result[reasonString] = bErr.Error()
 		result[frontAmountInString] = amountIn
@@ -402,7 +418,7 @@ func workerGraFunNew(
 		return result
 	}
 
-	profit := new(big.Int).Sub(eoaBalanceAfter, eoaBalanceBefore)
+	profit := new(big.Int).Sub(caBalanceAfter, caBalanceBefore)
 	backAmountOut := new(big.Int).Add(amountIn, profit)
 
 	result[frontAmountInString] = amountIn
@@ -426,7 +442,7 @@ func executeGraFunNew(
 	ctx context.Context,
 	reqId string,
 	isFront bool,
-	sbp SbpGraFunArgs,
+	sbp SbpGraFunArgsNew,
 	amountIn *big.Int,
 	sdb *state.StateDB,
 	s *BundleAPI,
