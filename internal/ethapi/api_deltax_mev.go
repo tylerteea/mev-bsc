@@ -2513,7 +2513,7 @@ func executeNew(
 			}
 
 			pathAmount1 := &PathAmount{
-				AmountIn:  amountIn1,
+				AmountIn:  amountIn, //不使用amountIn1,因为返回的是减1的，使用原始的amountIn
 				AmountOut: amountOut1,
 				Step:      1,
 			}
