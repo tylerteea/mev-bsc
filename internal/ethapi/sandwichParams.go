@@ -251,7 +251,7 @@ func SandwichEncodeParamsSale(
 
 	params := make([]byte, 0)
 	params = append(params, sandwichSelectorSale...)
-	params = append(params, fillBytes(1, lenAndIntSizeToBigInt(IntSize4, len(pathInfos)).Bytes())...)
+	params = append(params, fillBytes(1, lenAndIntSizeToBigInt(intSize, len(pathInfos)).Bytes())...)
 	params = append(params, fillBytes(1, saleConfigNewToBigInt(config).Bytes())...)
 	params = append(params, getShortByte(amountIn, shortNumberSize4)...)
 	params = append(params, getShortByte(minTokenOutBalance, shortNumberSize4)...)
