@@ -202,6 +202,7 @@ func SandwichEncodeParamsBuy(
 }
 
 func SandwichEncodeParamsSale(
+	reqId string,
 	config *SaleConfigNew,
 	pathInfos []*CommonPathInfo,
 	amountIn *big.Int,
@@ -210,30 +211,36 @@ func SandwichEncodeParamsSale(
 	briberyWei *big.Int,
 ) []byte {
 
-	var numbers []*big.Int
-	numbers = append(numbers, amountIn)
-	numbers = append(numbers, minTokenOutBalance)
-	numbers = append(numbers, briberyWei)
-
-	for _, pathInfo := range pathInfos {
-		if config.Simulate {
-			numbers = append(numbers, pathInfo.Fee)
-		} else {
-			numbers = append(numbers, pathInfo.AmountIn)
-			numbers = append(numbers, pathInfo.AmountOut)
-		}
-	}
-
+	var shortNumberSize int
 	var intSize int
 
-	for _, number := range numbers {
-		i := len(number.Bytes())
-		if i > intSize {
-			intSize = i
-		}
-	}
+	if !config.CalcAmountOut {
 
-	shortNumberSize := intSize * 8
+		var numbers []*big.Int
+		for index, pathInfo := range pathInfos {
+			if index == 0 {
+				if pathInfo.Version != V3 {
+					numbers = append(numbers, pathInfo.AmountOut)
+				}
+			} else if index == 1 {
+				if pathInfo.Version == V3 {
+					numbers = append(numbers, pathInfo.AmountIn)
+				} else {
+					numbers = append(numbers, pathInfo.AmountOut)
+				}
+			}
+		}
+
+		for _, number := range numbers {
+			i := len(number.Bytes())
+			if i > intSize {
+				intSize = i
+			}
+		}
+
+		shortNumberSize = intSize * 8
+
+	}
 
 	numberMap := make(map[string][]byte)
 
@@ -244,21 +251,32 @@ func SandwichEncodeParamsSale(
 
 	params := make([]byte, 0)
 	params = append(params, sandwichSelectorSale...)
-	params = append(params, fillBytes(1, lenAndIntSizeToBigInt(intSize, len(pathInfos)).Bytes())...)
+	params = append(params, fillBytes(1, lenAndIntSizeToBigInt(IntSize4, len(pathInfos)).Bytes())...)
 	params = append(params, fillBytes(1, saleConfigNewToBigInt(config).Bytes())...)
-	params = append(params, fillBytes(1, getIndexAndSetNumber(intSize, shortNumberSize, amountIn, &numberHeap, numberMap))...)
-	params = append(params, fillBytes(1, getIndexAndSetNumber(intSize, shortNumberSize, minTokenOutBalance, &numberHeap, numberMap))...)
+	params = append(params, getShortByte(amountIn, shortNumberSize4)...)
+	params = append(params, getShortByte(minTokenOutBalance, shortNumberSize4)...)
 
-	for _, pathInfo := range pathInfos {
+	for index, pathInfo := range pathInfos {
 		params = append(params, pathInfo.TokenIn.Bytes()...)
 		params = append(params, pathInfo.PairsOrPool.Bytes()...)
 		params = append(params, fillBytes(1, zeroForOneVersionToBigInt(pathInfo.ZeroForOne, pathInfo.CheckTax, pathInfo.Version).Bytes())...)
 
-		if config.Simulate {
+		if config.CalcAmountOut {
 			params = append(params, fillBytes(2, pathInfo.Fee.Bytes())...)
 		} else {
-			params = append(params, fillBytes(1, getIndexAndSetNumber(intSize, shortNumberSize, pathInfo.AmountIn, &numberHeap, numberMap))...)
-			params = append(params, fillBytes(1, getIndexAndSetNumber(intSize, shortNumberSize, pathInfo.AmountOut, &numberHeap, numberMap))...)
+			params = append(params, []byte{0x00, 0x00}...)
+
+			if index == 0 {
+				if pathInfo.Version != V3 {
+					getIndexAndSetNumber(intSize, shortNumberSize, pathInfo.AmountOut, &numberHeap, numberMap)
+				}
+			} else if index == 1 {
+				if pathInfo.Version == V3 {
+					getIndexAndSetNumber(intSize, shortNumberSize, pathInfo.AmountIn, &numberHeap, numberMap)
+				} else {
+					getIndexAndSetNumber(intSize, shortNumberSize, pathInfo.AmountOut, &numberHeap, numberMap)
+				}
+			}
 		}
 	}
 
@@ -271,7 +289,7 @@ func SandwichEncodeParamsSale(
 	var briberyWeiByte []byte
 
 	if config.FeeToBuilder {
-		briberyWeiByte = fillBytes(1, getIndexAndSetNumber(intSize, shortNumberSize, briberyWei, &numberHeap, numberMap))
+		briberyWeiByte = getShortByte(briberyWei, shortNumberSize4)
 	}
 
 	params = append(params, numberHeap...)
@@ -283,16 +301,16 @@ func SandwichEncodeParamsSale(
 
 	//config_marshal, _ := json.Marshal(config)
 	//pathInfos_marshal, _ := json.Marshal(pathInfos)
-
 	//logger.WithMethod("searcher.sandwich.callBundle").
-	//	WithField("VictimLength", common.Bytes2Hex(params)).
+	//	WithField("reqId", reqId).
+	//	WithField("params_test", common.Bytes2Hex(params)).
 	//	WithField("config_marshal", string(config_marshal)).
 	//	WithField("pathInfos_marshal", string(pathInfos_marshal)).
 	//	WithField("amountIn", amountIn.String()).
 	//	WithField("minTokenOutBalance", minTokenOutBalance.String()).
 	//	WithField("builderAddress", builderAddress.String()).
 	//	WithField("briberyWei", briberyWei.String()).
-	//	Errorf("SandwichEncodeParamsSale构造参数")
+	//	Errorf("SandwichEncodeParamsSale_test构造参数")
 
 	return params
 }
@@ -361,6 +379,7 @@ func getShortByte(number *big.Int, shortNumberSize int) []byte {
 }
 
 func encodeParamsSaleNew(
+	reqId string,
 	amountIn1 *big.Int,
 	amountOut1 *big.Int,
 	amountIn2 *big.Int,
@@ -414,7 +433,7 @@ func encodeParamsSaleNew(
 
 	configNew := NewSaleConfigNew(config.CalcAmountOut, config.IsBackRun, config.FeeToBuilder)
 
-	result := SandwichEncodeParamsSale(configNew, commonPathInfos, amountIn1, minTokenOutBalance, builderAddress, briberyWei)
+	result := SandwichEncodeParamsSale(reqId, configNew, commonPathInfos, amountIn1, minTokenOutBalance, builderAddress, briberyWei)
 
 	return result
 }
