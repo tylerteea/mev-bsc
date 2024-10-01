@@ -1794,6 +1794,7 @@ func (s *BlockChainAPI) CreateAccessList(ctx context.Context, args TransactionAr
 	}
 	acl, gasUsed, vmerr, err := AccessList(ctx, s.b, bNrOrHash, args)
 	if err != nil {
+		log.Info("accessList_0", "block_num", blockNrOrHash.BlockNumber.Int64(), "data", common.Bytes2Hex(args.data()), "to", args.To.Hex(), "err", err)
 		return nil, err
 	}
 	result := &accessListResult{Accesslist: &acl, GasUsed: hexutil.Uint64(gasUsed)}
@@ -1810,11 +1811,13 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 	// Retrieve the execution context
 	db, header, err := b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
 	if db == nil || err != nil {
+		log.Info("accessList_1", "block_num", blockNrOrHash.BlockNumber.Int64(), "data", common.Bytes2Hex(args.data()), "to", args.To.Hex(), "err", err)
 		return nil, 0, nil, err
 	}
 
 	// Ensure any missing fields are filled, extract the recipient and input data
 	if err := args.setDefaults(ctx, b, true); err != nil {
+		log.Info("accessList_2", "block_num", blockNrOrHash.BlockNumber.Int64(), "data", common.Bytes2Hex(args.data()), "to", args.To.Hex(), "err", err)
 		return nil, 0, nil, err
 	}
 	var to common.Address
@@ -1843,6 +1846,7 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 		args.AccessList = &accessList
 		msg, err := args.ToMessage(b.RPCGasCap(), header.BaseFee)
 		if err != nil {
+			log.Info("accessList_3", "block_num", blockNrOrHash.BlockNumber.Int64(), "data", common.Bytes2Hex(args.data()), "to", args.To.Hex(), "err", err)
 			return nil, 0, nil, err
 		}
 
@@ -1852,6 +1856,7 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 		vmenv := b.GetEVM(ctx, msg, statedb, header, &config, nil)
 		res, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.GasLimit))
 		if err != nil {
+			log.Info("accessList_4", "block_num", blockNrOrHash.BlockNumber.Int64(), "data", common.Bytes2Hex(args.data()), "to", args.To.Hex(), "err", err)
 			return nil, 0, nil, fmt.Errorf("failed to apply transaction: %v err: %v", args.toTransaction().Hash(), err)
 		}
 		if tracer.Equal(prevTracer) {
