@@ -257,7 +257,11 @@ func SandwichEncodeParamsSale(
 	params = append(params, getShortByte(minTokenOutBalance, shortNumberSize4)...)
 
 	for index, pathInfo := range pathInfos {
-		params = append(params, pathInfo.TokenIn.Bytes()...)
+
+		if !(!config.IsBackRun && index == 0) {
+			params = append(params, pathInfo.TokenIn.Bytes()...)
+		}
+
 		params = append(params, pathInfo.PairsOrPool.Bytes()...)
 		params = append(params, fillBytes(1, zeroForOneVersionToBigInt(pathInfo.ZeroForOne, pathInfo.CheckTax, pathInfo.Version).Bytes())...)
 
@@ -280,11 +284,11 @@ func SandwichEncodeParamsSale(
 		}
 	}
 
-	pathLen := len(pathInfos)
-
-	finalToken := pathInfos[pathLen-1].TokenOut
-
-	params = append(params, finalToken.Bytes()...)
+	if config.IsBackRun {
+		pathLen := len(pathInfos)
+		finalToken := pathInfos[pathLen-1].TokenOut
+		params = append(params, finalToken.Bytes()...)
+	}
 
 	var briberyWeiByte []byte
 
