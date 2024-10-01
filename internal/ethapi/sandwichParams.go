@@ -284,7 +284,7 @@ func SandwichEncodeParamsSale(
 		}
 	}
 
-	if config.IsBackRun {
+	if !config.IsBackRun {
 		pathLen := len(pathInfos)
 		finalToken := pathInfos[pathLen-1].TokenOut
 		params = append(params, finalToken.Bytes()...)
