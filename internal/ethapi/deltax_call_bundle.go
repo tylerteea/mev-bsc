@@ -789,16 +789,8 @@ func (s *BundleAPI) CallBundleCheckBalanceAndAccessList(ctx context.Context, arg
 
 					accessListGasUsed := uint64(accessList.GasUsed)
 
-					gasUsed := receipt.GasUsed
-
 					jsonResult["accessListGasUsed"] = accessListGasUsed
 					jsonResult["accessListResult"] = accessList.Accesslist
-
-					if accessListGasUsed < gasUsed {
-						jsonResult["addAccessList"] = true
-					} else {
-						jsonResult["addAccessList"] = false
-					}
 
 				} else {
 					log.Info("call_bundle_createAccessListNew", "reqId", reqId, "err", errAL)
