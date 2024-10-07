@@ -707,61 +707,15 @@ func (s *BundleAPI) CallBundleCheckBalanceAndAccessList(ctx context.Context, arg
 
 		from, err := types.Sender(signer, tx)
 
-		state.Prepare(rules, from, coinbase, tx.To(), vm.ActivePrecompiles(rules), tx.AccessList())
-
-		receipt, result, err := ApplyTransactionWithResult(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, &header.GasUsed, vmconfig)
-		if err != nil {
-			log.Info("CallBundleCheckBalance_12", "reqId", reqId, "err", err)
-			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
-		}
-
-		if err != nil {
-			log.Info("call_bundle_balance_err14", "reqId", reqId, "err", err)
-			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
-		}
-
 		to := "0x"
 		if tx.To() != nil {
 			to = tx.To().String()
 		}
 		jsonResult := map[string]interface{}{
 			"txHash":      tx.Hash().String(),
-			"gasUsed":     receipt.GasUsed,
 			"fromAddress": from.String(),
 			"toAddress":   to,
 		}
-		totalGasUsed += receipt.GasUsed
-
-		gasPrice, err := tx.EffectiveGasTip(header.BaseFee)
-		if err != nil {
-			log.Info("CallBundleCheckBalance_16", "reqId", reqId, "err", err)
-			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
-		}
-
-		gasFeesTx := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), gasPrice)
-
-		// gasFeesTx := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), tx.GasPrice())
-		gasFees.Add(gasFees, gasFeesTx)
-		bundleHash.Write(tx.Hash().Bytes())
-		if result.Err != nil {
-			jsonResult[errorString] = result.Err.Error()
-			revert := result.Revert()
-			if len(revert) > 0 {
-				reason, _ := abi.UnpackRevert(revert)
-				jsonResult["revert"] = reason
-			}
-		} else {
-			dst := make([]byte, hex.EncodedLen(len(result.Return())))
-			hex.Encode(dst, result.Return())
-			jsonResult["value"] = "0x" + string(dst)
-		}
-		// if simulation logs are requested append it to logs
-		if args.SimulationLogs {
-			jsonResult["logs"] = receipt.Logs
-		}
-
-		jsonResult["gasFees"] = gasFeesTx.String()
-		jsonResult["gasUsed"] = receipt.GasUsed
 
 		//--------access list
 
@@ -799,6 +753,55 @@ func (s *BundleAPI) CallBundleCheckBalanceAndAccessList(ctx context.Context, arg
 		}
 
 		//--------access list
+
+		state.Prepare(rules, from, coinbase, tx.To(), vm.ActivePrecompiles(rules), tx.AccessList())
+
+		receipt, result, err := ApplyTransactionWithResult(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, &header.GasUsed, vmconfig)
+		if err != nil {
+			log.Info("CallBundleCheckBalance_12", "reqId", reqId, "err", err)
+			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
+		}
+
+		if err != nil {
+			log.Info("call_bundle_balance_err14", "reqId", reqId, "err", err)
+			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
+		}
+
+		jsonResult["gasUsed"] = receipt.GasUsed
+
+		totalGasUsed += receipt.GasUsed
+
+		gasPrice, err := tx.EffectiveGasTip(header.BaseFee)
+		if err != nil {
+			log.Info("CallBundleCheckBalance_16", "reqId", reqId, "err", err)
+			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
+		}
+
+		gasFeesTx := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), gasPrice)
+
+		// gasFeesTx := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), tx.GasPrice())
+		gasFees.Add(gasFees, gasFeesTx)
+		bundleHash.Write(tx.Hash().Bytes())
+		if result.Err != nil {
+			jsonResult[errorString] = result.Err.Error()
+			revert := result.Revert()
+			if len(revert) > 0 {
+				reason, _ := abi.UnpackRevert(revert)
+				jsonResult["revert"] = reason
+			}
+		} else {
+			dst := make([]byte, hex.EncodedLen(len(result.Return())))
+			hex.Encode(dst, result.Return())
+			jsonResult["value"] = "0x" + string(dst)
+		}
+		// if simulation logs are requested append it to logs
+		if args.SimulationLogs {
+			jsonResult["logs"] = receipt.Logs
+		}
+
+		jsonResult["gasFees"] = gasFeesTx.String()
+		jsonResult["gasUsed"] = receipt.GasUsed
+
 		results = append(results, jsonResult)
 	}
 
