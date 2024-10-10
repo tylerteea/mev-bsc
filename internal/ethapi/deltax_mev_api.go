@@ -490,10 +490,12 @@ type SbpSaleArgs struct {
 	Token2        common.Address `json:"token2"`
 	Token3        common.Address `json:"token3"`
 	PairOrPool1   common.Address `json:"pairOrPool1"`
+	Router1       common.Address `json:"router1"`
 	ZeroForOne1   bool           `json:"zeroForOne1"`
 	Fee1          *big.Int       `json:"fee1"`
 	Version1      int            `json:"version1"`
 	PairOrPool2   common.Address `json:"pairOrPool2"`
+	Router2       common.Address `json:"router2"`
 	ZeroForOne2   bool           `json:"zeroForOne2"`
 	Fee2          *big.Int       `json:"fee2"`
 	Version2      int            `json:"version2"`

@@ -19,14 +19,13 @@ const (
 	lsh6 = 1 << 6
 	lsh5 = 1 << 5
 	lsh4 = 1 << 4
-	lsh3 = 1 << 3
-	lsh2 = 1 << 2
-	lsh1 = 1 << 1
+
 	lsh0 = 1 << 0
 
 	IntSize4         = 4
-	IntSize4Int      = IntSize4 << 4
 	shortNumberSize4 = (IntSize4 - 1) * 8
+
+	Version5 = 5
 )
 
 //-------------------------------------------------------------------
@@ -44,6 +43,7 @@ type (
 		TokenIn     common.Address
 		TokenOut    common.Address
 		PairsOrPool common.Address
+		Router      common.Address
 		ZeroForOne  bool
 		CheckTax    bool
 		Version     int
@@ -158,6 +158,7 @@ func intToBool(i int) bool {
 func SandwichEncodeParamsBuy(
 	config *BuyConfigNew,
 	pair common.Address,
+	routerAddress common.Address,
 	amountIn *big.Int,
 	amountOut *big.Int,
 	minTokenOutBalance *big.Int,
@@ -166,7 +167,6 @@ func SandwichEncodeParamsBuy(
 	bribery *big.Int,
 	tokenOut common.Address,
 	fee *big.Int,
-	routerAddress common.Address,
 ) []byte {
 	params := make([]byte, 0)
 	params = append(params, sandwichSelectorBuy...)
@@ -194,7 +194,7 @@ func SandwichEncodeParamsBuy(
 		params = append(params, fillBytes(2, fee.Bytes())...)
 	}
 
-	if routerAddress != SandwichNullAddress {
+	if config.Version == Version5 && routerAddress != SandwichNullAddress {
 		params = append(params, routerAddress.Bytes()...)
 	}
 
@@ -202,7 +202,6 @@ func SandwichEncodeParamsBuy(
 }
 
 func SandwichEncodeParamsSale(
-	reqId string,
 	config *SaleConfigNew,
 	pathInfos []*CommonPathInfo,
 	amountIn *big.Int,
@@ -230,24 +229,14 @@ func SandwichEncodeParamsSale(
 				}
 			}
 		}
-
 		for _, number := range numbers {
 			i := len(number.Bytes())
 			if i > intSize {
 				intSize = i
 			}
 		}
-
 		shortNumberSize = intSize * 8
-
 	}
-
-	numberMap := make(map[string][]byte)
-
-	numberHeap := []byte{0x00}
-
-	zeroHex := SandwichBigIntZeroValue.String()
-	numberMap[zeroHex] = SandwichBigIntZeroValue.Bytes()
 
 	params := make([]byte, 0)
 	params = append(params, sandwichSelectorSale...)
@@ -255,6 +244,11 @@ func SandwichEncodeParamsSale(
 	params = append(params, fillBytes(1, saleConfigNewToBigInt(config).Bytes())...)
 	params = append(params, getShortByte(amountIn, shortNumberSize4)...)
 	params = append(params, getShortByte(minTokenOutBalance, shortNumberSize4)...)
+
+	numberHeap := []byte{0x00}
+	routerHeap := []byte{0x00, 0x00, 0x00}
+
+	needRouter := false
 
 	for index, pathInfo := range pathInfos {
 
@@ -272,15 +266,24 @@ func SandwichEncodeParamsSale(
 
 			if index == 0 {
 				if pathInfo.Version != V3 {
-					getIndexAndSetNumber(intSize, shortNumberSize, pathInfo.AmountOut, &numberHeap, numberMap)
+					getIndexAndSetNumber(intSize, shortNumberSize, pathInfo.AmountOut, &numberHeap)
 				}
 			} else if index == 1 {
 				if pathInfo.Version == V3 {
-					getIndexAndSetNumber(intSize, shortNumberSize, pathInfo.AmountIn, &numberHeap, numberMap)
+					getIndexAndSetNumber(intSize, shortNumberSize, pathInfo.AmountIn, &numberHeap)
 				} else {
-					getIndexAndSetNumber(intSize, shortNumberSize, pathInfo.AmountOut, &numberHeap, numberMap)
+					getIndexAndSetNumber(intSize, shortNumberSize, pathInfo.AmountOut, &numberHeap)
 				}
 			}
+		}
+		//-----router---------------------
+		if pathInfo.Version == Version5 {
+			setRouter(index, pathInfo.Router, &routerHeap)
+
+			heap := numberHeap
+			heap[0] = byte(len(numberHeap))
+
+			needRouter = true
 		}
 	}
 
@@ -290,71 +293,54 @@ func SandwichEncodeParamsSale(
 		params = append(params, finalToken.Bytes()...)
 	}
 
-	var briberyWeiByte []byte
-
-	if config.FeeToBuilder {
-		briberyWeiByte = getShortByte(briberyWei, shortNumberSize4)
+	if !config.CalcAmountOut {
+		params = append(params, numberHeap...)
 	}
 
-	params = append(params, numberHeap...)
+	if needRouter {
+		params = append(params, routerHeap...)
+	}
 
 	if config.FeeToBuilder {
 		params = append(params, builderAddress.Bytes()...)
-		params = append(params, briberyWeiByte...)
+		params = append(params, getShortByte(briberyWei, shortNumberSize4)...)
 	}
-
-	//config_marshal, _ := json.Marshal(config)
-	//pathInfos_marshal, _ := json.Marshal(pathInfos)
-	//logger.WithMethod("searcher.sandwich.callBundle").
-	//	WithField("reqId", reqId).
-	//	WithField("params_test", common.Bytes2Hex(params)).
-	//	WithField("config_marshal", string(config_marshal)).
-	//	WithField("pathInfos_marshal", string(pathInfos_marshal)).
-	//	WithField("amountIn", amountIn.String()).
-	//	WithField("minTokenOutBalance", minTokenOutBalance.String()).
-	//	WithField("builderAddress", builderAddress.String()).
-	//	WithField("briberyWei", briberyWei.String()).
-	//	Errorf("SandwichEncodeParamsSale_test构造参数")
 
 	return params
 }
 
-func getIndexAndSetNumber(intSize, shortNumberSize int, number *big.Int, numberHeap *[]byte, numberMap map[string][]byte) []byte {
+func setRouter(index int, router common.Address, routerHeap *[]byte) {
 
-	s := number.String()
-	indexCacheBytes, ok := numberMap[s]
-	if ok {
-		return indexCacheBytes
-	} else {
-		var shortNumString string
-		offset := 0
-		number2text := number.Text(2)
+	heap := *routerHeap
+	heap[index+1] = byte(3 + len(*routerHeap)*20)
+	*routerHeap = append(*routerHeap, router.Bytes()...)
+}
 
-		if len(number2text) > shortNumberSize {
-			shortNumString = number2text[:shortNumberSize]
-			if intSize == 4 {
-				offset = len(number2text[shortNumberSize:])
-			}
-		} else {
-			shortNumString = number2text
-		}
+func getIndexAndSetNumber(intSize, shortNumberSize int, number *big.Int, numberHeap *[]byte) {
 
-		shortNumInt, _ := new(big.Int).SetString(shortNumString, 2)
+	var shortNumString string
+	offset := 0
+	number2text := number.Text(2)
 
-		index := big.NewInt(int64(len(*numberHeap))).Bytes()
-
+	if len(number2text) > shortNumberSize {
+		shortNumString = number2text[:shortNumberSize]
 		if intSize == 4 {
-			offsetByte := big.NewInt(int64(offset)).Bytes()
-			*numberHeap = append(*numberHeap, fillBytes(1, offsetByte)...)
-			*numberHeap = append(*numberHeap, fillBytes(3, shortNumInt.Bytes())...)
-		} else {
-			*numberHeap = append(*numberHeap, fillBytes(intSize, shortNumInt.Bytes())...)
+			offset = len(number2text[shortNumberSize:])
 		}
-
-		numberMap[s] = index
-
-		return index
+	} else {
+		shortNumString = number2text
 	}
+
+	shortNumInt, _ := new(big.Int).SetString(shortNumString, 2)
+
+	if intSize == 4 {
+		offsetByte := big.NewInt(int64(offset)).Bytes()
+		*numberHeap = append(*numberHeap, fillBytes(1, offsetByte)...)
+		*numberHeap = append(*numberHeap, fillBytes(3, shortNumInt.Bytes())...)
+	} else {
+		*numberHeap = append(*numberHeap, fillBytes(intSize, shortNumInt.Bytes())...)
+	}
+
 }
 
 func getShortByte(number *big.Int, shortNumberSize int) []byte {
@@ -383,14 +369,15 @@ func getShortByte(number *big.Int, shortNumberSize int) []byte {
 }
 
 func encodeParamsSaleNew(
-	reqId string,
 	amountIn1 *big.Int,
 	amountOut1 *big.Int,
 	amountIn2 *big.Int,
 	amountOut2 *big.Int,
 
 	pairOrPool1 common.Address,
+	router1 common.Address,
 	pairOrPool2 common.Address,
+	router2 common.Address,
 
 	token1 common.Address,
 	token2 common.Address,
@@ -411,6 +398,7 @@ func encodeParamsSaleNew(
 		TokenIn:     token1,
 		TokenOut:    token2,
 		PairsOrPool: pairOrPool1,
+		Router:      router1,
 		ZeroForOne:  intToBool(option.ZeroForOne1),
 		Version:     option.Version1,
 		CheckTax:    Simulate,
@@ -423,6 +411,7 @@ func encodeParamsSaleNew(
 		TokenIn:     token2,
 		TokenOut:    token3,
 		PairsOrPool: pairOrPool2,
+		Router:      router2,
 		ZeroForOne:  intToBool(option.ZeroForOne2),
 		Version:     option.Version2,
 		CheckTax:    Simulate,
@@ -437,7 +426,7 @@ func encodeParamsSaleNew(
 
 	configNew := NewSaleConfigNew(config.CalcAmountOut, config.IsBackRun, config.FeeToBuilder)
 
-	result := SandwichEncodeParamsSale(reqId, configNew, commonPathInfos, amountIn1, minTokenOutBalance, builderAddress, briberyWei)
+	result := SandwichEncodeParamsSale(configNew, commonPathInfos, amountIn1, minTokenOutBalance, builderAddress, briberyWei)
 
 	return result
 }
@@ -447,6 +436,7 @@ func encodeParamsBuyNew(
 	isFront bool,
 	amountIn *big.Int,
 	pairOrPool common.Address,
+	router common.Address,
 	tokenIn common.Address,
 	tokenOut common.Address,
 	config *BuyConfig,
@@ -460,7 +450,7 @@ func encodeParamsBuyNew(
 	isBackRun := !isFront
 	configNew := NewBuyConfigNew(intToBool(config.ZeroForOne), isBackRun, config.CalcAmountOut, version)
 
-	params := SandwichEncodeParamsBuy(configNew, pairOrPool, amountIn, amountOut, minTokenOutBalance, tokenIn, builderAddress, briberyWei, tokenOut, fee, SandwichNullAddress)
+	params := SandwichEncodeParamsBuy(configNew, pairOrPool, router, amountIn, amountOut, minTokenOutBalance, tokenIn, builderAddress, briberyWei, tokenOut, fee)
 
 	return params
 }
