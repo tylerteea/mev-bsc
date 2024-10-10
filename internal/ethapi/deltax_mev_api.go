@@ -326,6 +326,7 @@ type SbpBuyArgs struct {
 	Token2             common.Address `json:"token2"`
 	Token3             common.Address `json:"token3"`
 	PairOrPool2        common.Address `json:"pairOrPool2"`
+	Router2            common.Address `json:"router2"`
 	ZeroForOne2        bool           `json:"zeroForOne2"`
 	Fee2               *big.Int       `json:"fee2"`
 	Version2           int            `json:"version2"`
@@ -529,10 +530,12 @@ func (s *BundleAPI) SandwichBestProfitMinimizeBuy(ctx context.Context, sbp SbpBu
 		Token2:             sbp.Token2,
 		Token3:             sbp.Token3,
 		PairOrPool1:        common.Address{},
+		Router1:            common.Address{},
 		ZeroForOne1:        false,
 		Fee1:               nil,
 		Version1:           0,
 		PairOrPool2:        sbp.PairOrPool2,
+		Router2:            sbp.Router2,
 		ZeroForOne2:        sbp.ZeroForOne2,
 		Fee2:               sbp.Fee2,
 		Version2:           sbp.Version2,
