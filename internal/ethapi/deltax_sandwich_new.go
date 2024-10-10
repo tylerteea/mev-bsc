@@ -82,7 +82,7 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSaleNew(ctx context.Context, sbp S
 
 	now := time.Now()
 
-	reqId := "test_" + sbp.ReqId + "_new_"
+	reqId := sbp.ReqId
 
 	defer timeCost(reqId, now)
 
@@ -333,7 +333,7 @@ func workerNew(
 
 	if sbp.LogEnable {
 		marshal, _ := json.Marshal(frontContractReturn)
-		log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "amountIn", amountIn, "frontContractReturn", string(marshal), "fErr", fErr)
+		log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "nextBlockNum", nextBlockNum, "amountIn", amountIn, "frontContractReturn", string(marshal), "fErr", fErr)
 	}
 	if fErr != nil {
 		result[errorString] = "frontCallErr"
@@ -392,7 +392,7 @@ func workerNew(
 
 	if sbp.LogEnable {
 		marshal, _ := json.Marshal(backContractReturn)
-		log.Info("call_execute_back", "reqAndIndex", reqAndIndex, backAmountInString, backAmountIn, "backContractReturn", string(marshal), "bErr", bErr)
+		log.Info("call_execute_back", "reqAndIndex", reqAndIndex, "nextBlockNum", nextBlockNum, backAmountInString, backAmountIn, "backContractReturn", string(marshal), "bErr", bErr)
 	}
 	if bErr != nil {
 		result[errorString] = "backCallErr"

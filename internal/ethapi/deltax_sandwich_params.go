@@ -312,7 +312,7 @@ func SandwichEncodeParamsSale(
 func setRouter(index int, router common.Address, routerHeap *[]byte) {
 
 	heap := *routerHeap
-	heap[index+1] = byte(3 + len(*routerHeap)*20)
+	heap[index+1] = byte(3 + (len(*routerHeap) - 3))
 	*routerHeap = append(*routerHeap, router.Bytes()...)
 }
 
