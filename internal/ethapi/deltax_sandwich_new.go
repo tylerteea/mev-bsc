@@ -500,7 +500,7 @@ func executeNew(
 	}
 
 	if sbp.LogEnable {
-		log.Info("call_execute2", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "data_hex", common.Bytes2Hex(data))
+		log.Info("call_execute2", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "nextBlockNum", nextBlockNum, "data_hex", common.Bytes2Hex(data))
 	}
 
 	bytes := hexutil.Bytes(data)
@@ -515,7 +515,7 @@ func executeNew(
 
 	callResult, err := mevCall(reqIdString, sdb, head, s, ctx, callArgs, nil, nil, nil)
 	if sbp.LogEnable {
-		log.Info("call_execute3", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err, "callResult", callResult, "eoa", sbp.Eoa.String(), "contract", sbp.Contract.String())
+		log.Info("call_execute3", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err, "callResult", callResult, "nextBlockNum", nextBlockNum, "data_hex", common.Bytes2Hex(data), "eoa", sbp.Eoa.String(), "contract", sbp.Contract.String())
 	}
 	if callResult != nil {
 
