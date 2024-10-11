@@ -500,7 +500,7 @@ func executeNew(
 	}
 
 	if sbp.LogEnable {
-		log.Info("call_execute2", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "nextBlockNum", nextBlockNum, "data_hex", common.Bytes2Hex(data))
+		log.Info("call_execute2", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
 	}
 
 	bytes := hexutil.Bytes(data)
