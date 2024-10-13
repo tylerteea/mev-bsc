@@ -26,6 +26,7 @@ const (
 	shortNumberSize4 = (IntSize4 - 1) * 8
 
 	Version5 = 5
+	Version4 = 4
 )
 
 //-------------------------------------------------------------------
@@ -265,24 +266,26 @@ func SandwichEncodeParamsSale(
 			params = append(params, []byte{0x00, 0x00}...)
 
 			if index == 0 {
-				if pathInfo.Version != V3 {
+				if pathInfo.Version != V3 && pathInfo.Version != Version5 {
 					getIndexAndSetNumber(intSize, shortNumberSize, pathInfo.AmountOut, &numberHeap)
 				}
 			} else if index == 1 {
-				if pathInfo.Version == V3 {
+
+				if pathInfo.Version == Version4 {
 					getIndexAndSetNumber(intSize, shortNumberSize, pathInfo.AmountIn, &numberHeap)
-				} else {
 					getIndexAndSetNumber(intSize, shortNumberSize, pathInfo.AmountOut, &numberHeap)
+				} else {
+					if pathInfo.Version == V3 || pathInfo.Version == Version5 {
+						getIndexAndSetNumber(intSize, shortNumberSize, pathInfo.AmountIn, &numberHeap)
+					} else {
+						getIndexAndSetNumber(intSize, shortNumberSize, pathInfo.AmountOut, &numberHeap)
+					}
 				}
 			}
 		}
 		//-----router---------------------
 		if pathInfo.Version == Version5 {
 			setRouter(index, pathInfo.Router, &routerHeap)
-
-			heap := numberHeap
-			heap[0] = byte(len(numberHeap))
-
 			needRouter = true
 		}
 	}
@@ -294,6 +297,10 @@ func SandwichEncodeParamsSale(
 	}
 
 	if !config.CalcAmountOut {
+		if needRouter {
+			heap := numberHeap
+			heap[0] = byte(len(numberHeap))
+		}
 		params = append(params, numberHeap...)
 	}
 
