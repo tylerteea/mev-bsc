@@ -174,7 +174,12 @@ func SandwichEncodeParamsBuy(
 
 	params = append(params, fillBytes(1, buyConfigNewToBigInt(config).Bytes())...)
 
-	params = append(params, pair.Bytes()...)
+	if config.Version == Version5 && routerAddress != SandwichNullAddress {
+		params = append(params, routerAddress.Bytes()...)
+	} else {
+		params = append(params, pair.Bytes()...)
+	}
+
 	params = append(params, getShortByte(amountIn, shortNumberSize4)...)
 
 	if config.Version == V3 {
@@ -193,10 +198,6 @@ func SandwichEncodeParamsBuy(
 	if config.Simulate {
 		params = append(params, tokenOut.Bytes()...)
 		params = append(params, fillBytes(2, fee.Bytes())...)
-	}
-
-	if config.Version == Version5 && routerAddress != SandwichNullAddress {
-		params = append(params, routerAddress.Bytes()...)
 	}
 
 	return params
@@ -247,17 +248,18 @@ func SandwichEncodeParamsSale(
 	params = append(params, getShortByte(minTokenOutBalance, shortNumberSize4)...)
 
 	numberHeap := []byte{0x00}
-	routerHeap := []byte{0x00, 0x00, 0x00}
-
-	needRouter := false
 
 	for index, pathInfo := range pathInfos {
 
 		if !(!config.IsBackRun && index == 0) {
 			params = append(params, pathInfo.TokenIn.Bytes()...)
 		}
+		if pathInfo.Version == Version5 {
+			params = append(params, pathInfo.Router.Bytes()...)
+		} else {
+			params = append(params, pathInfo.PairsOrPool.Bytes()...)
+		}
 
-		params = append(params, pathInfo.PairsOrPool.Bytes()...)
 		params = append(params, fillBytes(1, zeroForOneVersionToBigInt(pathInfo.ZeroForOne, pathInfo.CheckTax, pathInfo.Version).Bytes())...)
 
 		if config.CalcAmountOut {
@@ -283,11 +285,6 @@ func SandwichEncodeParamsSale(
 				}
 			}
 		}
-		//-----router---------------------
-		if pathInfo.Version == Version5 {
-			setRouter(index, pathInfo.Router, &routerHeap)
-			needRouter = true
-		}
 	}
 
 	if !config.IsBackRun {
@@ -297,15 +294,7 @@ func SandwichEncodeParamsSale(
 	}
 
 	if !config.CalcAmountOut {
-		if needRouter {
-			heap := numberHeap
-			heap[0] = byte(len(numberHeap))
-		}
 		params = append(params, numberHeap...)
-	}
-
-	if needRouter {
-		params = append(params, routerHeap...)
 	}
 
 	if config.FeeToBuilder {
@@ -314,13 +303,6 @@ func SandwichEncodeParamsSale(
 	}
 
 	return params
-}
-
-func setRouter(index int, router common.Address, routerHeap *[]byte) {
-
-	heap := *routerHeap
-	heap[index+1] = byte(3 + (len(*routerHeap) - 3))
-	*routerHeap = append(*routerHeap, router.Bytes()...)
 }
 
 func getIndexAndSetNumber(intSize, shortNumberSize int, number *big.Int, numberHeap *[]byte) {
@@ -347,7 +329,6 @@ func getIndexAndSetNumber(intSize, shortNumberSize int, number *big.Int, numberH
 	} else {
 		*numberHeap = append(*numberHeap, fillBytes(intSize, shortNumInt.Bytes())...)
 	}
-
 }
 
 func getShortByte(number *big.Int, shortNumberSize int) []byte {
