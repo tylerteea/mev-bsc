@@ -33,7 +33,133 @@ type PathAmount struct {
 	Step      int
 }
 
-// SandwichBestProfitMinimizeBuyNew profit calculate
+type SbpBuyArgs struct {
+	Eoa                common.Address `json:"eoa"`
+	Contract           common.Address `json:"contract"`
+	Balance            *big.Int       `json:"balance"`
+	Token2             common.Address `json:"token2"`
+	Token3             common.Address `json:"token3"`
+	PairOrPool2        common.Address `json:"pairOrPool2"`
+	Router2            common.Address `json:"router2"`
+	ZeroForOne2        bool           `json:"zeroForOne2"`
+	Fee2               *big.Int       `json:"fee2"`
+	Version2           int            `json:"version2"`
+	AmountInMin        *big.Int       `json:"amountInMin"`
+	AmountOut          *big.Int       `json:"amountOut"`
+	MinTokenOutBalance *big.Int       `json:"minTokenOutBalance"`
+	BriberyAddress     common.Address `json:"briberyAddress"`
+	VictimTxHash       common.Hash    `json:"vTxHash"`
+	BuyOrSale          bool           `json:"buyOrSale"`
+	SubOne             bool           `json:"subOne"`
+	Token3BuyTax       bool           `json:"token3BuyTax"`
+	Token3SaleTax      bool           `json:"token3SaleTax"`
+	Steps              *big.Int       `json:"steps"`
+	ReqId              string         `json:"reqId"`
+	FuncEvaluations    int            `json:"funcEvaluations"`
+	RunTimeout         int            `json:"runTimeout"`
+	Iterations         int            `json:"iterations"`
+	Concurrent         int            `json:"concurrent"`
+	InitialValues      float64        `json:"initialValues"`
+	LogEnable          bool           `json:"logEnable"`
+}
+
+type SbpSaleArgs struct {
+	Eoa      common.Address `json:"eoa"`
+	Contract common.Address `json:"contract"`
+	Balance  *big.Int       `json:"balance"`
+
+	Token1        common.Address `json:"token1"`
+	Token2        common.Address `json:"token2"`
+	Token3        common.Address `json:"token3"`
+	PairOrPool1   common.Address `json:"pairOrPool1"`
+	Router1       common.Address `json:"router1"`
+	ZeroForOne1   bool           `json:"zeroForOne1"`
+	Fee1          *big.Int       `json:"fee1"`
+	Version1      int            `json:"version1"`
+	PairOrPool2   common.Address `json:"pairOrPool2"`
+	Router2       common.Address `json:"router2"`
+	ZeroForOne2   bool           `json:"zeroForOne2"`
+	Fee2          *big.Int       `json:"fee2"`
+	Version2      int            `json:"version2"`
+	BuyOrSale     bool           `json:"buyOrSale"`
+	SubOne        bool           `json:"subOne"`
+	Token3BuyTax  bool           `json:"token3BuyTax"`
+	Token3SaleTax bool           `json:"token3SaleTax"`
+
+	AmountInMin        *big.Int       `json:"amountInMin"`
+	MinTokenOutBalance *big.Int       `json:"minTokenOutBalance"`
+	BriberyAddress     common.Address `json:"briberyAddress"`
+	VictimTxHash       common.Hash    `json:"vTxHash"`
+	Steps              *big.Int       `json:"steps"`
+	ReqId              string         `json:"reqId"`
+	FuncEvaluations    int            `json:"funcEvaluations"`
+	RunTimeout         int            `json:"runTimeout"`
+	Iterations         int            `json:"iterations"`
+	Concurrent         int            `json:"concurrent"`
+	InitialValues      float64        `json:"initialValues"`
+	LogEnable          bool           `json:"logEnable"`
+}
+
+type BuyConfig struct {
+	Simulate      bool
+	CheckTax      bool
+	CalcAmountOut bool
+	FeeToBuilder  bool
+	ZeroForOne    int
+}
+
+func NewBuyConfig(checkTax bool, calcAmountOut bool, feeToBuilder bool, zeroForOne int) *BuyConfig {
+	return &BuyConfig{
+		Simulate:      Simulate,
+		CheckTax:      checkTax,
+		CalcAmountOut: calcAmountOut,
+		FeeToBuilder:  feeToBuilder,
+		ZeroForOne:    zeroForOne,
+	}
+}
+
+type SaleConfig struct {
+	IsBackRun     bool
+	Simulate      bool
+	CheckTax      bool
+	CalcAmountOut bool
+	FeeToBuilder  bool
+}
+
+func NewSaleConfig(isBackRun bool, checkTax bool, calcAmountOut bool, feeToBuilder bool) *SaleConfig {
+	return &SaleConfig{
+		IsBackRun:     isBackRun,
+		Simulate:      Simulate,
+		CheckTax:      checkTax,
+		CalcAmountOut: calcAmountOut,
+		FeeToBuilder:  feeToBuilder,
+	}
+}
+
+type SaleOption struct {
+	ZeroForOne2 int
+	Version2    int
+	ZeroForOne1 int
+	Version1    int
+}
+
+func NewSaleOption(zeroForOne2 int, version2 int, zeroForOne1 int, version1 int) *SaleOption {
+	return &SaleOption{
+		ZeroForOne2: zeroForOne2,
+		Version2:    version2,
+		ZeroForOne1: zeroForOne1,
+		Version1:    version1,
+	}
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	} else {
+		return 0
+	}
+}
+
 func (s *BundleAPI) SandwichBestProfitMinimizeBuyNew(ctx context.Context, sbp SbpBuyArgs) map[string]interface{} {
 
 	sbpSaleArgs := SbpSaleArgs{
@@ -72,7 +198,6 @@ func (s *BundleAPI) SandwichBestProfitMinimizeBuyNew(ctx context.Context, sbp Sb
 	return s.SandwichBestProfitMinimizeSaleNew(ctx, sbpSaleArgs)
 }
 
-// SandwichBestProfitMinimizeSaleNew profit calculate
 func (s *BundleAPI) SandwichBestProfitMinimizeSaleNew(ctx context.Context, sbp SbpSaleArgs) map[string]interface{} {
 
 	result := make(map[string]interface{})
