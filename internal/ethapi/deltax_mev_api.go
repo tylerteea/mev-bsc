@@ -3,7 +3,6 @@ package ethapi
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -75,95 +74,6 @@ type BundleAPI struct {
 // NewBundleAPI creates a new Tx Bundle API instance.
 func NewBundleAPI(b Backend, chain *core.BlockChain) *BundleAPI {
 	return &BundleAPI{b, chain, NewBlockChainAPI(b)}
-}
-
-func getTokenBalanceByContract(ctx context.Context, s *BundleAPI, tokens []common.Address, contractAddress common.Address, state *state.StateDB, header *types.Header) ([]*big.Int, error) {
-
-	defer func() {
-		if r := recover(); r != nil {
-			dss := string(debug.Stack())
-			log.Info("recover...getTokenBalanceByContract", "err", r, "stack", dss)
-		}
-	}()
-	reqId := "getTokenBalanceByContract_"
-	for _, token := range tokens {
-		reqId += token.String() + "_"
-	}
-	reqId += contractAddress.String()
-
-	inAddrType, _ := abi.NewType("address[]", "address[]", nil)
-	inp := []abi.Argument{
-		{
-			Name: "tokens",
-			Type: inAddrType,
-		},
-	}
-
-	balanceType, _ := abi.NewType("uint256[]", "uint256[]", nil)
-	oup := []abi.Argument{
-		{
-			Name: "memory",
-			Type: balanceType,
-		},
-	}
-	newMethod := abi.NewMethod("balancesOf", "balancesOf", abi.Function, "pure", false, false, inp, oup)
-	pack, err := newMethod.Inputs.Pack(tokens)
-	var data = append(newMethod.ID, pack...)
-	bytes := (hexutil.Bytes)(data)
-
-	callArgs := &TransactionArgs{
-		To:   &contractAddress,
-		Data: &bytes,
-	}
-
-	log.Info("call_getTokenBalance_start", "reqId", reqId, "data", common.Bytes2Hex(bytes))
-
-	callResult, err := mevCall(reqId, state, header, s, ctx, callArgs, nil, nil, nil)
-
-	log.Info("call_getTokenBalance1", "reqId", reqId)
-
-	if callResult != nil {
-
-		log.Info("call_getTokenBalance2", "reqId", reqId, "result", string(callResult.ReturnData))
-		if len(callResult.Revert()) > 0 {
-
-			revertReason := newRevertError(callResult.Revert())
-			log.Info("call_getTokenBalance3",
-				"reqId", reqId,
-				"data", callResult,
-				"revert", common.Bytes2Hex(callResult.Revert()),
-				"revertReason", revertReason,
-				"returnData", common.Bytes2Hex(callResult.Return()),
-			)
-			log.Info("call_getTokenBalance4", "reqId", reqId, "revertReason", revertReason.reason)
-			return nil, revertReason
-		}
-
-		if callResult.Err != nil {
-			log.Info("v", "reqId", reqId, "err", callResult.Err)
-			return nil, callResult.Err
-		}
-	}
-	if err != nil {
-		log.Info("call_getTokenBalance5", "reqId", reqId, "err", err)
-		return nil, err
-	}
-
-	unpack, err := newMethod.Outputs.Unpack(callResult.Return())
-	if err != nil {
-		log.Info("call_getTokenBalance_unpack_err", "reqId", reqId, "err", err)
-		return nil, err
-	}
-
-	balances, ok := abi.ConvertType(unpack[0], []*big.Int{}).([]*big.Int)
-
-	if ok {
-		log.Info("call_getTokenBalance_ok", "reqId", reqId, "err", err)
-		return balances, nil
-	} else {
-		log.Info("call_getTokenBalance_err", "reqId", reqId, "err", err)
-		return nil, errors.New("转换失败")
-	}
 }
 
 //--------------------------------------------------------Multicall--------------------------------------------------------
@@ -519,4 +429,93 @@ func getERC20TokenBalance(ctx context.Context, s *BundleAPI, token common.Addres
 	log.Info("call_balance_finish", "reqId", reqId, "balance", balance.String())
 
 	return balance, nil
+}
+
+func getTokenBalanceByContract(ctx context.Context, s *BundleAPI, tokens []common.Address, contractAddress common.Address, state *state.StateDB, header *types.Header) ([]*big.Int, error) {
+
+	defer func() {
+		if r := recover(); r != nil {
+			dss := string(debug.Stack())
+			log.Info("recover...getTokenBalanceByContract", "err", r, "stack", dss)
+		}
+	}()
+	reqId := "getTokenBalanceByContract_"
+	for _, token := range tokens {
+		reqId += token.String() + "_"
+	}
+	reqId += contractAddress.String()
+
+	inAddrType, _ := abi.NewType("address[]", "address[]", nil)
+	inp := []abi.Argument{
+		{
+			Name: "tokens",
+			Type: inAddrType,
+		},
+	}
+
+	balanceType, _ := abi.NewType("uint256[]", "uint256[]", nil)
+	oup := []abi.Argument{
+		{
+			Name: "memory",
+			Type: balanceType,
+		},
+	}
+	newMethod := abi.NewMethod("balancesOf", "balancesOf", abi.Function, "pure", false, false, inp, oup)
+	pack, err := newMethod.Inputs.Pack(tokens)
+	var data = append(newMethod.ID, pack...)
+	bytes := (hexutil.Bytes)(data)
+
+	callArgs := &TransactionArgs{
+		To:   &contractAddress,
+		Data: &bytes,
+	}
+
+	log.Info("call_getTokenBalance_start", "reqId", reqId, "data", common.Bytes2Hex(bytes))
+
+	callResult, err := mevCall(reqId, state, header, s, ctx, callArgs, nil, nil, nil)
+
+	log.Info("call_getTokenBalance1", "reqId", reqId)
+
+	if callResult != nil {
+
+		log.Info("call_getTokenBalance2", "reqId", reqId, "result", string(callResult.ReturnData))
+		if len(callResult.Revert()) > 0 {
+
+			revertReason := newRevertError(callResult.Revert())
+			log.Info("call_getTokenBalance3",
+				"reqId", reqId,
+				"data", callResult,
+				"revert", common.Bytes2Hex(callResult.Revert()),
+				"revertReason", revertReason,
+				"returnData", common.Bytes2Hex(callResult.Return()),
+			)
+			log.Info("call_getTokenBalance4", "reqId", reqId, "revertReason", revertReason.reason)
+			return nil, revertReason
+		}
+
+		if callResult.Err != nil {
+			log.Info("v", "reqId", reqId, "err", callResult.Err)
+			return nil, callResult.Err
+		}
+	}
+	if err != nil {
+		log.Info("call_getTokenBalance5", "reqId", reqId, "err", err)
+		return nil, err
+	}
+
+	unpack, err := newMethod.Outputs.Unpack(callResult.Return())
+	if err != nil {
+		log.Info("call_getTokenBalance_unpack_err", "reqId", reqId, "err", err)
+		return nil, err
+	}
+
+	balances, ok := abi.ConvertType(unpack[0], []*big.Int{}).([]*big.Int)
+
+	if ok {
+		log.Info("call_getTokenBalance_ok", "reqId", reqId, "err", err)
+		return balances, nil
+	} else {
+		log.Info("call_getTokenBalance_err", "reqId", reqId, "err", err)
+		return nil, errors.New("转换失败")
+	}
 }
