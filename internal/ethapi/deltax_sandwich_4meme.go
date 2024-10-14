@@ -44,6 +44,8 @@ type Sbp4MemeArgs struct {
 	LogEnable       bool           `json:"logEnable"`
 }
 
+var ApproveBytes4Meme = hexutil.Bytes(common.Hex2Bytes("095ea7b3000000000000000000000000ec4549cadce5da21df6e6422d448034b5233bfbc00000000000000000000000000000000ffffffffffffffffffffffffffffffff"))
+
 var Pow1018 = big.NewFloat(math.Pow10(18))
 
 // SandwichBestProfit4Meme profit calculate
