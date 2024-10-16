@@ -12,6 +12,9 @@ var (
 
 	SandwichBigIntZeroValue = big.NewInt(0)
 	SandwichNullAddress     = common.HexToAddress("0x0000000000000000000000000000000000000000")
+
+	sandwichZeroByte4 = []byte{0x00, 0x00, 0x00, 0x00}
+	sandwichZeroByte2 = []byte{0x00, 0x00}
 )
 
 const (
@@ -180,19 +183,19 @@ func SandwichEncodeParamsBuy(
 		params = append(params, pair.Bytes()...)
 	}
 
-	params = append(params, getShortByte(amountIn, shortNumberSize4)...)
+	params = append(params, getShortByte4(amountIn)...)
 
 	if config.Version == V3 {
-		params = append(params, getShortByte(SandwichBigIntZeroValue, shortNumberSize4)...)
+		params = append(params, getShortByte4(SandwichBigIntZeroValue)...)
 	} else {
-		params = append(params, getShortByte(amountOut, shortNumberSize4)...)
+		params = append(params, getShortByte4(amountOut)...)
 	}
 
 	if config.IsBackRun || Simulate {
-		params = append(params, getShortByte(minTokenOutBalance, shortNumberSize4)...)
+		params = append(params, getShortByte4(minTokenOutBalance)...)
 		params = append(params, tokenIn.Bytes()...)
 		params = append(params, builderAddress.Bytes()...)
-		params = append(params, getShortByte(bribery, shortNumberSize4)...)
+		params = append(params, getShortByte4(bribery)...)
 	}
 
 	if config.Simulate {
@@ -244,8 +247,8 @@ func SandwichEncodeParamsSale(
 	params = append(params, sandwichSelectorSale...)
 	params = append(params, fillBytes(1, lenAndIntSizeToBigInt(intSize, len(pathInfos)).Bytes())...)
 	params = append(params, fillBytes(1, saleConfigNewToBigInt(config).Bytes())...)
-	params = append(params, getShortByte(amountIn, shortNumberSize4)...)
-	params = append(params, getShortByte(minTokenOutBalance, shortNumberSize4)...)
+	params = append(params, getShortByte4(amountIn)...)
+	params = append(params, getShortByte4(minTokenOutBalance)...)
 
 	numberHeap := []byte{0x00}
 
@@ -265,22 +268,22 @@ func SandwichEncodeParamsSale(
 		if config.CalcAmountOut {
 			params = append(params, fillBytes(2, pathInfo.Fee.Bytes())...)
 		} else {
-			params = append(params, []byte{0x00, 0x00}...)
+			params = append(params, sandwichZeroByte2...)
 
 			if index == 0 {
 				if pathInfo.Version != V3 && pathInfo.Version != Version5 {
-					getIndexAndSetNumber(intSize, shortNumberSize, pathInfo.AmountOut, &numberHeap)
+					setNumber(intSize, shortNumberSize, pathInfo.AmountOut, &numberHeap)
 				}
 			} else if index == 1 {
 
 				if pathInfo.Version == Version4 {
-					getIndexAndSetNumber(intSize, shortNumberSize, pathInfo.AmountIn, &numberHeap)
-					getIndexAndSetNumber(intSize, shortNumberSize, pathInfo.AmountOut, &numberHeap)
+					setNumber(intSize, shortNumberSize, pathInfo.AmountIn, &numberHeap)
+					setNumber(intSize, shortNumberSize, pathInfo.AmountOut, &numberHeap)
 				} else {
 					if pathInfo.Version == V3 || pathInfo.Version == Version5 {
-						getIndexAndSetNumber(intSize, shortNumberSize, pathInfo.AmountIn, &numberHeap)
+						setNumber(intSize, shortNumberSize, pathInfo.AmountIn, &numberHeap)
 					} else {
-						getIndexAndSetNumber(intSize, shortNumberSize, pathInfo.AmountOut, &numberHeap)
+						setNumber(intSize, shortNumberSize, pathInfo.AmountOut, &numberHeap)
 					}
 				}
 			}
@@ -299,13 +302,13 @@ func SandwichEncodeParamsSale(
 
 	if config.FeeToBuilder {
 		params = append(params, builderAddress.Bytes()...)
-		params = append(params, getShortByte(briberyWei, shortNumberSize4)...)
+		params = append(params, getShortByte4(briberyWei)...)
 	}
 
 	return params
 }
 
-func getIndexAndSetNumber(intSize, shortNumberSize int, number *big.Int, numberHeap *[]byte) {
+func setNumber(intSize, shortNumberSize int, number *big.Int, numberHeap *[]byte) {
 
 	var shortNumString string
 	offset := 0
@@ -331,15 +334,19 @@ func getIndexAndSetNumber(intSize, shortNumberSize int, number *big.Int, numberH
 	}
 }
 
-func getShortByte(number *big.Int, shortNumberSize int) []byte {
+func getShortByte4(number *big.Int) []byte {
+
+	if number.Cmp(SandwichBigIntZeroValue) == 0 {
+		return sandwichZeroByte4
+	}
 
 	var shortNumString string
 	offset := 0
 	number2text := number.Text(2)
 
-	if len(number2text) > shortNumberSize {
-		shortNumString = number2text[:shortNumberSize]
-		offset = len(number2text[shortNumberSize:])
+	if len(number2text) > shortNumberSize4 {
+		shortNumString = number2text[:shortNumberSize4]
+		offset = len(number2text[shortNumberSize4:])
 	} else {
 		shortNumString = number2text
 	}
