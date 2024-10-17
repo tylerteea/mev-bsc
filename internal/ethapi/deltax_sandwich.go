@@ -274,6 +274,17 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSaleNew(ctx context.Context, sbp S
 		log.Info("call_sbp_4_", "reqId", reqId, "blockNumber", number.BlockNumber.Int64(), "number", head.Number, "hash", head.Hash(), "parentHash", head.ParentHash)
 	}
 
+	victimTxMsg, victimTxMsgErr := core.TransactionToMessage(victimTransaction, types.MakeSigner(s.b.ChainConfig(), head.Number, head.Time), head.BaseFee)
+
+	if victimTxMsgErr != nil {
+		result[errorString] = "victimTxMsgErr"
+		result[reasonString] = victimTxMsgErr.Error()
+		return result
+	}
+
+	victimBlockCtx := core.NewEVMBlockContext(head, s.chain, nil)
+	victimTxContext := core.NewEVMTxContext(victimTxMsg)
+
 	bestInFunc := func(x []float64) float64 {
 		defer func() {
 			if err := recover(); err != nil {
@@ -282,9 +293,6 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSaleNew(ctx context.Context, sbp S
 		}()
 
 		amountInFloat := x[0]
-		if sbp.LogEnable {
-			log.Info("call_sbp_5", "reqId", reqId, "amountInFloat", amountInFloat)
-		}
 		if amountInFloat < 0 {
 			if sbp.LogEnable {
 				log.Info("call_sbp_6", "reqId", reqId, "amountInFloat", amountInFloat)
@@ -319,7 +327,7 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSaleNew(ctx context.Context, sbp S
 
 		stateDB := stateDBNew.Copy()
 
-		grossProfit, workErr := worker_test(ctx, head, nextBlockNum, victimTransaction, sbp, s, reqId, stateDB, amountInInt)
+		grossProfit, workErr := worker(ctx, head, nextBlockNum, victimBlockCtx, victimTxContext, victimTxMsg, sbp, s, reqId, stateDB, amountInInt)
 
 		if sbp.LogEnable {
 			reqIdMiniMize := reqId + "_" + amountInInt.String()
@@ -394,7 +402,7 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSaleNew(ctx context.Context, sbp S
 	reqAndIndex := reqId + "_end"
 
 	sdb := stateDBNew.Copy()
-	workerResults := worker(ctx, head, nextBlockNum, victimTransaction, sbp, s, reqAndIndex, sdb, quoteAmountIn)
+	workerResults := workerFinal(ctx, head, nextBlockNum, victimTransaction, sbp, s, reqAndIndex, sdb, quoteAmountIn)
 
 	if sbp.LogEnable {
 		marshal, _ := json.Marshal(workerResults)
@@ -414,7 +422,7 @@ func (s *BundleAPI) SandwichBestProfitMinimizeSaleNew(ctx context.Context, sbp S
 	return result
 }
 
-func worker(
+func workerFinal(
 	ctx context.Context,
 	head *types.Header,
 	nextBlockNum *big.Int,
@@ -435,7 +443,7 @@ func worker(
 	result := make(map[string]interface{})
 
 	// 抢跑----------------------------------------------------------------------------------------
-	frontContractReturn, fErr := execute(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head, nextBlockNum)
+	frontContractReturn, fErr := executeFinal(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head, nextBlockNum)
 
 	if sbp.LogEnable {
 		marshal, _ := json.Marshal(frontContractReturn)
@@ -494,7 +502,7 @@ func worker(
 
 	backAmountIn := frontContractReturn.Diff
 	// 跟跑----------------------------------------------------------------------------------------
-	backContractReturn, bErr := execute(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head, nextBlockNum)
+	backContractReturn, bErr := executeFinal(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head, nextBlockNum)
 
 	if sbp.LogEnable {
 		marshal, _ := json.Marshal(backContractReturn)
@@ -549,26 +557,21 @@ func worker(
 	return result
 }
 
-func worker_test(
+func worker(
 	ctx context.Context,
 	head *types.Header,
 	nextBlockNum *big.Int,
-	victimTransaction *types.Transaction,
+	victimBlockCtx vm.BlockContext,
+	victimTxCtx vm.TxContext,
+	victimMsg *core.Message,
 	sbp SbpSaleArgs,
 	s *BundleAPI,
 	reqAndIndex string,
 	statedb *state.StateDB,
 	amountIn *big.Int) (*big.Int, error) {
 
-	defer func() {
-		if r := recover(); r != nil {
-			dss := string(debug.Stack())
-			log.Info("recover...call_SandwichBestProfit", "reqAndIndex", reqAndIndex, "err", r, "stack", dss)
-		}
-	}()
-
 	// 抢跑----------------------------------------------------------------------------------------
-	realFrontAmountIn, realFrontAmountOut, fErr := execute_test(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head, nextBlockNum)
+	realFrontAmountIn, realFrontAmountOut, fErr := execute(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head, nextBlockNum)
 
 	if sbp.LogEnable {
 		log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "nextBlockNum", nextBlockNum, "amountIn", amountIn, "frontAmountIn", realFrontAmountIn, "frontAmountOut", realFrontAmountOut, "fErr", fErr)
@@ -578,16 +581,8 @@ func worker_test(
 	}
 
 	// 受害者----------------------------------------------------------------------------------------
-	victimTxMsg, victimTxMsgErr := core.TransactionToMessage(victimTransaction, types.MakeSigner(s.b.ChainConfig(), head.Number, head.Time), head.BaseFee)
 
-	if victimTxMsgErr != nil {
-		return nil, victimTxMsgErr
-	}
-
-	evmContext := core.NewEVMBlockContext(head, s.chain, nil)
-	victimTxContext := core.NewEVMTxContext(victimTxMsg)
-
-	vmEnv := vm.NewEVM(evmContext, victimTxContext, statedb, s.chain.Config(), vm.Config{NoBaseFee: true})
+	vmEnv := vm.NewEVM(victimBlockCtx, victimTxCtx, statedb, s.chain.Config(), vm.Config{NoBaseFee: true})
 	err := gopool.Submit(func() {
 		<-ctx.Done()
 		vmEnv.Cancel()
@@ -596,7 +591,7 @@ func worker_test(
 		return nil, err
 	}
 	gasPool := new(core.GasPool).AddGas(math.MaxUint64)
-	victimTxCallResult, victimTxCallErr := core.ApplyMessage(vmEnv, victimTxMsg, gasPool)
+	victimTxCallResult, victimTxCallErr := core.ApplyMessage(vmEnv, victimMsg, gasPool)
 
 	if victimTxCallErr != nil {
 		return nil, victimTxCallErr
@@ -608,9 +603,9 @@ func worker_test(
 		return nil, victimTxCallResult.Err
 	}
 
-	backAmountIn := realFrontAmountOut
 	// 跟跑----------------------------------------------------------------------------------------
-	realBackAmountIn, realBackAmountOut, bErr := execute_test(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head, nextBlockNum)
+	backAmountIn := realFrontAmountOut
+	realBackAmountIn, realBackAmountOut, bErr := execute(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head, nextBlockNum)
 
 	if sbp.LogEnable {
 		log.Info("call_execute_back", "reqAndIndex", reqAndIndex, "nextBlockNum", nextBlockNum, backAmountInString, backAmountIn, "realBackAmountIn", realBackAmountIn, "realBackAmountOut", realBackAmountOut, "bErr", bErr)
@@ -635,7 +630,7 @@ func worker_test(
 	return grossProfit, nil
 }
 
-func execute_test(
+func execute(
 	ctx context.Context,
 	reqId string,
 	isFront bool,
@@ -709,29 +704,7 @@ func execute_test(
 	if sbp.LogEnable {
 		log.Info("call_execute3", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err, "callResult", callResult, "nextBlockNum", nextBlockNum, "data_hex", common.Bytes2Hex(data), "eoa", sbp.Eoa.String(), "contract", sbp.Contract.String())
 	}
-	if callResult != nil {
 
-		if sbp.LogEnable {
-			log.Info("call_execute4", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "result", string(callResult.ReturnData))
-		}
-		var revertReason *revertError
-		if len(callResult.Revert()) > 0 {
-
-			revertReason = newRevertError(callResult.Revert())
-			if sbp.LogEnable {
-				log.Info("call_result_not_nil_44",
-					"reqId", reqId,
-					"amountIn", amountIn,
-					"data", callResult,
-					"revert", common.Bytes2Hex(callResult.Revert()),
-					"revertReason", revertReason,
-					"returnData", common.Bytes2Hex(callResult.Return()),
-				)
-				log.Info("call_execute5", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "revertReason", revertReason.reason)
-			}
-			return nil, nil, revertReason
-		}
-	}
 	if err != nil {
 		if sbp.LogEnable {
 			log.Info("call_execute6", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err)
@@ -746,45 +719,28 @@ func execute_test(
 	}
 
 	lenR := len(callResult.Return())
-	if sbp.LogEnable {
-		log.Info("call_execute80_结果数据长度", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR)
-	}
-
-	var contractResult *ContractResult
 
 	var diff *big.Int
 
 	if sbp.BuyOrSale {
 		if lenR == 64 {
 			diff = new(big.Int).SetBytes(callResult.Return()[32:64])
-		} else {
-			if sbp.LogEnable {
-				log.Info("call_execute9_买结果数据大小检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR)
-			}
-			return nil, nil, errors.New("买结果数据长度检验不通过2")
+			return amountIn, diff, nil
 		}
 	} else {
 		if lenR == 160 {
 			diff = new(big.Int).SetBytes(callResult.Return()[128:160])
-		} else {
-			if sbp.LogEnable {
-				log.Info("call_execute11_卖结果数据长度检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR)
-			}
-			return nil, nil, errors.New("卖结果数据长度检验不通过2")
+			return amountIn, diff, nil
 		}
 	}
-	if sbp.LogEnable {
-		log.Info("call_execute20", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
-	}
 
-	if contractResult == nil {
-		return nil, nil, errors.New("获取合约结果失败")
+	if sbp.LogEnable {
+		log.Info("call_execute11_结果数据长度检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR)
 	}
-	return amountIn, diff, nil
+	return nil, nil, errors.New("结果数据长度检验不通过2")
 }
 
-func execute(
-	ctx context.Context,
+func executeFinal(ctx context.Context,
 	reqId string,
 	isFront bool,
 	sbp SbpSaleArgs,
