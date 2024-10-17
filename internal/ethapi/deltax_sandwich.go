@@ -648,8 +648,6 @@ func execute(
 		log.Info("call_execute1", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
 	}
 
-	briberyWei := BigIntZeroValue
-
 	if isFront {
 
 		if sbp.BuyOrSale {
@@ -659,14 +657,14 @@ func execute(
 			frontBuyConfig := NewBuyConfig(true, true, false, boolToInt(sbp.ZeroForOne2))
 			frontMinTokenOutBalance := BigIntZeroValue
 
-			data = encodeParamsBuyNew(sbp.Version2, true, amountIn, sbp.PairOrPool2, sbp.Router2, sbp.Token2, sbp.Token3, frontBuyConfig, sbp.Fee2, BigIntZeroValue, frontMinTokenOutBalance, sbp.BriberyAddress, briberyWei)
+			data = encodeParamsBuyNew(sbp.Version2, true, amountIn, sbp.PairOrPool2, sbp.Router2, sbp.Token2, sbp.Token3, frontBuyConfig, sbp.Fee2, BigIntZeroValue, frontMinTokenOutBalance, sbp.BriberyAddress, BigIntZeroValue)
 		} else {
 
 			// 模拟的时候都检查税，正式发不检查
 			frontSaleConfig := NewSaleConfig(!isFront, true, true, false)
 			frontSaleOption := NewSaleOption(boolToInt(sbp.ZeroForOne2), sbp.Version2, boolToInt(sbp.ZeroForOne1), sbp.Version1)
 
-			data = encodeParamsSaleNew(amountIn, BigIntZeroValue, BigIntZeroValue, BigIntZeroValue, sbp.PairOrPool1, sbp.Router1, sbp.PairOrPool2, sbp.Router2, sbp.Token1, sbp.Token2, sbp.Token3, frontSaleOption, frontSaleConfig, sbp.Fee1, sbp.Fee2, sbp.MinTokenOutBalance, sbp.BriberyAddress, briberyWei)
+			data = encodeParamsSaleNew(amountIn, BigIntZeroValue, BigIntZeroValue, BigIntZeroValue, sbp.PairOrPool1, sbp.Router1, sbp.PairOrPool2, sbp.Router2, sbp.Token1, sbp.Token2, sbp.Token3, frontSaleOption, frontSaleConfig, sbp.Fee1, sbp.Fee2, sbp.MinTokenOutBalance, sbp.BriberyAddress, BigIntZeroValue)
 		}
 	} else {
 
@@ -675,14 +673,14 @@ func execute(
 			amountIn = GetShortNumber(amountIn)
 			// 模拟的时候都检查税，正式发不检查
 			backBuyConfig := NewBuyConfig(true, true, false, boolToInt(!sbp.ZeroForOne2))
-			data = encodeParamsBuyNew(sbp.Version2, false, amountIn, sbp.PairOrPool2, sbp.Router2, sbp.Token3, sbp.Token2, backBuyConfig, sbp.Fee2, BigIntZeroValue, sbp.MinTokenOutBalance, sbp.BriberyAddress, briberyWei)
+			data = encodeParamsBuyNew(sbp.Version2, false, amountIn, sbp.PairOrPool2, sbp.Router2, sbp.Token3, sbp.Token2, backBuyConfig, sbp.Fee2, BigIntZeroValue, sbp.MinTokenOutBalance, sbp.BriberyAddress, BigIntZeroValue)
 		} else {
 
 			// 模拟的时候都检查税，正式发不检查
 			backSaleConfig := NewSaleConfig(!isFront, true, true, false)
 			backSaleOption := NewSaleOption(boolToInt(!sbp.ZeroForOne1), sbp.Version1, boolToInt(!sbp.ZeroForOne2), sbp.Version2)
 
-			data = encodeParamsSaleNew(amountIn, BigIntZeroValue, BigIntZeroValue, BigIntZeroValue, sbp.PairOrPool2, sbp.Router2, sbp.PairOrPool1, sbp.Router1, sbp.Token3, sbp.Token2, sbp.Token1, backSaleOption, backSaleConfig, sbp.Fee2, sbp.Fee1, sbp.MinTokenOutBalance, sbp.BriberyAddress, briberyWei)
+			data = encodeParamsSaleNew(amountIn, BigIntZeroValue, BigIntZeroValue, BigIntZeroValue, sbp.PairOrPool2, sbp.Router2, sbp.PairOrPool1, sbp.Router1, sbp.Token3, sbp.Token2, sbp.Token1, backSaleOption, backSaleConfig, sbp.Fee2, sbp.Fee1, sbp.MinTokenOutBalance, sbp.BriberyAddress, BigIntZeroValue)
 		}
 	}
 
