@@ -50,7 +50,6 @@ type SbpBuyArgs struct {
 	BriberyAddress     common.Address `json:"briberyAddress"`
 	VictimTxHash       common.Hash    `json:"vTxHash"`
 	BuyOrSale          bool           `json:"buyOrSale"`
-	SubOne             bool           `json:"subOne"`
 	ReqId              string         `json:"reqId"`
 	FuncEvaluations    int            `json:"funcEvaluations"`
 	RunTimeout         int            `json:"runTimeout"`
@@ -84,14 +83,14 @@ type SbpSaleArgs struct {
 	MinTokenOutBalance *big.Int       `json:"minTokenOutBalance"`
 	BriberyAddress     common.Address `json:"briberyAddress"`
 	VictimTxHash       common.Hash    `json:"vTxHash"`
-	Steps              *big.Int       `json:"steps"`
-	ReqId              string         `json:"reqId"`
-	FuncEvaluations    int            `json:"funcEvaluations"`
-	RunTimeout         int            `json:"runTimeout"`
-	Iterations         int            `json:"iterations"`
-	Concurrent         int            `json:"concurrent"`
-	InitialValues      float64        `json:"initialValues"`
-	LogEnable          bool           `json:"logEnable"`
+
+	ReqId           string  `json:"reqId"`
+	FuncEvaluations int     `json:"funcEvaluations"`
+	RunTimeout      int     `json:"runTimeout"`
+	Iterations      int     `json:"iterations"`
+	Concurrent      int     `json:"concurrent"`
+	InitialValues   float64 `json:"initialValues"`
+	LogEnable       bool    `json:"logEnable"`
 }
 
 type BuyConfig struct {
