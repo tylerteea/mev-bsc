@@ -153,7 +153,7 @@ func boolToInt(b bool) int {
 	}
 }
 
-func (s *BundleAPI) SandwichBestProfitMinimizeBuyNew(ctx context.Context, sbp SbpBuyArgs) map[string]interface{} {
+func (s *BundleAPI) SandwichBestProfitBuy(ctx context.Context, sbp SbpBuyArgs) map[string]interface{} {
 
 	sbpSaleArgs := SbpSaleArgs{
 		Eoa:                sbp.Eoa,
@@ -184,10 +184,10 @@ func (s *BundleAPI) SandwichBestProfitMinimizeBuyNew(ctx context.Context, sbp Sb
 		LogEnable:          sbp.LogEnable,
 	}
 
-	return s.SandwichBestProfitMinimizeSaleNew(ctx, sbpSaleArgs)
+	return s.SandwichBestProfitSale(ctx, sbpSaleArgs)
 }
 
-func (s *BundleAPI) SandwichBestProfitMinimizeSaleNew(ctx context.Context, sbp SbpSaleArgs) map[string]interface{} {
+func (s *BundleAPI) SandwichBestProfitSale(ctx context.Context, sbp SbpSaleArgs) map[string]interface{} {
 
 	result := make(map[string]interface{})
 
