@@ -594,9 +594,9 @@ func encodeParams4MemeFront(
 	//3deec419
 	params := []byte{0x3d, 0xee, 0xc4, 0x19}
 
-	params = append(params, fillBytes(32, tokenIn.Bytes())...)
-	params = append(params, fillBytes(32, amountIn.Bytes())...)
-	params = append(params, fillBytes(32, minAmountOut.Bytes())...)
+	params = append(params, FillBytes(32, tokenIn.Bytes())...)
+	params = append(params, FillBytes(32, amountIn.Bytes())...)
+	params = append(params, FillBytes(32, minAmountOut.Bytes())...)
 
 	return params
 }
@@ -609,8 +609,8 @@ func encodeParams4MemeBack(
 	//0x9b911b5e
 	params := []byte{0x9b, 0x91, 0x1b, 0x5e}
 
-	params = append(params, fillBytes(32, token.Bytes())...)
-	params = append(params, fillBytes(32, amountIn.Bytes())...)
+	params = append(params, FillBytes(32, token.Bytes())...)
+	params = append(params, FillBytes(32, amountIn.Bytes())...)
 
 	return params
 }

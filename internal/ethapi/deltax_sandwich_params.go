@@ -175,7 +175,7 @@ func SandwichEncodeParamsBuy(
 	params := make([]byte, 0)
 	params = append(params, sandwichSelectorBuy...)
 
-	params = append(params, fillBytes(1, buyConfigNewToBigInt(config).Bytes())...)
+	params = append(params, FillBytes(1, buyConfigNewToBigInt(config).Bytes())...)
 
 	if config.Version == Version5 && routerAddress != SandwichNullAddress {
 		params = append(params, routerAddress.Bytes()...)
@@ -200,7 +200,7 @@ func SandwichEncodeParamsBuy(
 
 	if config.Simulate {
 		params = append(params, tokenOut.Bytes()...)
-		params = append(params, fillBytes(2, fee.Bytes())...)
+		params = append(params, FillBytes(2, fee.Bytes())...)
 	}
 
 	return params
@@ -245,8 +245,8 @@ func SandwichEncodeParamsSale(
 
 	params := make([]byte, 0)
 	params = append(params, sandwichSelectorSale...)
-	params = append(params, fillBytes(1, lenAndIntSizeToBigInt(intSize, len(pathInfos)).Bytes())...)
-	params = append(params, fillBytes(1, saleConfigNewToBigInt(config).Bytes())...)
+	params = append(params, FillBytes(1, lenAndIntSizeToBigInt(intSize, len(pathInfos)).Bytes())...)
+	params = append(params, FillBytes(1, saleConfigNewToBigInt(config).Bytes())...)
 	params = append(params, getShortByte4(amountIn)...)
 	params = append(params, getShortByte4(minTokenOutBalance)...)
 
@@ -263,10 +263,10 @@ func SandwichEncodeParamsSale(
 			params = append(params, pathInfo.PairsOrPool.Bytes()...)
 		}
 
-		params = append(params, fillBytes(1, zeroForOneVersionToBigInt(pathInfo.ZeroForOne, pathInfo.CheckTax, pathInfo.Version).Bytes())...)
+		params = append(params, FillBytes(1, zeroForOneVersionToBigInt(pathInfo.ZeroForOne, pathInfo.CheckTax, pathInfo.Version).Bytes())...)
 
 		if config.CalcAmountOut {
-			params = append(params, fillBytes(2, pathInfo.Fee.Bytes())...)
+			params = append(params, FillBytes(2, pathInfo.Fee.Bytes())...)
 		} else {
 			params = append(params, sandwichZeroByte2...)
 
@@ -327,10 +327,10 @@ func setNumber(intSize, shortNumberSize int, number *big.Int, numberHeap *[]byte
 
 	if intSize == 4 {
 		offsetByte := big.NewInt(int64(offset)).Bytes()
-		*numberHeap = append(*numberHeap, fillBytes(1, offsetByte)...)
-		*numberHeap = append(*numberHeap, fillBytes(3, shortNumInt.Bytes())...)
+		*numberHeap = append(*numberHeap, FillBytes(1, offsetByte)...)
+		*numberHeap = append(*numberHeap, FillBytes(3, shortNumInt.Bytes())...)
 	} else {
-		*numberHeap = append(*numberHeap, fillBytes(intSize, shortNumInt.Bytes())...)
+		*numberHeap = append(*numberHeap, FillBytes(intSize, shortNumInt.Bytes())...)
 	}
 }
 
@@ -357,8 +357,8 @@ func getShortByte4(number *big.Int) []byte {
 
 	var result []byte
 
-	result = append(result, fillBytes(1, offsetByte)...)
-	result = append(result, fillBytes(3, shortNumInt.Bytes())...)
+	result = append(result, FillBytes(1, offsetByte)...)
+	result = append(result, FillBytes(3, shortNumInt.Bytes())...)
 
 	return result
 }

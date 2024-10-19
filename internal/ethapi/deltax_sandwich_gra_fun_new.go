@@ -543,10 +543,10 @@ func encodeParamsGraFunFrontNew(
 
 	params := []byte{}
 
-	params = append(params, fillBytes(20, tokenIn.Bytes())...)
-	params = append(params, fillBytes(20, BigIntZeroValue.Bytes())...)
-	params = append(params, fillBytes(1, BigIntOne.Bytes())...)
-	params = append(params, fillBytes(12, frontAmountIn.Bytes())...)
+	params = append(params, FillBytes(20, tokenIn.Bytes())...)
+	params = append(params, FillBytes(20, BigIntZeroValue.Bytes())...)
+	params = append(params, FillBytes(1, BigIntOne.Bytes())...)
+	params = append(params, FillBytes(12, frontAmountIn.Bytes())...)
 
 	return params
 }
@@ -561,12 +561,12 @@ func encodeParamsGraFunBackNew(
 
 	params := []byte{}
 
-	params = append(params, fillBytes(20, token.Bytes())...)
-	params = append(params, fillBytes(20, backAmountIn.Bytes())...)
-	params = append(params, fillBytes(1, BigIntTwo.Bytes())...)
-	params = append(params, fillBytes(12, minEoaBalance.Bytes())...)
-	params = append(params, fillBytes(20, builderAddress.Bytes())...)
-	params = append(params, fillBytes(12, briberyWei.Bytes())...)
+	params = append(params, FillBytes(20, token.Bytes())...)
+	params = append(params, FillBytes(20, backAmountIn.Bytes())...)
+	params = append(params, FillBytes(1, BigIntTwo.Bytes())...)
+	params = append(params, FillBytes(12, minEoaBalance.Bytes())...)
+	params = append(params, FillBytes(20, builderAddress.Bytes())...)
+	params = append(params, FillBytes(12, briberyWei.Bytes())...)
 
 	return params
 }

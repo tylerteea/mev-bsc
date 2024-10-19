@@ -222,7 +222,7 @@ func RPCMarshalCompactLogs(receipts types.Receipts) []map[string]interface{} {
 	return logs
 }
 
-func fillBytes(l int, rawData []byte) []byte {
+func FillBytes(l int, rawData []byte) []byte {
 	rawLen := len(rawData)
 	head := l - rawLen
 	res := make([]byte, l)

@@ -553,9 +553,9 @@ func encodeParamsGraFunFront(
 	//db61c76e
 	params := []byte{0xdb, 0x61, 0xc7, 0x6e}
 
-	params = append(params, fillBytes(32, tokenIn.Bytes())...)
-	params = append(params, fillBytes(32, BigIntZeroValue.Bytes())...)
-	params = append(params, fillBytes(32, eoa.Bytes())...)
+	params = append(params, FillBytes(32, tokenIn.Bytes())...)
+	params = append(params, FillBytes(32, BigIntZeroValue.Bytes())...)
+	params = append(params, FillBytes(32, eoa.Bytes())...)
 
 	return params
 }
@@ -569,10 +569,10 @@ func encodeParamsGraFunBack(
 	//0x2dc8f867
 	params := []byte{0x2d, 0xc8, 0xf8, 0x67}
 
-	params = append(params, fillBytes(32, token.Bytes())...)
-	params = append(params, fillBytes(32, amountIn.Bytes())...)
-	params = append(params, fillBytes(32, BigIntZeroValue.Bytes())...)
-	params = append(params, fillBytes(32, eoa.Bytes())...)
+	params = append(params, FillBytes(32, token.Bytes())...)
+	params = append(params, FillBytes(32, amountIn.Bytes())...)
+	params = append(params, FillBytes(32, BigIntZeroValue.Bytes())...)
+	params = append(params, FillBytes(32, eoa.Bytes())...)
 
 	return params
 }
