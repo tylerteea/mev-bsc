@@ -50,7 +50,6 @@ type SbpBuyArgs struct {
 	BriberyAddress     common.Address `json:"briberyAddress"`
 	VictimTxHash       common.Hash    `json:"vTxHash"`
 	BuyOrSale          bool           `json:"buyOrSale"`
-	SubOne             bool           `json:"subOne"`
 	ReqId              string         `json:"reqId"`
 	FuncEvaluations    int            `json:"funcEvaluations"`
 	RunTimeout         int            `json:"runTimeout"`
