@@ -373,34 +373,21 @@ func workerFinalNew(
 		return result
 	}
 
-	if sbp.BuyOrSale && sbp.Version2 != V3 {
-		backContractReturn.Diff = GetShortNumber(backContractReturn.Diff)
-	}
+	backContractReturn.Diff = GetShortNumber(backContractReturn.Diff)
 
 	profit := new(big.Int).Sub(backContractReturn.Diff, frontContractReturn.PathAmounts[0].AmountIn)
 
-	if sbp.BuyOrSale {
-		result[front_amount_in_1] = frontContractReturn.PathAmounts[0].AmountIn
-		result[front_amount_out_1] = frontContractReturn.PathAmounts[0].AmountOut
-		result[front_diff] = frontContractReturn.Diff
+	result[front_amount_in_1] = frontContractReturn.PathAmounts[0].AmountIn
+	result[front_amount_out_1] = frontContractReturn.PathAmounts[0].AmountOut
+	result[front_amount_in_2] = frontContractReturn.PathAmounts[1].AmountIn
+	result[front_amount_out_2] = frontContractReturn.PathAmounts[1].AmountOut
+	result[front_diff] = frontContractReturn.Diff
 
-		result[back_amount_in_1] = backContractReturn.PathAmounts[0].AmountIn
-		result[back_amount_out_1] = backContractReturn.PathAmounts[0].AmountOut
-		result[back_diff] = backContractReturn.Diff
-
-	} else {
-		result[front_amount_in_1] = frontContractReturn.PathAmounts[0].AmountIn
-		result[front_amount_out_1] = frontContractReturn.PathAmounts[0].AmountOut
-		result[front_amount_in_2] = frontContractReturn.PathAmounts[1].AmountIn
-		result[front_amount_out_2] = frontContractReturn.PathAmounts[1].AmountOut
-		result[front_diff] = frontContractReturn.Diff
-
-		result[back_amount_in_1] = backContractReturn.PathAmounts[0].AmountIn
-		result[back_amount_out_1] = backContractReturn.PathAmounts[0].AmountOut
-		result[back_amount_in_2] = backContractReturn.PathAmounts[1].AmountIn
-		result[back_amount_out_2] = backContractReturn.PathAmounts[1].AmountOut
-		result[back_diff] = backContractReturn.Diff
-	}
+	result[back_amount_in_1] = backContractReturn.PathAmounts[0].AmountIn
+	result[back_amount_out_1] = backContractReturn.PathAmounts[0].AmountOut
+	result[back_amount_in_2] = backContractReturn.PathAmounts[1].AmountIn
+	result[back_amount_out_2] = backContractReturn.PathAmounts[1].AmountOut
+	result[back_diff] = backContractReturn.Diff
 
 	result[profitString] = profit
 
@@ -470,10 +457,6 @@ func workerNew(
 	}
 	if bErr != nil {
 		return nil, bErr
-	}
-
-	if sbp.BuyOrSale && sbp.Version2 != V3 {
-		realBackAmountOut = GetShortNumber(realBackAmountOut)
 	}
 
 	grossProfit := realBackAmountOut.Sub(realBackAmountOut, realFrontAmountIn)
