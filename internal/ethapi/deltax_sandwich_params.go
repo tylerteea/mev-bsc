@@ -10,26 +10,8 @@ var (
 	sandwichSelectorBuy  = []byte{0x00, 0x00, 0x00, 0x01}
 	sandwichSelectorSale = []byte{0x00, 0x00, 0x00, 0x10}
 
-	SandwichBigIntZeroValue = big.NewInt(0)
-	SandwichNullAddress     = common.HexToAddress("0x0000000000000000000000000000000000000000")
-
 	sandwichZeroByte4 = []byte{0x00, 0x00, 0x00, 0x00}
 	sandwichZeroByte2 = []byte{0x00, 0x00}
-)
-
-const (
-	lsh7 = 1 << 7
-	lsh6 = 1 << 6
-	lsh5 = 1 << 5
-	lsh4 = 1 << 4
-
-	lsh0 = 1 << 0
-
-	IntSize4         = 4
-	shortNumberSize4 = (IntSize4 - 1) * 8
-
-	Version5 = 5
-	Version4 = 4
 )
 
 //-------------------------------------------------------------------
@@ -43,7 +25,7 @@ type (
 		Version     int
 	}
 
-	CommonPathInfo struct {
+	OldCommonPathInfo struct {
 		TokenIn     common.Address
 		TokenOut    common.Address
 		PairsOrPool common.Address
@@ -208,7 +190,7 @@ func SandwichEncodeParamsBuy(
 
 func SandwichEncodeParamsSale(
 	config *SaleConfigNew,
-	pathInfos []*CommonPathInfo,
+	pathInfos []*OldCommonPathInfo,
 	amountIn *big.Int,
 	minTokenOutBalance *big.Int,
 	builderAddress common.Address,
@@ -389,7 +371,7 @@ func encodeParamsSaleNew(
 	briberyWei *big.Int,
 ) []byte {
 
-	commonPathInfo1 := &CommonPathInfo{
+	commonPathInfo1 := &OldCommonPathInfo{
 		TokenIn:     token1,
 		TokenOut:    token2,
 		PairsOrPool: pairOrPool1,
@@ -402,7 +384,7 @@ func encodeParamsSaleNew(
 		AmountOut:   amountOut1,
 	}
 
-	commonPathInfo2 := &CommonPathInfo{
+	commonPathInfo2 := &OldCommonPathInfo{
 		TokenIn:     token2,
 		TokenOut:    token3,
 		PairsOrPool: pairOrPool2,
@@ -415,7 +397,7 @@ func encodeParamsSaleNew(
 		AmountOut:   amountOut2,
 	}
 
-	var commonPathInfos []*CommonPathInfo
+	var commonPathInfos []*OldCommonPathInfo
 	commonPathInfos = append(commonPathInfos, commonPathInfo1)
 	commonPathInfos = append(commonPathInfos, commonPathInfo2)
 

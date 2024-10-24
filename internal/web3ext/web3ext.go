@@ -625,6 +625,11 @@ web3._extend({
 			params: 2,
 		}),
 		new web3._extend.Method({
+			name: 'sandwichBestProfit',
+			call: 'eth_sandwichBestProfit',
+			params: 1,
+		}),
+		new web3._extend.Method({
 			name: 'sandwichBestProfitSale',
 			call: 'eth_sandwichBestProfitSale',
 			params: 1,
