@@ -675,6 +675,11 @@ web3._extend({
 			params: 1,
 		}),
 		new web3._extend.Method({
+			name: 'callBundleCheckAndPoolPairState',
+			call: 'eth_callBundleCheckAndPoolPairState',
+			params: 1,
+		}),
+		new web3._extend.Method({
 			name: 'multicall',
 			call: 'eth_multicall',
 			params: 2,
