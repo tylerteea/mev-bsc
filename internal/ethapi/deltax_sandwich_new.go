@@ -112,6 +112,34 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) *Combin
 		log.Info("call_sbp_4_", "reqId", reqId, "nextBlockNum", nextBlockNum, "hash", head.Hash(), "parentHash", head.ParentHash)
 	}
 
+	//-------------------------------------beforeBalanceCache
+
+	beforeBalanceCache := make(map[common.Address]*big.Int)
+
+	commonPathInfos := sbp.CommonPathInfos
+	pathLen := len(commonPathInfos)
+
+	beginToken := commonPathInfos[0].TokenIn
+	finalToken := commonPathInfos[pathLen-1].TokenOut
+
+	beginTokenBeforeBalance, tbErr1 := getERC20TokenBalance(ctx, s, beginToken, sbp.Contract, stateDBNew, head)
+	if tbErr1 != nil {
+		result.Error = "beginToken_err"
+		result.Reason = "beginToken_err"
+		return result
+	}
+	beforeBalanceCache[beginToken] = beginTokenBeforeBalance
+
+	finalTokenBeforeBalance, tbErr1 := getERC20TokenBalance(ctx, s, finalToken, sbp.Contract, stateDBNew, head)
+	if tbErr1 != nil {
+		result.Error = "finalToken_err"
+		result.Reason = "finalToken_err"
+		return result
+	}
+	beforeBalanceCache[finalToken] = finalTokenBeforeBalance
+
+	//-------------------------------------beforeBalanceCache
+
 	victimTxMsg, victimTxMsgErr := core.TransactionToMessage(victimTransaction, types.MakeSigner(s.b.ChainConfig(), head.Number, head.Time), head.BaseFee)
 
 	if victimTxMsgErr != nil {
@@ -162,7 +190,7 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) *Combin
 		}
 		stateDB := stateDBNew.Copy()
 
-		grossProfit, workErr := workerNew(ctx, head, nextBlockNum, victimBlockCtx, victimTxContext, victimTxMsg, sbp, s, reqId, stateDB, amountInInt)
+		grossProfit, workErr := workerNew(ctx, beforeBalanceCache, head, nextBlockNum, victimBlockCtx, victimTxContext, victimTxMsg, sbp, s, reqId, stateDB, amountInInt)
 
 		if sbp.LogEnable {
 			reqIdMiniMize := reqId + "_" + amountInInt.String()
@@ -237,7 +265,7 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) *Combin
 	reqAndIndex := reqId + "_end"
 
 	sdb := stateDBNew.Copy()
-	workerResults := workerFinalNew(ctx, head, nextBlockNum, victimTransaction, sbp, s, reqAndIndex, sdb, quoteAmountIn)
+	workerResults := workerFinalNew(ctx, beforeBalanceCache, head, nextBlockNum, victimTransaction, sbp, s, reqAndIndex, sdb, quoteAmountIn)
 
 	if sbp.LogEnable {
 		marshal, _ := json.Marshal(workerResults)
@@ -256,7 +284,7 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) *Combin
 	return result
 }
 
-func workerFinalNew(ctx context.Context, head *types.Header, nextBlockNum *big.Int, victimTransaction *types.Transaction, sbp SbpArgs, s *BundleAPI, reqAndIndex string, statedb *state.StateDB, amountIn *big.Int) *CombinationProfit {
+func workerFinalNew(ctx context.Context, beforeBalanceCache map[common.Address]*big.Int, head *types.Header, nextBlockNum *big.Int, victimTransaction *types.Transaction, sbp SbpArgs, s *BundleAPI, reqAndIndex string, statedb *state.StateDB, amountIn *big.Int) *CombinationProfit {
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -271,7 +299,7 @@ func workerFinalNew(ctx context.Context, head *types.Header, nextBlockNum *big.I
 	}
 
 	// 抢跑----------------------------------------------------------------------------------------
-	frontAmountInfo, frontDiff, fErr := executeFinalNew(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head, nextBlockNum)
+	frontAmountInfo, frontDiff, fErr := executeFinalNew(ctx, reqAndIndex, beforeBalanceCache, true, sbp, amountIn, statedb, s, head, nextBlockNum)
 
 	if sbp.LogEnable {
 		marshal, _ := json.Marshal(frontAmountInfo)
@@ -328,7 +356,7 @@ func workerFinalNew(ctx context.Context, head *types.Header, nextBlockNum *big.I
 
 	backAmountIn := frontDiff
 	// 跟跑----------------------------------------------------------------------------------------
-	backAmountInfo, backDiff, bErr := executeFinalNew(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head, nextBlockNum)
+	backAmountInfo, backDiff, bErr := executeFinalNew(ctx, reqAndIndex, beforeBalanceCache, false, sbp, backAmountIn, statedb, s, head, nextBlockNum)
 
 	if sbp.LogEnable {
 		marshal, _ := json.Marshal(backAmountInfo)
@@ -364,6 +392,7 @@ func workerFinalNew(ctx context.Context, head *types.Header, nextBlockNum *big.I
 
 func workerNew(
 	ctx context.Context,
+	beforeBalanceCache map[common.Address]*big.Int,
 	head *types.Header,
 	nextBlockNum *big.Int,
 	victimBlockCtx vm.BlockContext,
@@ -376,7 +405,7 @@ func workerNew(
 	amountIn *big.Int) (*big.Int, error) {
 
 	// 抢跑----------------------------------------------------------------------------------------
-	realFrontAmountIn, realFrontAmountOut, fErr := executeNew(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head, nextBlockNum)
+	realFrontAmountIn, realFrontAmountOut, fErr := executeNew(ctx, beforeBalanceCache, reqAndIndex, true, sbp, amountIn, statedb, s, head, nextBlockNum)
 
 	if sbp.LogEnable {
 		log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "nextBlockNum", nextBlockNum, "amountIn", amountIn, "frontAmountIn", realFrontAmountIn, "frontAmountOut", realFrontAmountOut, "fErr", fErr)
@@ -410,7 +439,7 @@ func workerNew(
 
 	// 跟跑----------------------------------------------------------------------------------------
 	backAmountIn := realFrontAmountOut
-	realBackAmountIn, realBackAmountOut, bErr := executeNew(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head, nextBlockNum)
+	realBackAmountIn, realBackAmountOut, bErr := executeNew(ctx, beforeBalanceCache, reqAndIndex, false, sbp, backAmountIn, statedb, s, head, nextBlockNum)
 
 	if sbp.LogEnable {
 		log.Info("call_execute_back", "reqAndIndex", reqAndIndex, "nextBlockNum", nextBlockNum, backAmountInString, backAmountIn, "realBackAmountIn", realBackAmountIn, "realBackAmountOut", realBackAmountOut, "bErr", bErr)
@@ -503,6 +532,7 @@ func getSimulateRouters(isFront bool, commonPathInfos []*CommonPathInfo, firstSw
 
 func executeNew(
 	ctx context.Context,
+	beforeBalanceCache map[common.Address]*big.Int,
 	reqId string,
 	isFront bool,
 	sbp SbpArgs,
@@ -525,21 +555,23 @@ func executeNew(
 	pathLen := len(commonPathInfos)
 
 	if isFront {
-		beginToken = commonPathInfos[0].TokenOut
+		beginToken = commonPathInfos[0].TokenIn
 		finalToken = commonPathInfos[pathLen-1].TokenOut
 	} else {
 		beginToken = commonPathInfos[pathLen-1].TokenOut
-		finalToken = commonPathInfos[0].TokenOut
+		finalToken = commonPathInfos[0].TokenIn
 	}
-	tokenBeforeBalance, tbErr := getERC20TokenBalance(ctx, s, finalToken, sbp.Contract, sdb, head)
-	if tbErr != nil {
-		return nil, nil, tbErr
+
+	tokenBeforeBalanceCache := beforeBalanceCache[finalToken]
+
+	if tokenBeforeBalanceCache == nil {
+		return nil, nil, errors.New("tokenBeforeBalance_err")
 	}
 	amountInCost := SandwichBigIntZeroValue
 	if finalToken.Cmp(beginToken) == 0 {
 		amountInCost = amountIn
 	}
-	tokenBeforeBalance.Sub(tokenBeforeBalance, amountInCost)
+	tokenBeforeBalance := new(big.Int).Sub(tokenBeforeBalanceCache, amountInCost)
 
 	//-----------token before balance ------------------------------------------------------------------------
 
@@ -594,8 +626,10 @@ func executeNew(
 	return amountIn, diff, nil
 }
 
-func executeFinalNew(ctx context.Context,
+func executeFinalNew(
+	ctx context.Context,
 	reqId string,
+	beforeBalanceCache map[common.Address]*big.Int,
 	isFront bool,
 	sbp SbpArgs,
 	amountIn *big.Int,
@@ -616,21 +650,23 @@ func executeFinalNew(ctx context.Context,
 	pathLen := len(commonPathInfos)
 
 	if isFront {
-		beginToken = commonPathInfos[0].TokenOut
+		beginToken = commonPathInfos[0].TokenIn
 		finalToken = commonPathInfos[pathLen-1].TokenOut
 	} else {
 		beginToken = commonPathInfos[pathLen-1].TokenOut
-		finalToken = commonPathInfos[0].TokenOut
+		finalToken = commonPathInfos[0].TokenIn
 	}
-	tokenBeforeBalance, tbErr := getERC20TokenBalance(ctx, s, finalToken, sbp.Contract, sdb, head)
-	if tbErr != nil {
-		return nil, nil, tbErr
+
+	tokenBeforeBalanceCache := beforeBalanceCache[finalToken]
+
+	if tokenBeforeBalanceCache == nil {
+		return nil, nil, errors.New("tokenBeforeBalance_err")
 	}
 	amountInCost := SandwichBigIntZeroValue
 	if finalToken.Cmp(beginToken) == 0 {
 		amountInCost = amountIn
 	}
-	tokenBeforeBalance.Sub(tokenBeforeBalance, amountInCost)
+	tokenBeforeBalance := new(big.Int).Sub(tokenBeforeBalanceCache, amountInCost)
 
 	//-----------token before balance ------------------------------------------------------------------------
 
