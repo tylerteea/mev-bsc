@@ -6,10 +6,10 @@ import (
 )
 
 var (
-	Sandwich     = big.NewInt(0)
-	Cycle        = big.NewInt(1)
-	DirectionAdd = big.NewInt(0)
-	DirectionSub = big.NewInt(1)
+	SandwichRouterType = big.NewInt(0)
+	CycleRouterType    = big.NewInt(1)
+	DirectionAdd       = big.NewInt(0)
+	DirectionSub       = big.NewInt(1)
 
 	SandwichBigIntZeroValue = big.NewInt(0)
 	SandwichBigIntOneValue  = big.NewInt(1)
@@ -34,6 +34,27 @@ const (
 //-------------------------------------------------------------------
 
 type (
+	CombinationProfitResponse struct {
+		Jsonrpc string             `json:"jsonrpc"`
+		Id      int64              `json:"id"`
+		Result  *CombinationProfit `json:"result"`
+	}
+
+	CombinationProfit struct {
+		Error          string      `json:"error"`
+		Reason         string      `json:"reason"`
+		FrontSwapInfos []*SwapInfo `json:"frontSwapInfos"`
+		FrontDiff      *big.Int    `json:"frontDiff"`
+		BackSwapInfos  []*SwapInfo `json:"backSwapInfos"`
+		BackDiff       *big.Int    `json:"backDiff"`
+		GrossProfit    *big.Int    `json:"profit"`
+	}
+
+	SwapInfo struct {
+		AmountIn  *big.Int `json:"amountIn"`
+		AmountOut *big.Int `json:"amountOut"`
+	}
+
 	CommonPathInfo struct {
 		TokenIn     common.Address `json:"tokenIn"`
 		TokenOut    common.Address `json:"tokenOut"`

@@ -23,21 +23,6 @@ import (
 )
 
 type (
-	CombinationProfit struct {
-		Error          string      `json:"error"`
-		Reason         string      `json:"reason"`
-		FrontSwapInfos []*SwapInfo `json:"frontSwapInfos"`
-		FrontDiff      *big.Int    `json:"frontDiff"`
-		BackSwapInfos  []*SwapInfo `json:"backSwapInfos"`
-		BackDiff       *big.Int    `json:"backDiff"`
-		GrossProfit    *big.Int    `json:"profit"`
-	}
-
-	SwapInfo struct {
-		AmountIn  *big.Int `json:"amountIn"`
-		AmountOut *big.Int `json:"amountOut"`
-	}
-
 	SbpArgs struct {
 		CommonPathInfos []*CommonPathInfo `json:"commonPathInfos"`
 		Eoa             common.Address    `json:"eoa"`
@@ -471,6 +456,80 @@ func workerNew(
 	return grossProfit, nil
 }
 
+func getSimulateHead() *ParamHead {
+	globalConfig := globalConfigToBigInt(Simulate)
+	strategy := SandwichBigIntZeroValue
+	countSeq := SandwichBigIntZeroValue
+	bundleId := SandwichBigIntZeroValue
+
+	frontBuilder := SandwichBigIntZeroValue
+	frontBribery := SandwichBigIntZeroValue
+	frontParamHead := NewParamHead(frontBuilder, strategy, countSeq, globalConfig, bundleId, frontBribery)
+
+	return frontParamHead
+}
+
+func getSimulateBalanceChecks() []*BalanceCheck {
+	return nil
+}
+
+func getSimulateRouters(isFront bool, commonPathInfos []*CommonPathInfo, firstSwapAmountIn *big.Int) []*Router {
+
+	pathLen := len(commonPathInfos)
+	swapCount := big.NewInt(int64(pathLen))
+	if isFront {
+
+		var frontRouters []*Router
+		var frontSwaps []*Swap
+		for index := range commonPathInfos {
+
+			commonPathInfo := commonPathInfos[index]
+
+			amountIn := SandwichBigIntZeroValue
+			if index == 0 {
+				amountIn = firstSwapAmountIn
+			}
+			amountOut := SandwichBigIntZeroValue
+
+			frontTokenIn := commonPathInfo.TokenIn
+			frontTokenOut := commonPathInfo.TokenOut
+
+			swap := NewSwap(frontTokenIn, commonPathInfo.PairsOrPool, commonPathInfo.ZeroForOne, commonPathInfo.Version, amountIn, amountOut, commonPathInfo.Fee, frontTokenOut)
+			frontSwaps = append(frontSwaps, swap)
+		}
+
+		frontRouter := NewRouter(SandwichRouterType, swapCount, frontSwaps)
+		frontRouters = append(frontRouters, frontRouter)
+
+		return frontRouters
+	} else {
+
+		var backRouters []*Router
+		var backSwaps []*Swap
+		for index := range commonPathInfos {
+
+			commonPathInfo := commonPathInfos[pathLen-1-index]
+
+			amountIn := SandwichBigIntZeroValue
+			if index == 0 {
+				amountIn = firstSwapAmountIn
+			}
+			amountOut := SandwichBigIntZeroValue
+
+			backTokenIn := commonPathInfo.TokenOut
+			backTokenOut := commonPathInfo.TokenIn
+
+			swap := NewSwap(backTokenIn, commonPathInfo.PairsOrPool, !commonPathInfo.ZeroForOne, commonPathInfo.Version, amountIn, amountOut, commonPathInfo.Fee, backTokenOut)
+			backSwaps = append(backSwaps, swap)
+		}
+
+		backRouter := NewRouter(SandwichRouterType, swapCount, backSwaps)
+		backRouters = append(backRouters, backRouter)
+
+		return backRouters
+	}
+}
+
 func executeNew(
 	ctx context.Context,
 	reqId string,
@@ -483,47 +542,40 @@ func executeNew(
 	nextBlockNum *big.Int,
 ) (*big.Int, *big.Int, error) {
 
-	var data []byte
-
 	if sbp.LogEnable {
 		log.Info("call_execute1", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
 	}
 
+	//-----------token before balance ------------------------------------------------------------------------
+
+	beginToken := NullAddress
+	finalToken := NullAddress
+	commonPathInfos := sbp.CommonPathInfos
+	pathLen := len(commonPathInfos)
+
 	if isFront {
-
-		if sbp.BuyOrSale {
-
-			amountIn = GetShortNumber(amountIn)
-			// 模拟的时候都检查税，正式发不检查
-			frontBuyConfig := NewBuyConfig(true, true, false, boolToInt(sbp.ZeroForOne2))
-			frontMinTokenOutBalance := BigIntZeroValue
-
-			data = encodeParamsBuyNew(sbp.Version2, true, amountIn, sbp.PairOrPool2, sbp.Router2, sbp.Token2, sbp.Token3, frontBuyConfig, sbp.Fee2, BigIntZeroValue, frontMinTokenOutBalance, sbp.BriberyAddress, BigIntZeroValue)
-		} else {
-
-			// 模拟的时候都检查税，正式发不检查
-			frontSaleConfig := NewSaleConfig(!isFront, true, true, false)
-			frontSaleOption := NewSaleOption(boolToInt(sbp.ZeroForOne2), sbp.Version2, boolToInt(sbp.ZeroForOne1), sbp.Version1)
-
-			data = encodeParamsSaleNew(amountIn, BigIntZeroValue, BigIntZeroValue, BigIntZeroValue, sbp.PairOrPool1, sbp.Router1, sbp.PairOrPool2, sbp.Router2, sbp.Token1, sbp.Token2, sbp.Token3, frontSaleOption, frontSaleConfig, sbp.Fee1, sbp.Fee2, sbp.MinTokenOutBalance, sbp.BriberyAddress, BigIntZeroValue)
-		}
+		beginToken = commonPathInfos[0].TokenOut
+		finalToken = commonPathInfos[pathLen-1].TokenOut
 	} else {
-
-		if sbp.BuyOrSale {
-
-			amountIn = GetShortNumber(amountIn)
-			// 模拟的时候都检查税，正式发不检查
-			backBuyConfig := NewBuyConfig(true, true, false, boolToInt(!sbp.ZeroForOne2))
-			data = encodeParamsBuyNew(sbp.Version2, false, amountIn, sbp.PairOrPool2, sbp.Router2, sbp.Token3, sbp.Token2, backBuyConfig, sbp.Fee2, BigIntZeroValue, sbp.MinTokenOutBalance, sbp.BriberyAddress, BigIntZeroValue)
-		} else {
-
-			// 模拟的时候都检查税，正式发不检查
-			backSaleConfig := NewSaleConfig(!isFront, true, true, false)
-			backSaleOption := NewSaleOption(boolToInt(!sbp.ZeroForOne1), sbp.Version1, boolToInt(!sbp.ZeroForOne2), sbp.Version2)
-
-			data = encodeParamsSaleNew(amountIn, BigIntZeroValue, BigIntZeroValue, BigIntZeroValue, sbp.PairOrPool2, sbp.Router2, sbp.PairOrPool1, sbp.Router1, sbp.Token3, sbp.Token2, sbp.Token1, backSaleOption, backSaleConfig, sbp.Fee2, sbp.Fee1, sbp.MinTokenOutBalance, sbp.BriberyAddress, BigIntZeroValue)
-		}
+		beginToken = commonPathInfos[pathLen-1].TokenOut
+		finalToken = commonPathInfos[0].TokenOut
 	}
+	tokenBeforeBalance, tbErr := getERC20TokenBalance(ctx, s, finalToken, sbp.Contract, sdb, head)
+	if tbErr != nil {
+		return nil, nil, tbErr
+	}
+	amountInCost := SandwichBigIntZeroValue
+	if finalToken.Cmp(beginToken) == 0 {
+		amountInCost = amountIn
+	}
+	tokenBeforeBalance.Sub(tokenBeforeBalance, amountInCost)
+
+	//-----------token before balance ------------------------------------------------------------------------
+
+	paramHead := getSimulateHead()
+	balanceChecks := getSimulateBalanceChecks()
+	routers := getSimulateRouters(isFront, sbp.CommonPathInfos, amountIn)
+	data := MakeParams(paramHead, balanceChecks, routers)
 
 	if sbp.LogEnable {
 		log.Info("call_execute2", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
@@ -557,26 +609,19 @@ func executeNew(
 		return nil, nil, callResult.Err
 	}
 
-	lenR := len(callResult.Return())
-
-	var diff *big.Int
-
-	if sbp.BuyOrSale {
-		if lenR == 64 {
-			diff = new(big.Int).SetBytes(callResult.Return()[32:64])
-			return amountIn, diff, nil
+	//-----------token after balance ------------------------------------------------------------------------
+	tokenAfterBalance, tbErr := getERC20TokenBalance(ctx, s, finalToken, sbp.Contract, sdb, head)
+	if tbErr != nil {
+		if sbp.LogEnable {
+			log.Info("call_execute8_tokenAfterBalance_err", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", tbErr)
 		}
-	} else {
-		if lenR == 160 {
-			diff = new(big.Int).SetBytes(callResult.Return()[128:160])
-			return amountIn, diff, nil
-		}
+		return nil, nil, tbErr
 	}
+	//-----------token after balance ------------------------------------------------------------------------
 
-	if sbp.LogEnable {
-		log.Info("call_execute11_结果数据长度检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR)
-	}
-	return nil, nil, errors.New("结果数据长度检验不通过2")
+	diff := tokenAfterBalance.Sub(tokenAfterBalance, tokenBeforeBalance)
+
+	return amountIn, diff, nil
 }
 
 func executeFinalNew(ctx context.Context,
@@ -590,49 +635,40 @@ func executeFinalNew(ctx context.Context,
 	nextBlockNum *big.Int,
 ) (*ContractResult, error) {
 
-	var data []byte
-
 	if sbp.LogEnable {
 		log.Info("call_execute1", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
 	}
 
-	briberyWei := BigIntZeroValue
+	//-----------token before balance ------------------------------------------------------------------------
+
+	beginToken := NullAddress
+	finalToken := NullAddress
+	commonPathInfos := sbp.CommonPathInfos
+	pathLen := len(commonPathInfos)
 
 	if isFront {
-
-		if sbp.BuyOrSale {
-
-			amountIn = GetShortNumber(amountIn)
-			// 模拟的时候都检查税，正式发不检查
-			frontBuyConfig := NewBuyConfig(true, true, false, boolToInt(sbp.ZeroForOne2))
-			frontMinTokenOutBalance := BigIntZeroValue
-
-			data = encodeParamsBuyNew(sbp.Version2, true, amountIn, sbp.PairOrPool2, sbp.Router2, sbp.Token2, sbp.Token3, frontBuyConfig, sbp.Fee2, BigIntZeroValue, frontMinTokenOutBalance, sbp.BriberyAddress, briberyWei)
-		} else {
-
-			// 模拟的时候都检查税，正式发不检查
-			frontSaleConfig := NewSaleConfig(!isFront, true, true, false)
-			frontSaleOption := NewSaleOption(boolToInt(sbp.ZeroForOne2), sbp.Version2, boolToInt(sbp.ZeroForOne1), sbp.Version1)
-
-			data = encodeParamsSaleNew(amountIn, BigIntZeroValue, BigIntZeroValue, BigIntZeroValue, sbp.PairOrPool1, sbp.Router1, sbp.PairOrPool2, sbp.Router2, sbp.Token1, sbp.Token2, sbp.Token3, frontSaleOption, frontSaleConfig, sbp.Fee1, sbp.Fee2, sbp.MinTokenOutBalance, sbp.BriberyAddress, briberyWei)
-		}
+		beginToken = commonPathInfos[0].TokenOut
+		finalToken = commonPathInfos[pathLen-1].TokenOut
 	} else {
-
-		if sbp.BuyOrSale {
-
-			amountIn = GetShortNumber(amountIn)
-			// 模拟的时候都检查税，正式发不检查
-			backBuyConfig := NewBuyConfig(true, true, false, boolToInt(!sbp.ZeroForOne2))
-			data = encodeParamsBuyNew(sbp.Version2, false, amountIn, sbp.PairOrPool2, sbp.Router2, sbp.Token3, sbp.Token2, backBuyConfig, sbp.Fee2, BigIntZeroValue, sbp.MinTokenOutBalance, sbp.BriberyAddress, briberyWei)
-		} else {
-
-			// 模拟的时候都检查税，正式发不检查
-			backSaleConfig := NewSaleConfig(!isFront, true, true, false)
-			backSaleOption := NewSaleOption(boolToInt(!sbp.ZeroForOne1), sbp.Version1, boolToInt(!sbp.ZeroForOne2), sbp.Version2)
-
-			data = encodeParamsSaleNew(amountIn, BigIntZeroValue, BigIntZeroValue, BigIntZeroValue, sbp.PairOrPool2, sbp.Router2, sbp.PairOrPool1, sbp.Router1, sbp.Token3, sbp.Token2, sbp.Token1, backSaleOption, backSaleConfig, sbp.Fee2, sbp.Fee1, sbp.MinTokenOutBalance, sbp.BriberyAddress, briberyWei)
-		}
+		beginToken = commonPathInfos[pathLen-1].TokenOut
+		finalToken = commonPathInfos[0].TokenOut
 	}
+	tokenBeforeBalance, tbErr := getERC20TokenBalance(ctx, s, finalToken, sbp.Contract, sdb, head)
+	if tbErr != nil {
+		return nil, tbErr
+	}
+	amountInCost := SandwichBigIntZeroValue
+	if finalToken.Cmp(beginToken) == 0 {
+		amountInCost = amountIn
+	}
+	tokenBeforeBalance.Sub(tokenBeforeBalance, amountInCost)
+
+	//-----------token before balance ------------------------------------------------------------------------
+
+	paramHead := getSimulateHead()
+	balanceChecks := getSimulateBalanceChecks()
+	routers := getSimulateRouters(isFront, sbp.CommonPathInfos, amountIn)
+	data := MakeParams(paramHead, balanceChecks, routers)
 
 	if sbp.LogEnable {
 		log.Info("call_execute2", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
@@ -693,165 +729,50 @@ func executeFinalNew(ctx context.Context,
 		log.Info("call_execute80_结果数据长度", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR)
 	}
 
+	//-----------token after balance ------------------------------------------------------------------------
+	tokenAfterBalance, tbErr := getERC20TokenBalance(ctx, s, finalToken, sbp.Contract, sdb, head)
+	if tbErr != nil {
+		if sbp.LogEnable {
+			log.Info("call_execute8_tokenAfterBalance_err", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", tbErr)
+		}
+		return nil, tbErr
+	}
+	diff := tokenAfterBalance.Sub(tokenAfterBalance, tokenBeforeBalance)
+	//-----------token after balance ------------------------------------------------------------------------
+
+	wantLen := pathLen * 2 * 32
+
 	var contractResult *ContractResult
 
-	if sbp.BuyOrSale {
-		if lenR == 64 {
+	if lenR == wantLen {
 
-			amountOut := new(big.Int).SetBytes(callResult.Return()[:32])
-			diff := new(big.Int).SetBytes(callResult.Return()[32:64])
+		amountIn1 := new(big.Int).SetBytes(callResult.Return()[:32])
+		amountOut1 := new(big.Int).SetBytes(callResult.Return()[32:64])
+		amountIn2 := new(big.Int).SetBytes(callResult.Return()[64:96])
+		amountOut2 := new(big.Int).SetBytes(callResult.Return()[96:128])
 
-			if diff.Cmp(BigIntZeroValue) <= 0 {
-				if sbp.LogEnable {
-					log.Info("call_execute8_买结果数据diff检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOut", amountOut, "diff", diff)
-				}
-				return nil, errors.New("买结果数据diff检验不通过1")
-			}
+		pathAmount1 := &PathAmount{
+			AmountIn:  amountIn, //不使用amountIn1,因为返回的是减1的，使用原始的amountIn
+			AmountOut: amountOut1,
+			Step:      1,
+		}
+		pathAmount2 := &PathAmount{
+			AmountIn:  amountIn2,
+			AmountOut: amountOut2,
+			Step:      2,
+		}
 
-			if sbp.Version2 != V3 {
-				if amountOut.Cmp(BigIntZeroValue) <= 0 {
-					if sbp.LogEnable {
-						log.Info("call_execute8_v2买结果数据大小检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR, "amountOut", amountOut, "diff", diff)
-					}
-					return nil, errors.New("v2买结果数据大小检验不通过1")
-				}
-			}
-
-			pathAmount := &PathAmount{
-				AmountIn:  amountIn,
-				AmountOut: amountOut,
-				Step:      1,
-			}
-			contractResult = &ContractResult{
-				PathAmounts: []*PathAmount{pathAmount},
-				Diff:        diff,
-			}
-		} else {
-			if sbp.LogEnable {
-				log.Info("call_execute9_买结果数据大小检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR)
-			}
-			return nil, errors.New("买结果数据长度检验不通过2")
+		contractResult = &ContractResult{
+			PathAmounts: []*PathAmount{pathAmount1, pathAmount2},
+			Diff:        diff,
 		}
 	} else {
-
-		if lenR == 160 {
-			amountIn1 := new(big.Int).SetBytes(callResult.Return()[:32])
-			amountOut1 := new(big.Int).SetBytes(callResult.Return()[32:64])
-			amountIn2 := new(big.Int).SetBytes(callResult.Return()[64:96])
-			amountOut2 := new(big.Int).SetBytes(callResult.Return()[96:128])
-			diff := new(big.Int).SetBytes(callResult.Return()[128:160])
-
-			if sbp.Version1 != V3 {
-				if amountOut1.Cmp(BigIntZeroValue) <= 0 {
-					if sbp.LogEnable {
-						log.Info("call_execute10_卖结果数据amountOut1大小检验不通过1",
-							"reqId", reqId,
-							"amountIn", amountIn,
-							"isFront", isFront,
-							"callResult_len", lenR,
-							"amountIn1", amountIn1,
-							"amountOut1", amountOut1,
-							"amountIn2", amountIn2,
-							"amountOut2", amountOut2,
-							"diff", diff,
-						)
-					}
-					return nil, errors.New("卖结果数据amountOut1大小检验不通过1")
-				}
-			} else {
-				if amountOut1.Cmp(BigIntZeroValue) < 0 {
-					if sbp.LogEnable {
-						log.Info("call_execute10_卖结果数据amountOut1大小检验不通过2",
-							"reqId", reqId,
-							"amountIn", amountIn,
-							"isFront", isFront,
-							"callResult_len", lenR,
-							"amountIn1", amountIn1,
-							"amountOut1", amountOut1,
-							"amountIn2", amountIn2,
-							"amountOut2", amountOut2,
-							"diff", diff,
-						)
-					}
-					return nil, errors.New("卖结果数据amountOut1大小检验不通过2")
-				}
-			}
-
-			if sbp.Version2 != V3 {
-				if amountOut2.Cmp(BigIntZeroValue) <= 0 {
-					if sbp.LogEnable {
-						log.Info("call_execute10_卖结果数据amountOut2大小检验不通过1",
-							"reqId", reqId,
-							"amountIn", amountIn,
-							"isFront", isFront,
-							"callResult_len", lenR,
-							"amountIn1", amountIn1,
-							"amountOut1", amountOut1,
-							"amountIn2", amountIn2,
-							"amountOut2", amountOut2,
-							"diff", diff,
-						)
-					}
-					return nil, errors.New("卖结果数据amountOut2大小检验不通过1")
-				}
-			} else {
-				if amountOut2.Cmp(BigIntZeroValue) < 0 {
-					if sbp.LogEnable {
-						log.Info("call_execute10_卖结果数据amountOut2大小检验不通过2",
-							"reqId", reqId,
-							"amountIn", amountIn,
-							"isFront", isFront,
-							"callResult_len", lenR,
-							"amountIn1", amountIn1,
-							"amountOut1", amountOut1,
-							"amountIn2", amountIn2,
-							"amountOut2", amountOut2,
-							"diff", diff,
-						)
-					}
-					return nil, errors.New("卖结果数据amountOut2大小检验不通过2")
-				}
-			}
-
-			if amountIn1.Cmp(BigIntZeroValue) <= 0 || amountIn2.Cmp(BigIntZeroValue) <= 0 || diff.Cmp(BigIntZeroValue) <= 0 {
-				if sbp.LogEnable {
-					log.Info("call_execute10_卖结果数据大小检验不通过",
-						"reqId", reqId,
-						"amountIn", amountIn,
-						"isFront", isFront,
-						"callResult_len", lenR,
-						"amountIn1", amountIn1,
-						"amountOut1", amountOut1,
-						"amountIn2", amountIn2,
-						"amountOut2", amountOut2,
-						"diff", diff,
-					)
-				}
-				return nil, errors.New("卖结果数据大小检验不通过1")
-			}
-
-			pathAmount1 := &PathAmount{
-				AmountIn:  amountIn, //不使用amountIn1,因为返回的是减1的，使用原始的amountIn
-				AmountOut: amountOut1,
-				Step:      1,
-			}
-			pathAmount2 := &PathAmount{
-				AmountIn:  amountIn2,
-				AmountOut: amountOut2,
-				Step:      2,
-			}
-
-			contractResult = &ContractResult{
-				PathAmounts: []*PathAmount{pathAmount1, pathAmount2},
-				Diff:        diff,
-			}
-		} else {
-			if sbp.LogEnable {
-				log.Info("call_execute11_卖结果数据长度检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR)
-			}
-			return nil, errors.New("卖结果数据长度检验不通过2")
+		if sbp.LogEnable {
+			log.Info("call_execute11_卖结果数据长度检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR)
 		}
+		return nil, errors.New("卖结果数据长度检验不通过2")
 	}
+
 	if sbp.LogEnable {
 		log.Info("call_execute20", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
 	}
