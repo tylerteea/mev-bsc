@@ -180,13 +180,18 @@ func MakeParams(paramHead *ParamHead, balanceChecks []*BalanceCheck, routers []*
 	params = append(params, FillBytes(10, paramHead.Bribery.Bytes())...)
 
 	//-------------------------------------------------------------------------------------------------balanceCheck
-	balanceDiffCount := big.NewInt(int64(len(balanceChecks)))
-	params = append(params, FillBytes(1, balanceDiffCount.Bytes())...)
+	if balanceChecks != nil {
+		bcLen := len(balanceChecks)
+		if bcLen > 0 {
+			balanceDiffCount := big.NewInt(int64(bcLen))
+			params = append(params, FillBytes(1, balanceDiffCount.Bytes())...)
 
-	for _, check := range balanceChecks {
-		params = append(params, FillBytes(20, check.Token.Bytes())...)
-		params = append(params, FillBytes(1, check.Direction.Bytes())...)
-		params = append(params, FillBytes(14, check.AmountDiff.Bytes())...)
+			for _, check := range balanceChecks {
+				params = append(params, FillBytes(20, check.Token.Bytes())...)
+				params = append(params, FillBytes(1, check.Direction.Bytes())...)
+				params = append(params, FillBytes(14, check.AmountDiff.Bytes())...)
+			}
+		}
 	}
 
 	//-------------------------------------------------------------------------------------------------router

@@ -43,20 +43,18 @@ type (
 
 func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) *CombinationProfit {
 
-	result := &CombinationProfit{
-		Error:  defaultError,
-		Reason: defaultError,
-	}
-
 	now := time.Now()
-
 	reqId := sbp.ReqId
-
 	defer timeCost(reqId, now)
 
 	if sbp.LogEnable {
 		req, _ := json.Marshal(sbp)
 		log.Info("call_sbp_start", "reqId", reqId, "sbp", string(req))
+	}
+
+	result := &CombinationProfit{
+		Error:  defaultError,
+		Reason: defaultError,
 	}
 
 	timeout := s.b.RPCEVMTimeout()
@@ -101,20 +99,17 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) *Combin
 		result.Error = "tx_is_nil"
 		result.Reason = "tx_is_nil"
 		if sbp.LogEnable {
-			resultJson, _ := json.Marshal(result)
-			log.Info("call_sbp_2_", "reqId", reqId, "result", string(resultJson))
+			log.Info("call_sbp_2_", "reqId", reqId)
 		}
 		return result
 	}
 
 	number := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
-
 	stateDBNew, head, _ := s.b.StateAndHeaderByNumberOrHash(ctx, number)
-
 	nextBlockNum := new(big.Int).Add(head.Number, BigIntOne)
 
 	if sbp.LogEnable {
-		log.Info("call_sbp_4_", "reqId", reqId, "blockNumber", number.BlockNumber.Int64(), "number", head.Number, "hash", head.Hash(), "parentHash", head.ParentHash)
+		log.Info("call_sbp_4_", "reqId", reqId, "nextBlockNum", nextBlockNum, "hash", head.Hash(), "parentHash", head.ParentHash)
 	}
 
 	victimTxMsg, victimTxMsgErr := core.TransactionToMessage(victimTransaction, types.MakeSigner(s.b.ChainConfig(), head.Number, head.Time), head.BaseFee)
@@ -134,7 +129,6 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) *Combin
 				log.Error(fmt.Sprintf("call_sandwichBestProfitMinimize_bestInFunc x[0]:%v, err:%v", x[0], err))
 			}
 		}()
-
 		amountInFloat := x[0]
 		if amountInFloat < 0 {
 			if sbp.LogEnable {
@@ -159,7 +153,6 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) *Combin
 			f, _ := amountIn.Float64()
 			return f
 		}
-
 		if amountInInt.Cmp(minAmountIn) < 0 {
 			if sbp.LogEnable {
 				log.Info("call_sbp_9", "reqId", reqId, "amountInFloat", amountInFloat)
@@ -167,7 +160,6 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) *Combin
 			sub, _ := amountInInt.Sub(minAmountIn, amountInInt).Float64()
 			return sub
 		}
-
 		stateDB := stateDBNew.Copy()
 
 		grossProfit, workErr := workerNew(ctx, head, nextBlockNum, victimBlockCtx, victimTxContext, victimTxMsg, sbp, s, reqId, stateDB, amountInInt)
@@ -452,10 +444,6 @@ func getSimulateHead() *ParamHead {
 	return frontParamHead
 }
 
-func getSimulateBalanceChecks() []*BalanceCheck {
-	return nil
-}
-
 func getSimulateRouters(isFront bool, commonPathInfos []*CommonPathInfo, firstSwapAmountIn *big.Int) []*Router {
 
 	pathLen := len(commonPathInfos)
@@ -556,9 +544,8 @@ func executeNew(
 	//-----------token before balance ------------------------------------------------------------------------
 
 	paramHead := getSimulateHead()
-	balanceChecks := getSimulateBalanceChecks()
 	routers := getSimulateRouters(isFront, sbp.CommonPathInfos, amountIn)
-	data := MakeParams(paramHead, balanceChecks, routers)
+	data := MakeParams(paramHead, nil, routers)
 
 	if sbp.LogEnable {
 		log.Info("call_execute2", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
@@ -648,9 +635,8 @@ func executeFinalNew(ctx context.Context,
 	//-----------token before balance ------------------------------------------------------------------------
 
 	paramHead := getSimulateHead()
-	balanceChecks := getSimulateBalanceChecks()
 	routers := getSimulateRouters(isFront, sbp.CommonPathInfos, amountIn)
-	data := MakeParams(paramHead, balanceChecks, routers)
+	data := MakeParams(paramHead, nil, routers)
 
 	if sbp.LogEnable {
 		log.Info("call_execute2", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
