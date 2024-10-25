@@ -41,16 +41,16 @@ type (
 	}
 
 	CombinationProfit struct {
-		Error          string      `json:"error"`
-		Reason         string      `json:"reason"`
-		FrontSwapInfos []*SwapInfo `json:"frontSwapInfos"`
-		FrontDiff      *big.Int    `json:"frontDiff"`
-		BackSwapInfos  []*SwapInfo `json:"backSwapInfos"`
-		BackDiff       *big.Int    `json:"backDiff"`
-		GrossProfit    *big.Int    `json:"profit"`
+		Error            string        `json:"error"`
+		Reason           string        `json:"reason"`
+		FrontAmountInfos []*AmountInfo `json:"frontAmountInfo"`
+		FrontDiff        *big.Int      `json:"frontDiff"`
+		BackAmountInfos  []*AmountInfo `json:"backAmountInfo"`
+		BackDiff         *big.Int      `json:"backDiff"`
+		GrossProfit      *big.Int      `json:"profit"`
 	}
 
-	SwapInfo struct {
+	AmountInfo struct {
 		AmountIn  *big.Int `json:"amountIn"`
 		AmountOut *big.Int `json:"amountOut"`
 	}

@@ -41,12 +41,12 @@ type (
 	}
 )
 
-func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[string]interface{} {
+func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) *CombinationProfit {
 
-	result := make(map[string]interface{})
-
-	result[errorString] = "default"
-	result[reasonString] = "default"
+	result := &CombinationProfit{
+		Error:  defaultError,
+		Reason: defaultError,
+	}
 
 	now := time.Now()
 
@@ -68,24 +68,24 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[str
 	}
 
 	defer cancel()
-	defer func(results *map[string]interface{}) {
+	defer func(results *CombinationProfit) {
 		if r := recover(); r != nil {
 			if sbp.LogEnable {
 				oldResultJson, _ := json.Marshal(result)
 				log.Info("call_sbp_old_result_", "reqId", reqId, "result", string(oldResultJson))
 			}
-			result[errorString] = "panic"
-			result[reasonString] = r
+			result.Error = "panic"
+			result.Reason = "panic"
 			if sbp.LogEnable {
 				newResultJson, _ := json.Marshal(result)
 				log.Info("call_sbp_defer_result_", "reqId", reqId, "result", string(newResultJson))
 			}
 		}
-	}(&result)
+	}(result)
 
 	if sbp.Balance.Cmp(BigIntZeroValue) == 0 {
-		result[errorString] = "args_err"
-		result[reasonString] = "balance_is_0"
+		result.Error = "args_err"
+		result.Reason = "balance_is_0"
 		return result
 	}
 	balance := sbp.Balance
@@ -98,8 +98,8 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[str
 
 	// 获取不到 直接返回
 	if victimTransaction == nil {
-		result[errorString] = "tx_is_nil"
-		result[reasonString] = "GetPoolTransaction and GetTransaction all nil : " + victimTxHash.Hex()
+		result.Error = "tx_is_nil"
+		result.Reason = "tx_is_nil"
 		if sbp.LogEnable {
 			resultJson, _ := json.Marshal(result)
 			log.Info("call_sbp_2_", "reqId", reqId, "result", string(resultJson))
@@ -120,8 +120,8 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[str
 	victimTxMsg, victimTxMsgErr := core.TransactionToMessage(victimTransaction, types.MakeSigner(s.b.ChainConfig(), head.Number, head.Time), head.BaseFee)
 
 	if victimTxMsgErr != nil {
-		result[errorString] = "victimTxMsgErr"
-		result[reasonString] = victimTxMsgErr.Error()
+		result.Error = "victimTxMsgErr"
+		result.Reason = victimTxMsgErr.Error()
 		return result
 	}
 
@@ -214,8 +214,8 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[str
 	log.Info("call_sbp_minimize_result", "reqId", reqId, "result", string(resJson))
 
 	if err != nil {
-		result[errorString] = "minimize_err"
-		result[reasonString] = err.Error()
+		result.Error = "minimize_err"
+		result.Reason = err.Error()
 		if sbp.LogEnable {
 			resultJson, _ := json.Marshal(result)
 			log.Info("call_sbp_minimize_err", "reqId", reqId, "result", string(resultJson))
@@ -233,8 +233,8 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[str
 	f := res.F
 
 	if quoteAmountIn.Cmp(balance) > 0 || quoteAmountIn.Cmp(minAmountIn) < 0 || f >= 0 {
-		result[errorString] = "minimize_result_out_of_limit"
-		result[reasonString] = quoteAmountIn
+		result.Error = "minimize_result_out_of_limit"
+		result.Reason = quoteAmountIn.String()
 		if sbp.LogEnable {
 			resultJson, _ := json.Marshal(result)
 			log.Info("call_sbp_minimize_out_of_limit", "reqId", reqId, "result", string(resultJson))
@@ -252,9 +252,8 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[str
 		log.Info("call_worker_result_end", "reqId", reqAndIndex, "amountInReal", quoteAmountIn, "result", string(marshal))
 	}
 
-	if workerResults[errorString] == nil && workerResults[profitString] != nil {
-		profit, ok := workerResults[profitString].(*big.Int)
-		if ok && profit.Cmp(BigIntZeroValue) > 0 {
+	if workerResults.Error == "" && workerResults.GrossProfit != nil {
+		if workerResults.GrossProfit.Cmp(BigIntZeroValue) > 0 {
 			result = workerResults
 		}
 	}
@@ -265,16 +264,7 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) map[str
 	return result
 }
 
-func workerFinalNew(
-	ctx context.Context,
-	head *types.Header,
-	nextBlockNum *big.Int,
-	victimTransaction *types.Transaction,
-	sbp SbpArgs,
-	s *BundleAPI,
-	reqAndIndex string,
-	statedb *state.StateDB,
-	amountIn *big.Int) map[string]interface{} {
+func workerFinalNew(ctx context.Context, head *types.Header, nextBlockNum *big.Int, victimTransaction *types.Transaction, sbp SbpArgs, s *BundleAPI, reqAndIndex string, statedb *state.StateDB, amountIn *big.Int) *CombinationProfit {
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -283,29 +273,31 @@ func workerFinalNew(
 		}
 	}()
 
-	result := make(map[string]interface{})
+	combinationProfit := &CombinationProfit{
+		Error:  defaultError,
+		Reason: defaultError,
+	}
 
 	// 抢跑----------------------------------------------------------------------------------------
-	frontContractReturn, fErr := executeFinalNew(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head, nextBlockNum)
+	frontAmountInfo, frontDiff, fErr := executeFinalNew(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head, nextBlockNum)
 
 	if sbp.LogEnable {
-		marshal, _ := json.Marshal(frontContractReturn)
-		log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "nextBlockNum", nextBlockNum, "amountIn", amountIn, "frontContractReturn", string(marshal), "fErr", fErr)
+		marshal, _ := json.Marshal(frontAmountInfo)
+		log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "nextBlockNum", nextBlockNum, "amountIn", amountIn, "frontContractReturn", string(marshal), "frontDiff", frontDiff, "fErr", fErr)
 	}
 	if fErr != nil {
-		result[errorString] = "frontCallErr"
-		result[reasonString] = fErr.Error()
-		result[frontAmountInString] = amountIn.String()
-		return result
+		combinationProfit.Error = "frontCallErr"
+		combinationProfit.Reason = fErr.Error()
+		return combinationProfit
 	}
 
 	// 受害者----------------------------------------------------------------------------------------
 	victimTxMsg, victimTxMsgErr := core.TransactionToMessage(victimTransaction, types.MakeSigner(s.b.ChainConfig(), head.Number, head.Time), head.BaseFee)
 
 	if victimTxMsgErr != nil {
-		result[errorString] = "victimTxMsgErr"
-		result[reasonString] = victimTxMsgErr
-		return result
+		combinationProfit.Error = "victimTxMsgErr"
+		combinationProfit.Reason = victimTxMsgErr.Error()
+		return combinationProfit
 	}
 
 	evmContext := core.NewEVMBlockContext(head, s.chain, nil)
@@ -317,74 +309,65 @@ func workerFinalNew(
 		vmEnv.Cancel()
 	})
 	if err != nil {
-		result[errorString] = "victimPoolSubmit"
-		result[reasonString] = err.Error()
-		return result
+		combinationProfit.Error = "victimPoolSubmit"
+		combinationProfit.Reason = err.Error()
+		return combinationProfit
 	}
 	gasPool := new(core.GasPool).AddGas(math.MaxUint64)
 	victimTxCallResult, victimTxCallErr := core.ApplyMessage(vmEnv, victimTxMsg, gasPool)
 
 	if victimTxCallErr != nil {
-		result[errorString] = "victimTxCallErr"
-		result[reasonString] = victimTxCallErr.Error()
-		result[frontAmountInString] = amountIn.String()
-		return result
+		combinationProfit.Error = "victimTxCallErr"
+		combinationProfit.Reason = victimTxCallErr.Error()
+
+		return combinationProfit
 	}
 	if len(victimTxCallResult.Revert()) > 0 {
-		result[errorString] = "execution_victimTx_reverted"
-		result[reasonString] = victimTxCallResult.Err.Error()
-		result[frontAmountInString] = amountIn.String()
-		return result
+		combinationProfit.Error = "execution_victimTx_reverted"
+		combinationProfit.Reason = victimTxCallResult.Err.Error()
+
+		return combinationProfit
 	}
 	if victimTxCallResult.Err != nil {
-		result[errorString] = "execution_victimTx_callResult_err"
-		result[reasonString] = victimTxCallResult.Err.Error()
-		result[frontAmountInString] = amountIn.String()
-		return result
+		combinationProfit.Error = "execution_victimTx_callResult_err"
+		combinationProfit.Reason = victimTxCallResult.Err.Error()
+		return combinationProfit
 	}
 
-	backAmountIn := frontContractReturn.Diff
+	backAmountIn := frontDiff
 	// 跟跑----------------------------------------------------------------------------------------
-	backContractReturn, bErr := executeFinalNew(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head, nextBlockNum)
+	backAmountInfo, backDiff, bErr := executeFinalNew(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head, nextBlockNum)
 
 	if sbp.LogEnable {
-		marshal, _ := json.Marshal(backContractReturn)
-		log.Info("call_execute_back", "reqAndIndex", reqAndIndex, "nextBlockNum", nextBlockNum, backAmountInString, backAmountIn, "backContractReturn", string(marshal), "bErr", bErr)
+		marshal, _ := json.Marshal(backAmountInfo)
+		log.Info("call_execute_back", "reqAndIndex", reqAndIndex, "nextBlockNum", nextBlockNum, backAmountInString, backAmountIn, "backContractReturn", string(marshal), "backDiff", backDiff, "bErr", bErr)
 	}
 	if bErr != nil {
-		result[errorString] = "backCallErr"
-		result[reasonString] = bErr.Error()
-		result[frontAmountInString] = amountIn
-		return result
+		combinationProfit.Error = "backCallErr"
+		combinationProfit.Reason = bErr.Error()
+		return combinationProfit
 	}
 
-	backContractReturn.Diff = GetShortNumber(backContractReturn.Diff)
-
-	profit := new(big.Int).Sub(backContractReturn.Diff, frontContractReturn.PathAmounts[0].AmountIn)
-
-	result[front_amount_in_1] = frontContractReturn.PathAmounts[0].AmountIn
-	result[front_amount_out_1] = frontContractReturn.PathAmounts[0].AmountOut
-	result[front_amount_in_2] = frontContractReturn.PathAmounts[1].AmountIn
-	result[front_amount_out_2] = frontContractReturn.PathAmounts[1].AmountOut
-	result[front_diff] = frontContractReturn.Diff
-
-	result[back_amount_in_1] = backContractReturn.PathAmounts[0].AmountIn
-	result[back_amount_out_1] = backContractReturn.PathAmounts[0].AmountOut
-	result[back_amount_in_2] = backContractReturn.PathAmounts[1].AmountIn
-	result[back_amount_out_2] = backContractReturn.PathAmounts[1].AmountOut
-	result[back_diff] = backContractReturn.Diff
-
-	result[profitString] = profit
+	profit := new(big.Int).Sub(backDiff, frontAmountInfo[0].AmountIn)
 
 	if profit.Cmp(BigIntZeroValue) <= 0 {
-		result[errorString] = "profit_too_low"
-		result[reasonString] = errors.New("profit_too_low")
+		combinationProfit.Error = "profit_too_low"
+		combinationProfit.Reason = "profit_too_low"
+		return combinationProfit
 	}
+
+	combinationProfit.Error = ""
+	combinationProfit.Reason = ""
+
+	combinationProfit.FrontAmountInfos = frontAmountInfo
+	combinationProfit.FrontDiff = frontDiff
+	combinationProfit.BackAmountInfos = backAmountInfo
+	combinationProfit.BackDiff = backDiff
 
 	if sbp.LogEnable {
 		log.Info("call_execute_finish", "reqAndIndex", reqAndIndex)
 	}
-	return result
+	return combinationProfit
 }
 
 func workerNew(
@@ -633,12 +616,11 @@ func executeFinalNew(ctx context.Context,
 	s *BundleAPI,
 	head *types.Header,
 	nextBlockNum *big.Int,
-) (*ContractResult, error) {
+) ([]*AmountInfo, *big.Int, error) {
 
 	if sbp.LogEnable {
 		log.Info("call_execute1", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
 	}
-
 	//-----------token before balance ------------------------------------------------------------------------
 
 	beginToken := NullAddress
@@ -655,7 +637,7 @@ func executeFinalNew(ctx context.Context,
 	}
 	tokenBeforeBalance, tbErr := getERC20TokenBalance(ctx, s, finalToken, sbp.Contract, sdb, head)
 	if tbErr != nil {
-		return nil, tbErr
+		return nil, nil, tbErr
 	}
 	amountInCost := SandwichBigIntZeroValue
 	if finalToken.Cmp(beginToken) == 0 {
@@ -708,20 +690,20 @@ func executeFinalNew(ctx context.Context,
 				)
 				log.Info("call_execute5", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "revertReason", revertReason.reason)
 			}
-			return nil, revertReason
+			return nil, nil, revertReason
 		}
 	}
 	if err != nil {
 		if sbp.LogEnable {
 			log.Info("call_execute6", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err)
 		}
-		return nil, err
+		return nil, nil, err
 	}
 	if callResult.Err != nil {
 		if sbp.LogEnable {
 			log.Info("call_execute7", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", callResult.Err)
 		}
-		return nil, callResult.Err
+		return nil, nil, callResult.Err
 	}
 
 	lenR := len(callResult.Return())
@@ -735,50 +717,37 @@ func executeFinalNew(ctx context.Context,
 		if sbp.LogEnable {
 			log.Info("call_execute8_tokenAfterBalance_err", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", tbErr)
 		}
-		return nil, tbErr
+		return nil, nil, tbErr
 	}
 	diff := tokenAfterBalance.Sub(tokenAfterBalance, tokenBeforeBalance)
 	//-----------token after balance ------------------------------------------------------------------------
 
-	wantLen := pathLen * 2 * 32
+	wantLen := pathLen * 2 * NumberSize
 
-	var contractResult *ContractResult
+	var swapInfos []*AmountInfo
 
 	if lenR == wantLen {
 
-		amountIn1 := new(big.Int).SetBytes(callResult.Return()[:32])
-		amountOut1 := new(big.Int).SetBytes(callResult.Return()[32:64])
-		amountIn2 := new(big.Int).SetBytes(callResult.Return()[64:96])
-		amountOut2 := new(big.Int).SetBytes(callResult.Return()[96:128])
+		for i := 0; i < pathLen; i++ {
+			m := (i + 1) * NumberSize
+			n := (i + 2) * NumberSize
+			amountInTmp := new(big.Int).SetBytes(callResult.Return()[:m])
+			amountOutTmp := new(big.Int).SetBytes(callResult.Return()[m:n])
 
-		pathAmount1 := &PathAmount{
-			AmountIn:  amountIn, //不使用amountIn1,因为返回的是减1的，使用原始的amountIn
-			AmountOut: amountOut1,
-			Step:      1,
-		}
-		pathAmount2 := &PathAmount{
-			AmountIn:  amountIn2,
-			AmountOut: amountOut2,
-			Step:      2,
-		}
-
-		contractResult = &ContractResult{
-			PathAmounts: []*PathAmount{pathAmount1, pathAmount2},
-			Diff:        diff,
+			swapInfo := &AmountInfo{
+				AmountIn:  amountInTmp,
+				AmountOut: amountOutTmp,
+			}
+			swapInfos = append(swapInfos, swapInfo)
 		}
 	} else {
 		if sbp.LogEnable {
 			log.Info("call_execute11_卖结果数据长度检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR)
 		}
-		return nil, errors.New("卖结果数据长度检验不通过2")
+		return nil, nil, errors.New("卖结果数据长度检验不通过2")
 	}
-
 	if sbp.LogEnable {
 		log.Info("call_execute20", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
 	}
-
-	if contractResult == nil {
-		return nil, errors.New("获取合约结果失败")
-	}
-	return contractResult, nil
+	return swapInfos, diff, nil
 }
