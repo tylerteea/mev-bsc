@@ -146,23 +146,6 @@ func globalConfigToBigInt(globalConfig bool) *big.Int {
 	}
 }
 
-func getHead(tradeType int, briberyWei *big.Int) (*ParamHead, *ParamHead) {
-	globalConfig := globalConfigToBigInt(Simulate)
-	strategy := SandwichBigIntZeroValue
-	countSeq := SandwichBigIntZeroValue
-	bundleId := SandwichBigIntZeroValue
-
-	frontBuilder := SandwichBigIntZeroValue
-	frontBribery := SandwichBigIntZeroValue
-	frontParamHead := NewParamHead(frontBuilder, strategy, countSeq, globalConfig, bundleId, frontBribery)
-
-	backBuilder := big.NewInt(int64(tradeType))
-	backBribery := briberyWei
-	backParamHead := NewParamHead(backBuilder, strategy, countSeq, globalConfig, bundleId, backBribery)
-
-	return frontParamHead, backParamHead
-}
-
 func MakeParams(paramHead *ParamHead, balanceChecks []*BalanceCheck, routers []*Router) []byte {
 
 	params := make([]byte, 0)
