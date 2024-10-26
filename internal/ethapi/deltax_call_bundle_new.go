@@ -24,28 +24,73 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
-type CallBundleCheckAndPoolPairStateArgs struct {
-	Txs                    []hexutil.Bytes       `json:"txs"`
-	BlockNumber            rpc.BlockNumber       `json:"blockNumber"`
-	StateBlockNumberOrHash rpc.BlockNumberOrHash `json:"stateBlockNumber"`
-	Coinbase               *string               `json:"coinbase"`
-	Timestamp              *uint64               `json:"timestamp"`
-	Timeout                *int64                `json:"timeout"`
-	GasLimit               *uint64               `json:"gasLimit"`
-	Difficulty             *big.Int              `json:"difficulty"`
-	SimulationLogs         bool                  `json:"simulationLogs"`
-	StateOverrides         *StateOverride        `json:"stateOverrides"`
-	BaseFee                *big.Int              `json:"baseFee"`
+type (
+	CallBundleCheckAndPoolPairStateArgs struct {
+		Txs                    []hexutil.Bytes       `json:"txs"`
+		BlockNumber            rpc.BlockNumber       `json:"blockNumber"`
+		StateBlockNumberOrHash rpc.BlockNumberOrHash `json:"stateBlockNumber"`
+		Coinbase               *string               `json:"coinbase"`
+		Timestamp              *uint64               `json:"timestamp"`
+		Timeout                *int64                `json:"timeout"`
+		GasLimit               *uint64               `json:"gasLimit"`
+		Difficulty             *big.Int              `json:"difficulty"`
+		SimulationLogs         bool                  `json:"simulationLogs"`
+		StateOverrides         *StateOverride        `json:"stateOverrides"`
+		BaseFee                *big.Int              `json:"baseFee"`
 
-	MevContract    common.Address   `json:"mevContract,omitempty"`
-	MevTokens      []common.Address `json:"mevTokens,omitempty"`
-	Pairs          []common.Address `json:"pairs,omitempty"`
-	Pools          []common.Address `json:"pools,omitempty"`
-	ReqId          string           `json:"reqId"`
-	NeedAccessList []bool           `json:"need_access_list"`
-}
+		MevContract    common.Address   `json:"mevContract,omitempty"`
+		MevTokens      []common.Address `json:"mevTokens,omitempty"`
+		Pairs          []common.Address `json:"pairs,omitempty"`
+		Pools          []common.Address `json:"pools,omitempty"`
+		ReqId          string           `json:"reqId"`
+		NeedAccessList []bool           `json:"need_access_list"`
+	}
 
-func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args CallBundleCheckAndPoolPairStateArgs) (map[string]interface{}, error) {
+	CallBundleResultNew struct {
+		ErrMsg             string                     `json:"errMsg"`
+		BundleGasPrice     string                     `json:"bundleGasPrice"`
+		BundleHash         string                     `json:"bundleHash"`
+		CheckResults       []*CheckBalanceResult      `json:"checkResults"`
+		CallTracerJsResult []*CallTracerJsResult      `json:"callTracerJsResult"`
+		Results            []*SimulateBundleResultNew `json:"results"`
+	}
+
+	CheckBalanceResult struct {
+		BalanceType string         `json:"balanceType"`
+		Token       common.Address `json:"token"`
+		Balance     *big.Int       `json:"balance"`
+	}
+
+	SimulateBundleResultNew struct {
+		GasUsed           uint64            `json:"gasUsed"`
+		TxHash            string            `json:"txHash"`
+		Value             string            `json:"value"`
+		Error             string            `json:"error"`
+		Revert            string            `json:"revert"`
+		Logs              []*types.Log      `json:"logs"`
+		AccessListGasUsed uint64            `json:"accessListGasUsed"`
+		AccessListResult  *types.AccessList `json:"accessListResult"`
+	}
+
+	CallTracerJsResult struct {
+		Address      string `json:"address"`
+		Topic        string `json:"topic"`
+		Reserve0     string `json:"reserve0"`
+		Reserve1     string `json:"reserve1"`
+		Amount0      string `json:"amount0"`
+		Amount1      string `json:"amount1"`
+		SqrtPriceX96 string `json:"sqrtPriceX96"`
+		Liquidity    string `json:"liquidity"`
+		Tick         string `json:"tick"`
+		Type         string `json:"type"`
+		Amount0In    string `json:"amount0In"`
+		Amount1In    string `json:"amount1In"`
+		Amount0Out   string `json:"amount0Out"`
+		Amount1Out   string `json:"amount1Out"`
+	}
+)
+
+func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args CallBundleCheckAndPoolPairStateArgs) (*CallBundleResultNew, error) {
 
 	reqId := args.ReqId
 
@@ -78,20 +123,20 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 		txs = append(txs, tx)
 	}
 
-	timeoutMilliSeconds := int64(5000)
+	timeoutMilliSeconds := int64(2000)
 	if args.Timeout != nil {
 		timeoutMilliSeconds = *args.Timeout
 	}
 	timeout := time.Millisecond * time.Duration(timeoutMilliSeconds)
-	stateHead, parent, err := s.b.StateAndHeaderByNumberOrHash(ctx, args.StateBlockNumberOrHash)
-	if stateHead == nil || err != nil {
-		return nil, err
+	stateHead, parent, err1 := s.b.StateAndHeaderByNumberOrHash(ctx, args.StateBlockNumberOrHash)
+	if stateHead == nil || err1 != nil {
+		return nil, err1
 	}
 	// 避免相互影响
 	state := stateHead.Copy()
 
-	if err := args.StateOverrides.Apply(state); err != nil {
-		return nil, err
+	if err2 := args.StateOverrides.Apply(state); err2 != nil {
+		return nil, err2
 	}
 	blockNumber := big.NewInt(int64(args.BlockNumber))
 
@@ -148,7 +193,7 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 	// and apply the message.
 	gp := new(core.GasPool).AddGas(math.MaxUint64)
 
-	results := []map[string]interface{}{}
+	var results []*SimulateBundleResultNew
 
 	bundleHash := sha3.NewLegacyKeccak256()
 	signer := types.MakeSigner(s.b.ChainConfig(), blockNumber, header.Time)
@@ -159,49 +204,41 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 	rules := s.b.ChainConfig().Rules(header.Number, isPostMerge, header.Time)
 
 	//-------------------------------------------
-
-	checkResult := map[string]interface{}{}
+	var CheckBalanceResults []*CheckBalanceResult
 
 	if args.MevTokens != nil {
 		balancesBefore, err11 := getTokenBalanceByContract(ctx, s, args.MevTokens, args.MevContract, state, header)
-
 		if err11 != nil {
 			log.Info("call_bundle_balance_err1", "reqId", reqId, "err", err11)
 			return nil, err11
 		}
-
 		if len(args.MevTokens) != len(balancesBefore) {
-			log.Info("call_bundle_balance_err2", "reqId", reqId, "mevTokens_len", len(args.MevTokens), "balances_len", len(balancesBefore), "err", err)
-			return nil, err11
+			log.Info("call_bundle_balance_err2", "reqId", reqId, "mevTokens_len", len(args.MevTokens), "balances_len", len(balancesBefore))
+			return nil, errors.New("call_bundle_balance_err2")
 		}
-
-		balancesBeforeMap := make(map[common.Address]*big.Int)
 		for i, mevTokenTmp := range args.MevTokens {
-			balancesBeforeMap[mevTokenTmp] = balancesBefore[i]
+			checkBalanceResult := &CheckBalanceResult{
+				BalanceType: "balancesBefore",
+				Token:       mevTokenTmp,
+				Balance:     balancesBefore[i],
+			}
+			CheckBalanceResults = append(CheckBalanceResults, checkBalanceResult)
 		}
-		checkResult["balancesBefore"] = balancesBeforeMap
 	}
-
 	//-------------------------------------------
 
 	for index, tx := range txs {
 
 		// Check if the context was cancelled (eg. timed-out)
-		if err := ctx.Err(); err != nil {
-			log.Info("CallBundleCheckBalance_8", "reqId", reqId, "err", err)
-			return nil, err
+		if err13 := ctx.Err(); err13 != nil {
+			log.Info("CallBundleCheckBalance_8", "reqId", reqId, "err", err13)
+			return nil, err13
 		}
 
 		from, err := types.Sender(signer, tx)
 
-		to := "0x"
-		if tx.To() != nil {
-			to = tx.To().String()
-		}
-		jsonResult := map[string]interface{}{
-			"txHash":      tx.Hash().String(),
-			"fromAddress": from.String(),
-			"toAddress":   to,
+		simulateBundleResultNew := &SimulateBundleResultNew{
+			TxHash: tx.Hash().String(),
 		}
 
 		//--------access list
@@ -230,8 +267,8 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 
 					accessListGasUsed := uint64(accessList.GasUsed)
 
-					jsonResult["accessListGasUsed"] = accessListGasUsed
-					jsonResult["accessListResult"] = accessList.Accesslist
+					simulateBundleResultNew.AccessListGasUsed = accessListGasUsed
+					simulateBundleResultNew.AccessListResult = accessList.Accesslist
 
 				} else {
 					log.Info("call_bundle_createAccessListNew", "reqId", reqId, "err", errAL)
@@ -254,7 +291,7 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
 		}
 
-		jsonResult["gasUsed"] = receipt.GasUsed
+		simulateBundleResultNew.GasUsed = receipt.GasUsed
 
 		totalGasUsed += receipt.GasUsed
 
@@ -270,82 +307,203 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 		gasFees.Add(gasFees, gasFeesTx)
 		bundleHash.Write(tx.Hash().Bytes())
 		if result.Err != nil {
-			jsonResult[errorString] = result.Err.Error()
+			simulateBundleResultNew.Error = result.Err.Error()
 			revert := result.Revert()
 			if len(revert) > 0 {
 				reason, _ := abi.UnpackRevert(revert)
-				jsonResult["revert"] = reason
+				simulateBundleResultNew.Revert = reason
 			}
 		} else {
 			dst := make([]byte, hex.EncodedLen(len(result.Return())))
 			hex.Encode(dst, result.Return())
-			jsonResult["value"] = "0x" + string(dst)
+			simulateBundleResultNew.Value = "0x" + string(dst)
 		}
 		// if simulation logs are requested append it to logs
 		if args.SimulationLogs {
-			jsonResult["logs"] = receipt.Logs
+			simulateBundleResultNew.Logs = receipt.Logs
 		}
 
-		jsonResult["gasFees"] = gasFeesTx.String()
-		jsonResult["gasUsed"] = receipt.GasUsed
-
-		results = append(results, jsonResult)
+		results = append(results, simulateBundleResultNew)
 	}
 
 	//-------------------------------------------
 	if args.MevTokens != nil {
 		balancesAfter, err := getTokenBalanceByContract(ctx, s, args.MevTokens, args.MevContract, state, header)
-
 		if err != nil {
 			log.Info("call_bundle_balance_err3", "reqId", reqId, "err", err)
 			return nil, err
 		}
-
 		if len(args.MevTokens) != len(balancesAfter) {
-			log.Info("call_bundle_balance_err4", "reqId", reqId, "mevTokens_len", len(args.MevTokens), "balances_len", len(balancesAfter), "err", err)
+			log.Info("call_bundle_balance_err4", "reqId", reqId, "mevTokens_len", len(args.MevTokens), "balances_len", len(balancesAfter))
+			return nil, errors.New("call_bundle_balance_err4")
+		}
+		for i, mevTokenTmp := range args.MevTokens {
+			checkBalanceResult := &CheckBalanceResult{
+				BalanceType: "balancesAfter",
+				Token:       mevTokenTmp,
+				Balance:     balancesAfter[i],
+			}
+			CheckBalanceResults = append(CheckBalanceResults, checkBalanceResult)
+		}
+	}
+
+	var callTracerJsResults []*CallTracerJsResult
+
+	callTracerJsResultsPool, poolErr := getPoolsInfo(ctx, s, args.Pools, state, header)
+	callTracerJsResultsPair, pairErr := getPairsInfo(ctx, s, args.Pairs, state, header)
+
+	if poolErr == nil {
+		callTracerJsResults = append(callTracerJsResults, callTracerJsResultsPool...)
+	}
+
+	if pairErr == nil {
+		callTracerJsResults = append(callTracerJsResults, callTracerJsResultsPair...)
+	}
+
+	callBundleResultNew := &CallBundleResultNew{
+		ErrMsg:             "",
+		Results:            results,
+		BundleHash:         "0x" + common.Bytes2Hex(bundleHash.Sum(nil)),
+		CheckResults:       CheckBalanceResults,
+		CallTracerJsResult: callTracerJsResults,
+	}
+	newResultJson, _ := json.Marshal(callBundleResultNew)
+	log.Info("call_bundle_result_balance", "reqId", reqId, "ret", string(newResultJson))
+
+	return callBundleResultNew, nil
+}
+
+func getPairsInfo(ctx context.Context, s *BundleAPI, Pairs []common.Address, state *state.StateDB, header *types.Header) ([]*CallTracerJsResult, error) {
+
+	defer func() {
+		if r := recover(); r != nil {
+			log.Info("recover...getPairsInfo")
+		}
+	}()
+
+	var callTracerJsResults []*CallTracerJsResult
+
+	for _, pair := range Pairs {
+
+		reqId := "getPoolsInfo_" + pair.String()
+
+		newMethod := abi.NewMethod("getReserves", "getReserves", abi.Function, "pure", false, false, inp, oup)
+		bytes := (hexutil.Bytes)(newMethod.ID)
+
+		callArgs := &TransactionArgs{
+			To:   &pair,
+			Data: &bytes,
+		}
+		callResult, err := mevCall(reqId, state, header, s, ctx, callArgs, nil, nil, nil)
+
+		if callResult != nil {
+
+			log.Info("call_execute4", "reqId", reqId, "result", string(callResult.ReturnData))
+			if len(callResult.Revert()) > 0 {
+
+				revertReason := newRevertError(callResult.Revert())
+				log.Info("call_result_not_nil_44",
+					"reqId", reqId,
+					"data", callResult,
+					"revert", common.Bytes2Hex(callResult.Revert()),
+					"revertReason", revertReason,
+					"returnData", common.Bytes2Hex(callResult.Return()),
+				)
+				log.Info("call_execute5", "reqId", reqId, "revertReason", revertReason.reason)
+				return nil, revertReason
+			}
+
+			if callResult.Err != nil {
+				log.Info("call_execute7", "reqId", reqId, "err", callResult.Err)
+				return nil, callResult.Err
+			}
+		}
+		if err != nil {
+			log.Info("call_execute6", "reqId", reqId, "err", err)
 			return nil, err
 		}
 
-		balancesAfterMap := make(map[common.Address]*big.Int)
+		bytesReturn := callResult.Return()
 
-		for i, mevTokenTmp := range args.MevTokens {
-			balancesAfterMap[mevTokenTmp] = balancesAfter[i]
+		reserve0 := bytesReturn[:32]
+		reserve1 := bytesReturn[32:64]
+
+		callTracerJsResult := &CallTracerJsResult{
+			Reserve0: common.Bytes2Hex(reserve0),
+			Reserve1: common.Bytes2Hex(reserve1),
+			Type:     "v2",
 		}
-		checkResult["balancesAfter"] = balancesAfterMap
+		callTracerJsResults = append(callTracerJsResults, callTracerJsResult)
 	}
+	log.Info("call_getPairsInfo_finish")
 
-	ret := map[string]interface{}{}
-
-	ret["errMsg"] = ""
-	ret["results"] = results
-	ret["stateBlockNumber"] = header.Number.Int64()
-	ret["bundleHash"] = "0x" + common.Bytes2Hex(bundleHash.Sum(nil))
-
-	ret["check_result"] = checkResult
-
-	newResultJson, _ := json.Marshal(ret)
-	log.Info("call_bundle_result_balance", "reqId", reqId, "ret", string(newResultJson))
-
-	return ret, nil
+	return callTracerJsResults, nil
 }
 
-func getPoolInfo(ctx context.Context, s *BundleAPI, token common.Address, account common.Address, state *state.StateDB, header *types.Header) (*big.Int, error) {
+func getPoolsInfo(ctx context.Context, s *BundleAPI, Pools []common.Address, state *state.StateDB, header *types.Header) ([]*CallTracerJsResult, error) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			log.Info("recover...getERC20TokenBalance")
+			log.Info("recover...getPoolsInfo")
 		}
 	}()
 
-	reqId := "getERC20TokenBalance_" + token.String() + "_" + account.String()
+	var callTracerJsResults []*CallTracerJsResult
 
-	newMethod := abi.NewMethod("balanceOf", "balanceOf", abi.Function, "pure", false, false, inp, oup)
-	pack, err := newMethod.Inputs.Pack(account)
-	var data = append(newMethod.ID, pack...)
-	bytes := (hexutil.Bytes)(data)
+	for _, pool := range Pools {
+
+		liquidityMethod := "liquidity"
+		liquidityReturn, err := executeMethod(ctx, s, pool, liquidityMethod, state, header)
+		if err != nil {
+			continue
+		}
+		liquidity := common.Bytes2Hex(liquidityReturn)
+		//-------------------------------------------------------------------------------------------
+
+		var sqrtPriceX96, tick string
+		slot0Method := "slot0"
+		slot0Return, err := executeMethod(ctx, s, pool, slot0Method, state, header)
+		if err != nil {
+			globalStateMethod := "globalState"
+			globalStateReturn, err1 := executeMethod(ctx, s, pool, globalStateMethod, state, header)
+			if err1 != nil {
+				continue
+			}
+			sqrtPriceX96 = common.Bytes2Hex(globalStateReturn[:32])
+			tick = common.Bytes2Hex(globalStateReturn[32:64])
+		} else {
+			sqrtPriceX96 = common.Bytes2Hex(slot0Return[:32])
+			tick = common.Bytes2Hex(slot0Return[32:64])
+		}
+		//-------------------------------------------------------------------------------------------
+
+		callTracerJsResult := &CallTracerJsResult{
+			Liquidity:    liquidity,
+			SqrtPriceX96: sqrtPriceX96,
+			Tick:         tick,
+			Type:         "v3",
+		}
+		callTracerJsResults = append(callTracerJsResults, callTracerJsResult)
+	}
+	log.Info("call_getPoolsInfo_finish")
+	return callTracerJsResults, nil
+}
+
+func executeMethod(ctx context.Context, s *BundleAPI, poolorPair common.Address, method string, state *state.StateDB, header *types.Header) ([]byte, error) {
+
+	defer func() {
+		if r := recover(); r != nil {
+			log.Info("recover...executeMethod")
+		}
+	}()
+
+	reqId := "executeMethod_" + poolorPair.String()
+
+	newMethod := abi.NewMethod(method, method, abi.Function, "pure", false, false, inp, oup)
+	bytes := (hexutil.Bytes)(newMethod.ID)
 
 	callArgs := &TransactionArgs{
-		To:   &token,
+		To:   &poolorPair,
 		Data: &bytes,
 	}
 	callResult, err := mevCall(reqId, state, header, s, ctx, callArgs, nil, nil, nil)
@@ -377,62 +535,6 @@ func getPoolInfo(ctx context.Context, s *BundleAPI, token common.Address, accoun
 		return nil, err
 	}
 
-	balance := new(big.Int).SetBytes(callResult.Return())
-	log.Info("call_balance_finish", "reqId", reqId, "balance", balance.String())
-
-	return balance, nil
-}
-
-func getPairInfo(ctx context.Context, s *BundleAPI, token common.Address, account common.Address, state *state.StateDB, header *types.Header) (*big.Int, error) {
-
-	defer func() {
-		if r := recover(); r != nil {
-			log.Info("recover...getERC20TokenBalance")
-		}
-	}()
-
-	reqId := "getERC20TokenBalance_" + token.String() + "_" + account.String()
-
-	newMethod := abi.NewMethod("balanceOf", "balanceOf", abi.Function, "pure", false, false, inp, oup)
-	pack, err := newMethod.Inputs.Pack(account)
-	var data = append(newMethod.ID, pack...)
-	bytes := (hexutil.Bytes)(data)
-
-	callArgs := &TransactionArgs{
-		To:   &token,
-		Data: &bytes,
-	}
-	callResult, err := mevCall(reqId, state, header, s, ctx, callArgs, nil, nil, nil)
-
-	if callResult != nil {
-
-		log.Info("call_execute4", "reqId", reqId, "result", string(callResult.ReturnData))
-		if len(callResult.Revert()) > 0 {
-
-			revertReason := newRevertError(callResult.Revert())
-			log.Info("call_result_not_nil_44",
-				"reqId", reqId,
-				"data", callResult,
-				"revert", common.Bytes2Hex(callResult.Revert()),
-				"revertReason", revertReason,
-				"returnData", common.Bytes2Hex(callResult.Return()),
-			)
-			log.Info("call_execute5", "reqId", reqId, "revertReason", revertReason.reason)
-			return nil, revertReason
-		}
-
-		if callResult.Err != nil {
-			log.Info("call_execute7", "reqId", reqId, "err", callResult.Err)
-			return nil, callResult.Err
-		}
-	}
-	if err != nil {
-		log.Info("call_execute6", "reqId", reqId, "err", err)
-		return nil, err
-	}
-
-	balance := new(big.Int).SetBytes(callResult.Return())
-	log.Info("call_balance_finish", "reqId", reqId, "balance", balance.String())
-
-	return balance, nil
+	log.Info("call_executeMethod_finish")
+	return callResult.Return(), nil
 }
