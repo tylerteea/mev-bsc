@@ -192,6 +192,8 @@ func MakeParams(paramHead *ParamHead, balanceChecks []*BalanceCheck, routers []*
 				params = append(params, FillBytes(14, check.AmountDiff.Bytes())...)
 			}
 		}
+	} else {
+		params = append(params, FillBytes(1, SandwichBigIntZeroValue.Bytes())...)
 	}
 
 	//-------------------------------------------------------------------------------------------------router
