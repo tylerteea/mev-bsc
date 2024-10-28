@@ -167,7 +167,7 @@ func globalConfigToBigInt(globalConfig bool) *big.Int {
 	}
 }
 
-func MakeParams(paramHead *ParamHead, balanceChecks []*BalanceCheck, routers []*Router) []byte {
+func MakeParams(paramHead *ParamHead, balanceChecks []*BalanceCheck, routers []*Router, simulate bool) []byte {
 
 	params := make([]byte, 0)
 
@@ -213,14 +213,14 @@ func MakeParams(paramHead *ParamHead, balanceChecks []*BalanceCheck, routers []*
 
 			swapParams = append(swapParams, FillBytes(14, swap.AmountIn.Bytes())...)
 
-			if Simulate {
+			if simulate {
 				swapParams = append(swapParams, FillBytes(14, swap.Fee.Bytes())...)
 			} else {
 				swapParams = append(swapParams, FillBytes(14, swap.AmountOut.Bytes())...)
 			}
 
 			if index == len(router.Swaps)-1 {
-				if Simulate {
+				if simulate {
 					swapParams = append(swapParams, FillBytes(20, swap.TokenOut.Bytes())...)
 				} else {
 					if swap.Version == Version5 {

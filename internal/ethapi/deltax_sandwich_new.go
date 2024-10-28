@@ -577,7 +577,7 @@ func executeNew(
 
 	paramHead := getSimulateHead()
 	routers := getSimulateRouters(isFront, sbp.CommonPathInfos, amountIn)
-	data := MakeParams(paramHead, nil, routers)
+	data := MakeParams(paramHead, nil, routers, Simulate)
 
 	if sbp.LogEnable {
 		log.Info("call_execute2", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
@@ -672,7 +672,7 @@ func executeFinalNew(
 
 	paramHead := getSimulateHead()
 	routers := getSimulateRouters(isFront, sbp.CommonPathInfos, amountIn)
-	data := MakeParams(paramHead, nil, routers)
+	data := MakeParams(paramHead, nil, routers, Simulate)
 
 	if sbp.LogEnable {
 		log.Info("call_execute2", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
