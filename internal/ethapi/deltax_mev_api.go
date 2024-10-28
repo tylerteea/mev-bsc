@@ -50,8 +50,6 @@ const (
 	errorString  = "error"
 	reasonString = "reason"
 	defaultError = "default"
-
-	NumberSize = 32
 )
 
 var pow1018 = math.Pow10(18)

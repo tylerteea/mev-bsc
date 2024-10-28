@@ -744,32 +744,16 @@ func executeFinalNew(
 	diff := tokenAfterBalance.Sub(tokenAfterBalance, tokenBeforeBalance)
 	//-----------token after balance ------------------------------------------------------------------------
 
-	wantLen := pathLen * 2 * NumberSize
-
-	var swapInfos []*AmountInfo
-
-	if lenR == wantLen {
-
-		for i := 0; i < pathLen; i++ {
-			m := (i + 1) * NumberSize
-			n := (i + 2) * NumberSize
-			amountInTmp := new(big.Int).SetBytes(callResult.Return()[:m])
-			amountOutTmp := new(big.Int).SetBytes(callResult.Return()[m:n])
-
-			swapInfo := &AmountInfo{
-				AmountIn:  amountInTmp,
-				AmountOut: amountOutTmp,
-			}
-			swapInfos = append(swapInfos, swapInfo)
-		}
-	} else {
+	amountInfos, aiErr := ReturnValueToAmountInfo(callResult.Return(), pathLen)
+	if aiErr != nil {
 		if sbp.LogEnable {
 			log.Info("call_execute11_卖结果数据长度检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR)
 		}
 		return nil, nil, errors.New("卖结果数据长度检验不通过2")
 	}
+
 	if sbp.LogEnable {
 		log.Info("call_execute20", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
 	}
-	return swapInfos, diff, nil
+	return amountInfos, diff, nil
 }
