@@ -180,7 +180,7 @@ func MakeParams(paramHead *ParamHead, balanceChecks []*BalanceCheck, routers []*
 	params = append(params, FillBytes(10, paramHead.Bribery.Bytes())...)
 
 	//-------------------------------------------------------------------------------------------------balanceCheck
-	if balanceChecks != nil {
+	if paramHead.GlobalConfig.Cmp(SandwichBigIntZeroValue) == 0 { //正式才检查
 		bcLen := len(balanceChecks)
 		if bcLen > 0 {
 			balanceDiffCount := big.NewInt(int64(bcLen))
