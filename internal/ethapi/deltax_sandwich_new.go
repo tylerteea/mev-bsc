@@ -355,6 +355,7 @@ func workerFinalNew(ctx context.Context, head *types.Header, nextBlockNum *big.I
 	combinationProfit.FrontDiff = frontDiff
 	combinationProfit.BackAmountInfos = backAmountInfo
 	combinationProfit.BackDiff = backDiff
+	combinationProfit.GrossProfit = profit
 
 	if sbp.LogEnable {
 		log.Info("call_execute_finish", "reqAndIndex", reqAndIndex)
