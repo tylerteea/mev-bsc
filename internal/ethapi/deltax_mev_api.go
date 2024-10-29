@@ -226,6 +226,9 @@ func RPCMarshalCompactLogs(receipts types.Receipts) []map[string]interface{} {
 func FillBytes(l int, rawData []byte) []byte {
 	rawLen := len(rawData)
 	head := l - rawLen
+	if head == 0 {
+		return rawData
+	}
 	res := make([]byte, l)
 	for i := 0; i < rawLen; i++ {
 		res[head+i] = rawData[i]
@@ -447,22 +450,22 @@ func getTokenBalanceByContract(ctx context.Context, s *BundleAPI, tokens []commo
 	}
 	reqId += contractAddress.String()
 
-	inAddrType, _ := abi.NewType("address[]", "address[]", nil)
-	inp := []abi.Argument{
+	inAddressType, _ := abi.NewType("address[]", "address[]", nil)
+	inpa := []abi.Argument{
 		{
 			Name: "tokens",
-			Type: inAddrType,
+			Type: inAddressType,
 		},
 	}
 
-	balanceType, _ := abi.NewType("uint256[]", "uint256[]", nil)
-	oup := []abi.Argument{
+	outBalanceType, _ := abi.NewType("uint256[]", "uint256[]", nil)
+	oupa := []abi.Argument{
 		{
 			Name: "memory",
-			Type: balanceType,
+			Type: outBalanceType,
 		},
 	}
-	newMethod := abi.NewMethod("balancesOf", "balancesOf", abi.Function, "pure", false, false, inp, oup)
+	newMethod := abi.NewMethod("balancesOf", "balancesOf", abi.Function, "pure", false, false, inpa, oupa)
 	pack, err := newMethod.Inputs.Pack(tokens)
 	var data = append(newMethod.ID, pack...)
 	bytes := (hexutil.Bytes)(data)

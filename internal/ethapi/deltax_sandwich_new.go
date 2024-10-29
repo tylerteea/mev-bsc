@@ -672,7 +672,7 @@ func executeFinalNew(
 	if callResult != nil {
 
 		if sbp.LogEnable {
-			log.Info("call_execute4", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "result", string(callResult.ReturnData))
+			log.Info("call_execute4", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "result", common.Bytes2Hex(callResult.ReturnData))
 		}
 		var revertReason *revertError
 		if len(callResult.Revert()) > 0 {
