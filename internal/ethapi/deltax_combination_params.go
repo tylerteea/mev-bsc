@@ -256,9 +256,10 @@ func ReturnValueToAmountInfo(valueByte []byte, pathLen int) ([]*AmountInfo, erro
 		return nil, errors.New("returnValue长度错误")
 	}
 	for i := 0; i < pathLen; i++ {
-		k := (i) * NumberSize
-		m := (i + 1) * NumberSize
-		n := (i + 2) * NumberSize
+		j := i * 2
+		k := (j) * NumberSize
+		m := (j + 1) * NumberSize
+		n := (j + 2) * NumberSize
 		amountInTmp := new(big.Int).SetBytes(valueByte[k:m])
 		amountOutTmp := new(big.Int).SetBytes(valueByte[m:n])
 
