@@ -670,6 +670,11 @@ web3._extend({
 			params: 1,
 		}),
 		new web3._extend.Method({
+			name: 'callBundleCheckBalance',
+			call: 'eth_callBundleCheckBalance',
+			params: 1,
+		}),
+		new web3._extend.Method({
 			name: 'callBundleCheckBalanceAndAccessList',
 			call: 'eth_callBundleCheckBalanceAndAccessList',
 			params: 1,
