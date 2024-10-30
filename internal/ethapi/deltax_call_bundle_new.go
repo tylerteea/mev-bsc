@@ -376,7 +376,7 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 	return callBundleResultNew, nil
 }
 
-func getPairsInfo(ctx context.Context, s *BundleAPI, Pairs []common.Address, state *state.StateDB, header *types.Header) ([]*CallTracerJsResult, error) {
+func getPairsInfo(ctx context.Context, s *BundleAPI, pairs []common.Address, state *state.StateDB, header *types.Header) ([]*CallTracerJsResult, error) {
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -384,52 +384,25 @@ func getPairsInfo(ctx context.Context, s *BundleAPI, Pairs []common.Address, sta
 		}
 	}()
 
+	marshalPairs, _ := json.Marshal(pairs)
+	log.Info("call_getPairsInfo_start", "pairs", string(marshalPairs))
+
 	var callTracerJsResults []*CallTracerJsResult
 
-	for _, pair := range Pairs {
+	for _, pair := range pairs {
 
-		reqId := "getPoolsInfo_" + pair.String()
+		getReservesMethod := "getReserves"
 
-		newMethod := abi.NewMethod("getReserves", "getReserves", abi.Function, "pure", false, false, inp, oup)
-		bytes := (hexutil.Bytes)(newMethod.ID)
-
-		callArgs := &TransactionArgs{
-			To:   &pair,
-			Data: &bytes,
-		}
-		callResult, err := mevCall(reqId, state, header, s, ctx, callArgs, nil, nil, nil)
-
-		if callResult != nil {
-
-			log.Info("call_execute4", "reqId", reqId, "result", string(callResult.ReturnData))
-			if len(callResult.Revert()) > 0 {
-
-				revertReason := newRevertError(callResult.Revert())
-				log.Info("call_result_not_nil_44",
-					"reqId", reqId,
-					"data", callResult,
-					"revert", common.Bytes2Hex(callResult.Revert()),
-					"revertReason", revertReason,
-					"returnData", common.Bytes2Hex(callResult.Return()),
-				)
-				log.Info("call_execute5", "reqId", reqId, "revertReason", revertReason.reason)
-				return nil, revertReason
-			}
-
-			if callResult.Err != nil {
-				log.Info("call_execute7", "reqId", reqId, "err", callResult.Err)
-				return nil, callResult.Err
-			}
-		}
+		getReservesReturn, err := executeMethod(ctx, s, pair, getReservesMethod, state, header)
 		if err != nil {
-			log.Info("call_execute6", "reqId", reqId, "err", err)
-			return nil, err
+			log.Info("call_getPairsInfo_err", "pair", pair.String(), "method", getReservesMethod, "return", common.Bytes2Hex(getReservesReturn), "err", err)
+			continue
 		}
 
-		bytesReturn := callResult.Return()
+		log.Info("call_getPairsInfo_1", "pair", pair.String(), "method", getReservesMethod, "return", common.Bytes2Hex(getReservesReturn))
 
-		reserve0 := bytesReturn[:32]
-		reserve1 := bytesReturn[32:64]
+		reserve0 := getReservesReturn[:32]
+		reserve1 := getReservesReturn[32:64]
 
 		callTracerJsResult := &CallTracerJsResult{
 			Reserve0: common.Bytes2Hex(reserve0),
@@ -443,7 +416,7 @@ func getPairsInfo(ctx context.Context, s *BundleAPI, Pairs []common.Address, sta
 	return callTracerJsResults, nil
 }
 
-func getPoolsInfo(ctx context.Context, s *BundleAPI, Pools []common.Address, state *state.StateDB, header *types.Header) ([]*CallTracerJsResult, error) {
+func getPoolsInfo(ctx context.Context, s *BundleAPI, pools []common.Address, state *state.StateDB, header *types.Header) ([]*CallTracerJsResult, error) {
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -451,15 +424,20 @@ func getPoolsInfo(ctx context.Context, s *BundleAPI, Pools []common.Address, sta
 		}
 	}()
 
+	marshalPairs, _ := json.Marshal(pools)
+	log.Info("call_getPoolsInfo_start", "pools", string(marshalPairs))
+
 	var callTracerJsResults []*CallTracerJsResult
 
-	for _, pool := range Pools {
+	for _, pool := range pools {
 
 		liquidityMethod := "liquidity"
 		liquidityReturn, err := executeMethod(ctx, s, pool, liquidityMethod, state, header)
 		if err != nil {
+			log.Info("call_getPoolsInfo_err", "pool", pool.String(), "method", liquidityMethod, "return", common.Bytes2Hex(liquidityReturn), "err", err)
 			continue
 		}
+		log.Info("call_getPoolsInfo_1", "pool", pool.String(), "method", liquidityMethod, "return", common.Bytes2Hex(liquidityReturn), "err", err)
 		liquidity := common.Bytes2Hex(liquidityReturn)
 		//-------------------------------------------------------------------------------------------
 
@@ -511,31 +489,34 @@ func executeMethod(ctx context.Context, s *BundleAPI, poolorPair common.Address,
 	}
 	callResult, err := mevCall(reqId, state, header, s, ctx, callArgs, nil, nil, nil)
 
-	if callResult != nil {
-
-		log.Info("call_execute4", "reqId", reqId, "result", string(callResult.ReturnData))
-		if len(callResult.Revert()) > 0 {
-
-			revertReason := newRevertError(callResult.Revert())
-			log.Info("call_result_not_nil_44",
-				"reqId", reqId,
-				"data", callResult,
-				"revert", common.Bytes2Hex(callResult.Revert()),
-				"revertReason", revertReason,
-				"returnData", common.Bytes2Hex(callResult.Return()),
-			)
-			log.Info("call_execute5", "reqId", reqId, "revertReason", revertReason.reason)
-			return nil, revertReason
-		}
-
-		if callResult.Err != nil {
-			log.Info("call_execute7", "reqId", reqId, "err", callResult.Err)
-			return nil, callResult.Err
-		}
-	}
 	if err != nil {
-		log.Info("call_execute6", "reqId", reqId, "err", err)
+		log.Info("call_execute4", "reqId", reqId, "err", err)
 		return nil, err
+	}
+
+	if callResult == nil {
+		log.Info("call_execute5", "reqId", reqId)
+	}
+
+	log.Info("call_execute6", "reqId", reqId, "result", string(callResult.ReturnData))
+
+	if len(callResult.Revert()) > 0 {
+
+		revertReason := newRevertError(callResult.Revert())
+		log.Info("call_result_not_nil_44",
+			"reqId", reqId,
+			"data", callResult,
+			"revert", common.Bytes2Hex(callResult.Revert()),
+			"revertReason", revertReason,
+			"returnData", common.Bytes2Hex(callResult.Return()),
+		)
+		log.Info("call_execute5", "reqId", reqId, "revertReason", revertReason.reason)
+		return nil, revertReason
+	}
+
+	if callResult.Err != nil {
+		log.Info("call_execute7", "reqId", reqId, "err", callResult.Err)
+		return nil, callResult.Err
 	}
 
 	log.Info("call_executeMethod_finish")
