@@ -349,15 +349,18 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 
 	var callTracerJsResults []*CallTracerJsResult
 
-	callTracerJsResultsPool, poolErr := getPoolsInfo(ctx, s, args.Pools, state, header)
-	callTracerJsResultsPair, pairErr := getPairsInfo(ctx, s, args.Pairs, state, header)
-
-	if poolErr == nil {
-		callTracerJsResults = append(callTracerJsResults, callTracerJsResultsPool...)
+	if args.Pools != nil {
+		callTracerJsResultsPool, poolErr := getPoolsInfo(ctx, s, args.Pools, state, header)
+		if poolErr == nil {
+			callTracerJsResults = append(callTracerJsResults, callTracerJsResultsPool...)
+		}
 	}
 
-	if pairErr == nil {
-		callTracerJsResults = append(callTracerJsResults, callTracerJsResultsPair...)
+	if args.Pairs != nil {
+		callTracerJsResultsPair, pairErr := getPairsInfo(ctx, s, args.Pairs, state, header)
+		if pairErr == nil {
+			callTracerJsResults = append(callTracerJsResults, callTracerJsResultsPair...)
+		}
 	}
 
 	callBundleResultNew := &CallBundleResultNew{
