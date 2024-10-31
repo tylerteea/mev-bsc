@@ -316,7 +316,7 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 		} else {
 			dst := make([]byte, hex.EncodedLen(len(result.Return())))
 			hex.Encode(dst, result.Return())
-			simulateBundleResultNew.Value = "0x" + string(dst)
+			simulateBundleResultNew.Value = ZeroX + string(dst)
 		}
 		// if simulation logs are requested append it to logs
 		if args.SimulationLogs {
@@ -370,7 +370,7 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 	callBundleResultNew := &CallBundleResultNew{
 		ErrMsg:             "",
 		Results:            results,
-		BundleHash:         "0x" + common.Bytes2Hex(bundleHash.Sum(nil)),
+		BundleHash:         ZeroX + common.Bytes2Hex(bundleHash.Sum(nil)),
 		CheckResults:       CheckBalanceResults,
 		CallTracerJsResult: callTracerJsResults,
 	}
@@ -379,6 +379,10 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 
 	return callBundleResultNew, nil
 }
+
+const (
+	ZeroX = "0x"
+)
 
 func getPairsInfo(ctx context.Context, reqId string, s *BundleAPI, pairs []common.Address, state *state.StateDB, header *types.Header) ([]*CallTracerJsResult, error) {
 
@@ -409,8 +413,8 @@ func getPairsInfo(ctx context.Context, reqId string, s *BundleAPI, pairs []commo
 		reserve1 := getReservesReturn[32:64]
 
 		callTracerJsResult := &CallTracerJsResult{
-			Reserve0: common.Bytes2Hex(reserve0),
-			Reserve1: common.Bytes2Hex(reserve1),
+			Reserve0: ZeroX + common.Bytes2Hex(reserve0),
+			Reserve1: ZeroX + common.Bytes2Hex(reserve1),
 			Type:     "v2",
 		}
 		callTracerJsResults = append(callTracerJsResults, callTracerJsResult)
@@ -442,7 +446,7 @@ func getPoolsInfo(ctx context.Context, reqId string, s *BundleAPI, pools []commo
 			continue
 		}
 		log.Info("call_getPoolsInfo_1", "reqId", reqId, "pool", pool.String(), "method", liquidityMethod, "return", common.Bytes2Hex(liquidityReturn), "err", err)
-		liquidity := common.Bytes2Hex(liquidityReturn)
+		liquidity := ZeroX + common.Bytes2Hex(liquidityReturn)
 		//-------------------------------------------------------------------------------------------
 
 		var sqrtPriceX96, tick string
@@ -454,11 +458,11 @@ func getPoolsInfo(ctx context.Context, reqId string, s *BundleAPI, pools []commo
 			if err1 != nil {
 				continue
 			}
-			sqrtPriceX96 = common.Bytes2Hex(globalStateReturn[:32])
-			tick = common.Bytes2Hex(globalStateReturn[32:64])
+			sqrtPriceX96 = ZeroX + common.Bytes2Hex(globalStateReturn[:32])
+			tick = ZeroX + common.Bytes2Hex(globalStateReturn[32:64])
 		} else {
-			sqrtPriceX96 = common.Bytes2Hex(slot0Return[:32])
-			tick = common.Bytes2Hex(slot0Return[32:64])
+			sqrtPriceX96 = ZeroX + common.Bytes2Hex(slot0Return[:32])
+			tick = ZeroX + common.Bytes2Hex(slot0Return[32:64])
 		}
 		//-------------------------------------------------------------------------------------------
 
@@ -506,7 +510,7 @@ func executeMethod(ctx context.Context, reqId string, s *BundleAPI, poolorPair c
 		log.Info("call_execute5", "reqId", reqId)
 	}
 
-	log.Info("call_execute6", "reqId", reqId, "result", string(callResult.ReturnData))
+	log.Info("call_execute6", "reqId", reqId, "result", common.Bytes2Hex(callResult.ReturnData))
 
 	if len(callResult.Revert()) > 0 {
 
