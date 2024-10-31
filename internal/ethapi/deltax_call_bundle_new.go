@@ -490,11 +490,11 @@ func executeMethod(ctx context.Context, reqId string, s *BundleAPI, poolorPair c
 
 	reqId += "_executeMethod_" + poolorPair.String()
 
-	inPP := []abi.Argument{}
+	//inPP := []abi.Argument{}
+	//
+	//ouPP := []abi.Argument{}
 
-	ouPP := []abi.Argument{}
-
-	newMethod := abi.NewMethod(method, method, abi.Function, "pure", false, false, inPP, ouPP)
+	newMethod := abi.NewMethod(method, method, abi.Function, "pure", false, false, nil, nil)
 	bytes := (hexutil.Bytes)(newMethod.ID)
 
 	callArgs := &TransactionArgs{
