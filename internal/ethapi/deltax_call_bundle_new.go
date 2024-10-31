@@ -490,10 +490,6 @@ func executeMethod(ctx context.Context, reqId string, s *BundleAPI, poolorPair c
 
 	reqId += "_executeMethod_" + poolorPair.String()
 
-	//inPP := []abi.Argument{}
-	//
-	//ouPP := []abi.Argument{}
-
 	newMethod := abi.NewMethod(method, method, abi.Function, "pure", false, false, nil, nil)
 	bytes := (hexutil.Bytes)(newMethod.ID)
 
@@ -504,15 +500,15 @@ func executeMethod(ctx context.Context, reqId string, s *BundleAPI, poolorPair c
 	callResult, err := mevCall(reqId, state, header, s, ctx, callArgs, nil, nil, nil)
 
 	if err != nil {
-		log.Info("call_execute4", "reqId", reqId, "err", err)
+		log.Info("call_executeMethod4", "reqId", reqId, "err", err)
 		return nil, err
 	}
 
 	if callResult == nil {
-		log.Info("call_execute5", "reqId", reqId)
+		log.Info("call_executeMethod5", "reqId", reqId)
 	}
 
-	log.Info("call_execute6", "reqId", reqId, "result", common.Bytes2Hex(callResult.ReturnData))
+	log.Info("call_executeMethod6", "reqId", reqId, "result", common.Bytes2Hex(callResult.ReturnData))
 
 	if len(callResult.Revert()) > 0 {
 
@@ -524,12 +520,12 @@ func executeMethod(ctx context.Context, reqId string, s *BundleAPI, poolorPair c
 			"revertReason", revertReason,
 			"returnData", common.Bytes2Hex(callResult.Return()),
 		)
-		log.Info("call_execute5", "reqId", reqId, "revertReason", revertReason.reason)
+		log.Info("call_executeMethod7", "reqId", reqId, "revertReason", revertReason.reason)
 		return nil, revertReason
 	}
 
 	if callResult.Err != nil {
-		log.Info("call_execute7", "reqId", reqId, "err", callResult.Err)
+		log.Info("call_executeMethod8", "reqId", reqId, "err", callResult.Err)
 		return nil, callResult.Err
 	}
 
