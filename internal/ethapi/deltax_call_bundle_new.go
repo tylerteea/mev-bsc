@@ -413,6 +413,7 @@ func getPairsInfo(ctx context.Context, reqId string, s *BundleAPI, pairs []commo
 		reserve1 := getReservesReturn[32:64]
 
 		callTracerJsResult := &CallTracerJsResult{
+			Address:  pair.String(),
 			Reserve0: ZeroX + common.Bytes2Hex(reserve0),
 			Reserve1: ZeroX + common.Bytes2Hex(reserve1),
 			Type:     "v2",
@@ -467,6 +468,7 @@ func getPoolsInfo(ctx context.Context, reqId string, s *BundleAPI, pools []commo
 		//-------------------------------------------------------------------------------------------
 
 		callTracerJsResult := &CallTracerJsResult{
+			Address:      pool.String(),
 			Liquidity:    liquidity,
 			SqrtPriceX96: sqrtPriceX96,
 			Tick:         tick,
