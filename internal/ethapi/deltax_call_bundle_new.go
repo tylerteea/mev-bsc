@@ -43,8 +43,6 @@ type (
 		Pools                  []common.Address      `json:"pools,omitempty"`
 		ReqId                  string                `json:"reqId"`
 		NeedAccessList         []bool                `json:"needAccessList"`
-		BaseTxs                []hexutil.Bytes       `json:"baseTxs"`
-		NeedBaseTxs            bool                  `json:"needBaseTxs"`
 	}
 
 	CallBundleResultNew struct {
@@ -202,30 +200,6 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 
 	isPostMerge := header.Difficulty.Cmp(common.Big0) == 0
 	rules := s.b.ChainConfig().Rules(header.Number, isPostMerge, header.Time)
-
-	if args.NeedBaseTxs && args.BaseTxs != nil {
-		for _, encodedTx := range args.BaseTxs {
-			tx := new(types.Transaction)
-			if err := tx.UnmarshalBinary(encodedTx); err != nil {
-				log.Info("CallBundleBaseTxs_1", "reqId", reqId, "err", err)
-				return nil, err
-			}
-			from, err := types.Sender(signer, tx)
-			state.Prepare(rules, from, coinbase, tx.To(), vm.ActivePrecompiles(rules), tx.AccessList())
-
-			_, result, err := ApplyTransactionWithResult(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, &header.GasUsed, vmconfig)
-			if err != nil {
-				log.Info("CallBundleBaseTxs_2", "reqId", reqId, "err", err)
-				return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
-			}
-			if result.Err != nil {
-				log.Info("CallBundleBaseTxs_3", "reqId", reqId, "err", result.Err)
-				return nil, fmt.Errorf("err: %w; txhash %s", result.Err, tx.Hash())
-			}
-		}
-	}
-
-	log.Info("CallBundleBaseTxs_end", "reqId", reqId)
 
 	//-------------------------------------------
 	var CheckBalanceResults []*CheckBalanceResult
