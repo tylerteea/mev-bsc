@@ -26,6 +26,7 @@ import (
 
 type (
 	CallBundleCheckAndPoolPairStateArgs struct {
+		ReqId                  string                `json:"reqId"`
 		Txs                    []hexutil.Bytes       `json:"txs"`
 		BlockNumber            rpc.BlockNumber       `json:"blockNumber"`
 		StateBlockNumberOrHash rpc.BlockNumberOrHash `json:"stateBlockNumber"`
@@ -37,12 +38,18 @@ type (
 		SimulationLogs         bool                  `json:"simulationLogs"`
 		StateOverrides         *StateOverride        `json:"stateOverrides"`
 		BaseFee                *big.Int              `json:"baseFee"`
-		MevContract            common.Address        `json:"mevContract,omitempty"`
-		MevTokens              []common.Address      `json:"mevTokens,omitempty"`
-		Pairs                  []common.Address      `json:"pairs,omitempty"`
-		Pools                  []common.Address      `json:"pools,omitempty"`
-		ReqId                  string                `json:"reqId"`
-		NeedAccessList         []bool                `json:"needAccessList"`
+
+		NeedAccessList []bool `json:"needAccessList"`
+
+		//pair/pool state
+		Pairs []common.Address `json:"pairs,omitempty"`
+		Pools []common.Address `json:"pools,omitempty"`
+
+		//balance
+		MevContract        common.Address   `json:"mevContract,omitempty"`
+		MevTokens          []common.Address `json:"mevTokens,omitempty"`
+		BalanceBeforeIndex int              `json:"balanceBeforeIndex,omitempty"`
+		BalanceAfterIndex  int              `json:"balanceAfterIndex,omitempty"`
 	}
 
 	CallBundleResultNew struct {
@@ -201,29 +208,7 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 	isPostMerge := header.Difficulty.Cmp(common.Big0) == 0
 	rules := s.b.ChainConfig().Rules(header.Number, isPostMerge, header.Time)
 
-	//-------------------------------------------
 	var CheckBalanceResults []*CheckBalanceResult
-
-	if args.MevTokens != nil {
-		balancesBefore, err11 := getTokenBalanceByContract(ctx, s, args.MevTokens, args.MevContract, state, header)
-		if err11 != nil {
-			log.Info("call_bundle_balance_err1", "reqId", reqId, "err", err11)
-			return nil, err11
-		}
-		if len(args.MevTokens) != len(balancesBefore) {
-			log.Info("call_bundle_balance_err2", "reqId", reqId, "mevTokens_len", len(args.MevTokens), "balances_len", len(balancesBefore))
-			return nil, errors.New("call_bundle_balance_err2")
-		}
-		for i, mevTokenTmp := range args.MevTokens {
-			checkBalanceResult := &CheckBalanceResult{
-				BalanceType: "balancesBefore",
-				Token:       mevTokenTmp,
-				Balance:     balancesBefore[i],
-			}
-			CheckBalanceResults = append(CheckBalanceResults, checkBalanceResult)
-		}
-	}
-	//-------------------------------------------
 
 	for index, tx := range txs {
 
@@ -232,6 +217,29 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 			log.Info("CallBundleCheckBalance_8", "reqId", reqId, "err", err13)
 			return nil, err13
 		}
+		//-------------------------------------------before
+		if args.MevTokens != nil {
+			if args.BalanceBeforeIndex == index {
+				balancesBefore, err11 := getTokenBalanceByContract(ctx, s, args.MevTokens, args.MevContract, state, header)
+				if err11 != nil {
+					log.Info("call_bundle_balance_err1", "reqId", reqId, "err", err11)
+					return nil, err11
+				}
+				if len(args.MevTokens) != len(balancesBefore) {
+					log.Info("call_bundle_balance_err2", "reqId", reqId, "mevTokens_len", len(args.MevTokens), "balances_len", len(balancesBefore))
+					return nil, errors.New("call_bundle_balance_err2")
+				}
+				for i, mevTokenTmp := range args.MevTokens {
+					checkBalanceResult := &CheckBalanceResult{
+						BalanceType: "balancesBefore",
+						Token:       mevTokenTmp,
+						Balance:     balancesBefore[i],
+					}
+					CheckBalanceResults = append(CheckBalanceResults, checkBalanceResult)
+				}
+			}
+		}
+		//-------------------------------------------before
 
 		from, err := types.Sender(signer, tx)
 
@@ -322,27 +330,30 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 		}
 
 		results = append(results, simulateBundleResultNew)
-	}
 
-	//-------------------------------------------
-	if args.MevTokens != nil {
-		balancesAfter, err := getTokenBalanceByContract(ctx, s, args.MevTokens, args.MevContract, state, header)
-		if err != nil {
-			log.Info("call_bundle_balance_err3", "reqId", reqId, "err", err)
-			return nil, err
-		}
-		if len(args.MevTokens) != len(balancesAfter) {
-			log.Info("call_bundle_balance_err4", "reqId", reqId, "mevTokens_len", len(args.MevTokens), "balances_len", len(balancesAfter))
-			return nil, errors.New("call_bundle_balance_err4")
-		}
-		for i, mevTokenTmp := range args.MevTokens {
-			checkBalanceResult := &CheckBalanceResult{
-				BalanceType: "balancesAfter",
-				Token:       mevTokenTmp,
-				Balance:     balancesAfter[i],
+		//-------------------------------------------after
+		if args.MevTokens != nil {
+			if index == args.BalanceAfterIndex {
+				balancesAfter, errBa := getTokenBalanceByContract(ctx, s, args.MevTokens, args.MevContract, state, header)
+				if errBa != nil {
+					log.Info("call_bundle_balance_err3", "reqId", reqId, "err", errBa)
+					return nil, errBa
+				}
+				if len(args.MevTokens) != len(balancesAfter) {
+					log.Info("call_bundle_balance_err4", "reqId", reqId, "mevTokens_len", len(args.MevTokens), "balances_len", len(balancesAfter))
+					return nil, errors.New("call_bundle_balance_err4")
+				}
+				for i, mevTokenTmp := range args.MevTokens {
+					checkBalanceResult := &CheckBalanceResult{
+						BalanceType: "balancesAfter",
+						Token:       mevTokenTmp,
+						Balance:     balancesAfter[i],
+					}
+					CheckBalanceResults = append(CheckBalanceResults, checkBalanceResult)
+				}
 			}
-			CheckBalanceResults = append(CheckBalanceResults, checkBalanceResult)
 		}
+		//-------------------------------------------after
 	}
 
 	var callTracerJsResults []*CallTracerJsResult
