@@ -1,7 +1,6 @@
 package ethapi
 
 import (
-	"errors"
 	"github.com/ethereum/go-ethereum/common"
 	"math/big"
 )
@@ -246,15 +245,8 @@ func MakeParams(paramHead *ParamHead, balanceChecks []*BalanceCheck, routers []*
 
 func ReturnValueToAmountInfo(valueByte []byte, pathLen int) ([]*AmountInfo, error) {
 
-	lenReturn := len(valueByte)
-
-	wantLen := pathLen * 2 * NumberSize
-
 	var amountInfos []*AmountInfo
 
-	if lenReturn != wantLen {
-		return nil, errors.New("returnValue长度错误")
-	}
 	for i := 0; i < pathLen; i++ {
 		j := i * 2
 		k := (j) * NumberSize
