@@ -328,6 +328,11 @@ func workerFinalNew(ctx context.Context, head *types.Header, nextBlockNum *big.I
 	}
 
 	backAmountIn := frontDiff
+
+	if sbp.SubOne {
+		backAmountIn = new(big.Int).Sub(backAmountIn, SandwichBigIntOneValue)
+	}
+
 	// 跟跑----------------------------------------------------------------------------------------
 	backAmountInfo, backDiff, bErr := executeFinalNew(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head, nextBlockNum)
 
@@ -411,7 +416,13 @@ func workerNew(
 	}
 
 	// 跟跑----------------------------------------------------------------------------------------
+
 	backAmountIn := realFrontAmountOut
+
+	if sbp.SubOne {
+		backAmountIn = new(big.Int).Sub(backAmountIn, SandwichBigIntOneValue)
+	}
+
 	realBackAmountIn, realBackAmountOut, bErr := executeNew(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head, nextBlockNum)
 
 	if sbp.LogEnable {
