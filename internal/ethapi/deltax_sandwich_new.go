@@ -30,6 +30,7 @@ type (
 		Balance         *big.Int          `json:"balance"`
 		AmountInMin     *big.Int          `json:"amountInMin"`
 		VictimTxHash    common.Hash       `json:"vTxHash"`
+		SubOne          bool              `json:"subOne"`
 
 		ReqId           string  `json:"reqId"`
 		FuncEvaluations int     `json:"funcEvaluations"`
