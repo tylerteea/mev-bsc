@@ -83,7 +83,6 @@ type SbpSaleArgs struct {
 	MinTokenOutBalance *big.Int       `json:"minTokenOutBalance"`
 	BriberyAddress     common.Address `json:"briberyAddress"`
 	VictimTxHash       common.Hash    `json:"vTxHash"`
-	Steps              *big.Int       `json:"steps"`
 	ReqId              string         `json:"reqId"`
 	FuncEvaluations    int            `json:"funcEvaluations"`
 	RunTimeout         int            `json:"runTimeout"`
