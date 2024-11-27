@@ -83,14 +83,14 @@ type SbpSaleArgs struct {
 	MinTokenOutBalance *big.Int       `json:"minTokenOutBalance"`
 	BriberyAddress     common.Address `json:"briberyAddress"`
 	VictimTxHash       common.Hash    `json:"vTxHash"`
-
-	ReqId           string  `json:"reqId"`
-	FuncEvaluations int     `json:"funcEvaluations"`
-	RunTimeout      int     `json:"runTimeout"`
-	Iterations      int     `json:"iterations"`
-	Concurrent      int     `json:"concurrent"`
-	InitialValues   float64 `json:"initialValues"`
-	LogEnable       bool    `json:"logEnable"`
+	Steps              *big.Int       `json:"steps"`
+	ReqId              string         `json:"reqId"`
+	FuncEvaluations    int            `json:"funcEvaluations"`
+	RunTimeout         int            `json:"runTimeout"`
+	Iterations         int            `json:"iterations"`
+	Concurrent         int            `json:"concurrent"`
+	InitialValues      float64        `json:"initialValues"`
+	LogEnable          bool           `json:"logEnable"`
 }
 
 type BuyConfig struct {
@@ -153,7 +153,7 @@ func boolToInt(b bool) int {
 	}
 }
 
-func (s *BundleAPI) SandwichBestProfitBuy(ctx context.Context, sbp SbpBuyArgs) map[string]interface{} {
+func (s *BundleAPI) SandwichBestProfitMinimizeBuyNew(ctx context.Context, sbp SbpBuyArgs) map[string]interface{} {
 
 	sbpSaleArgs := SbpSaleArgs{
 		Eoa:                sbp.Eoa,
@@ -184,10 +184,10 @@ func (s *BundleAPI) SandwichBestProfitBuy(ctx context.Context, sbp SbpBuyArgs) m
 		LogEnable:          sbp.LogEnable,
 	}
 
-	return s.SandwichBestProfitSale(ctx, sbpSaleArgs)
+	return s.SandwichBestProfitMinimizeSaleNew(ctx, sbpSaleArgs)
 }
 
-func (s *BundleAPI) SandwichBestProfitSale(ctx context.Context, sbp SbpSaleArgs) map[string]interface{} {
+func (s *BundleAPI) SandwichBestProfitMinimizeSaleNew(ctx context.Context, sbp SbpSaleArgs) map[string]interface{} {
 
 	result := make(map[string]interface{})
 

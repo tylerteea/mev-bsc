@@ -630,13 +630,13 @@ web3._extend({
 			params: 1,
 		}),
 		new web3._extend.Method({
-			name: 'sandwichBestProfitSale',
-			call: 'eth_sandwichBestProfitSale',
+			name: 'sandwichBestProfitMinimizeSaleNew',
+			call: 'eth_sandwichBestProfitMinimizeSaleNew',
 			params: 1,
 		}),
 		new web3._extend.Method({
-			name: 'sandwichBestProfitBuy',
-			call: 'eth_sandwichBestProfitBuy',
+			name: 'sandwichBestProfitMinimizeBuyNew',
+			call: 'eth_sandwichBestProfitMinimizeBuyNew',
 			params: 1,
 		}),
 		new web3._extend.Method({
