@@ -552,7 +552,7 @@ func (s *BundleAPI) CallBundleCheckBalanceAndAccessList(ctx context.Context, arg
 		log.Info("CallBundleCheckBalance_end_defer", "reqId", reqId, "runtime", time.Since(start))
 	}(time.Now())
 
-	log.Info("CallBundleCheckBalance_0", "reqId", reqId)
+	//log.Info("CallBundleCheckBalance_0", "reqId", reqId)
 
 	if len(args.Txs) == 0 {
 		return nil, errors.New("bundle missing txs")
@@ -820,7 +820,7 @@ func (s *BundleAPI) CallBundleCheckBalanceAndAccessList(ctx context.Context, arg
 			log.Info("call_bundle_balance校验失败", "reqId", reqId, "mevToken", address, "balanceBefore", balanceBeforeTmp.String(), "balanceAfter", balanceAfterTmp.String(), "err", err)
 			isSuccess = false
 		} else {
-			log.Info("call_bundle_balance校验成功", "reqId", reqId, "mevToken", address, "balanceBefore", balanceBeforeTmp.String(), "balanceAfter", balanceAfterTmp.String(), "err", err)
+			//log.Info("call_bundle_balance校验成功", "reqId", reqId, "mevToken", address, "balanceBefore", balanceBeforeTmp.String(), "balanceAfter", balanceAfterTmp.String(), "err", err)
 		}
 	}
 	ret := map[string]interface{}{}
@@ -837,7 +837,7 @@ func (s *BundleAPI) CallBundleCheckBalanceAndAccessList(ctx context.Context, arg
 
 	if isSuccess {
 		checkResult["check_balance"] = "success"
-		log.Info("call_bundle_余额最终校验成功", "reqId", reqId)
+		//log.Info("call_bundle_余额最终校验成功", "reqId", reqId)
 	} else {
 
 		ret["errMsg"] = "check_balance_fail"
@@ -848,8 +848,8 @@ func (s *BundleAPI) CallBundleCheckBalanceAndAccessList(ctx context.Context, arg
 	checkResultJson, _ := json.Marshal(checkResult)
 	ret["check_result"] = string(checkResultJson)
 
-	newResultJson, _ := json.Marshal(ret)
-	log.Info("call_bundle_result_balance", "reqId", reqId, "ret", string(newResultJson))
+	//newResultJson, _ := json.Marshal(ret)
+	//log.Info("call_bundle_result_balance", "reqId", reqId, "ret", string(newResultJson))
 
 	return ret, nil
 }
