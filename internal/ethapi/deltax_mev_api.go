@@ -238,9 +238,9 @@ func FillBytes(l int, rawData []byte) []byte {
 
 func mevCall(reqId string, state *state.StateDB, header *types.Header, s *BundleAPI, ctx context.Context, args *TransactionArgs, msg *core.Message, overrides *StateOverride, blockOverrides *BlockOverrides) (*core.ExecutionResult, error) {
 
-	defer func(start time.Time) {
-		log.Info("call_ExecutingEVMCallFinished", "runtime", time.Since(start), "reqId", reqId)
-	}(time.Now())
+	//defer func(start time.Time) {
+	//log.Info("call_ExecutingEVMCallFinished", "runtime", time.Since(start), "reqId", reqId)
+	//}(time.Now())
 	//result, err := doMevCall(ctx, s.b, args, state, header, overrides, blockOverrides, s.b.RPCEVMTimeout(), s.b.RPCGasCap())
 	result, err := doMevCall(ctx, s.b, args, msg, state, header, overrides, blockOverrides, 50*time.Millisecond, s.b.RPCGasCap())
 
@@ -405,7 +405,7 @@ func getERC20TokenBalance(ctx context.Context, s *BundleAPI, token common.Addres
 
 	if callResult != nil {
 
-		log.Info("call_execute4", "reqId", reqId, "result", string(callResult.ReturnData))
+		//log.Info("call_execute4", "reqId", reqId, "result", string(callResult.ReturnData))
 		if len(callResult.Revert()) > 0 {
 
 			revertReason := newRevertError(callResult.Revert())
@@ -475,15 +475,15 @@ func getTokenBalanceByContract(ctx context.Context, s *BundleAPI, tokens []commo
 		Data: &bytes,
 	}
 
-	log.Info("call_getTokenBalance_start", "reqId", reqId, "data", common.Bytes2Hex(bytes))
+	//log.Info("call_getTokenBalance_start", "reqId", reqId, "data", common.Bytes2Hex(bytes))
 
 	callResult, err := mevCall(reqId, state, header, s, ctx, callArgs, nil, nil, nil)
 
-	log.Info("call_getTokenBalance1", "reqId", reqId)
+	//log.Info("call_getTokenBalance1", "reqId", reqId)
 
 	if callResult != nil {
 
-		log.Info("call_getTokenBalance2", "reqId", reqId, "result", string(callResult.ReturnData))
+		//log.Info("call_getTokenBalance2", "reqId", reqId, "result", string(callResult.ReturnData))
 		if len(callResult.Revert()) > 0 {
 
 			revertReason := newRevertError(callResult.Revert())
@@ -517,7 +517,7 @@ func getTokenBalanceByContract(ctx context.Context, s *BundleAPI, tokens []commo
 	balances, ok := abi.ConvertType(unpack[0], []*big.Int{}).([]*big.Int)
 
 	if ok {
-		log.Info("call_getTokenBalance_ok", "reqId", reqId, "err", err)
+		//log.Info("call_getTokenBalance_ok", "reqId", reqId, "err", err)
 		return balances, nil
 	} else {
 		log.Info("call_getTokenBalance_err", "reqId", reqId, "err", err)

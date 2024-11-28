@@ -3,7 +3,6 @@ package ethapi
 import (
 	"context"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -109,8 +108,6 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 		log.Info("CallBundleCheckBalance_end_defer", "reqId", reqId, "runtime", time.Since(start))
 	}(time.Now())
 
-	log.Info("CallBundleCheckBalance_0", "reqId", reqId)
-
 	if len(args.Txs) == 0 {
 		return nil, errors.New("bundle missing txs")
 	}
@@ -202,8 +199,6 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 
 	bundleHash := sha3.NewLegacyKeccak256()
 	signer := types.MakeSigner(s.b.ChainConfig(), blockNumber, header.Time)
-	var totalGasUsed uint64
-	gasFees := new(big.Int)
 
 	isPostMerge := header.Difficulty.Cmp(common.Big0) == 0
 	rules := s.b.ChainConfig().Rules(header.Number, isPostMerge, header.Time)
@@ -299,18 +294,6 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 
 		simulateBundleResultNew.GasUsed = receipt.GasUsed
 
-		totalGasUsed += receipt.GasUsed
-
-		gasPrice, err := tx.EffectiveGasTip(header.BaseFee)
-		if err != nil {
-			log.Info("CallBundleCheckBalance_16", "reqId", reqId, "err", err)
-			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
-		}
-
-		gasFeesTx := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), gasPrice)
-
-		// gasFeesTx := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), tx.GasPrice())
-		gasFees.Add(gasFees, gasFeesTx)
 		bundleHash.Write(tx.Hash().Bytes())
 		if result.Err != nil {
 			simulateBundleResultNew.Error = result.Err.Error()
@@ -383,8 +366,8 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 		CheckResults:       CheckBalanceResults,
 		CallTracerJsResult: callTracerJsResults,
 	}
-	newResultJson, _ := json.Marshal(callBundleResultNew)
-	log.Info("call_bundle_result_balance", "reqId", reqId, "ret", string(newResultJson))
+	//newResultJson, _ := json.Marshal(callBundleResultNew)
+	//log.Info("call_bundle_result_balance", "reqId", reqId, "ret", string(newResultJson))
 
 	return callBundleResultNew, nil
 }
@@ -401,8 +384,8 @@ func getPairsInfo(ctx context.Context, reqId string, s *BundleAPI, pairs []commo
 		}
 	}()
 
-	marshalPairs, _ := json.Marshal(pairs)
-	log.Info("call_getPairsInfo_start", "reqId", reqId, "pairs", string(marshalPairs))
+	//marshalPairs, _ := json.Marshal(pairs)
+	//log.Info("call_getPairsInfo_start", "reqId", reqId, "pairs", string(marshalPairs))
 
 	var callTracerJsResults []*CallTracerJsResult
 
@@ -416,7 +399,7 @@ func getPairsInfo(ctx context.Context, reqId string, s *BundleAPI, pairs []commo
 			continue
 		}
 
-		log.Info("call_getPairsInfo_1", "reqId", reqId, "pair", pair.String(), "method", getReservesMethod, "return", common.Bytes2Hex(getReservesReturn))
+		//log.Info("call_getPairsInfo_1", "reqId", reqId, "pair", pair.String(), "method", getReservesMethod, "return", common.Bytes2Hex(getReservesReturn))
 
 		reserve0 := getReservesReturn[:32]
 		reserve1 := getReservesReturn[32:64]
@@ -429,7 +412,7 @@ func getPairsInfo(ctx context.Context, reqId string, s *BundleAPI, pairs []commo
 		}
 		callTracerJsResults = append(callTracerJsResults, callTracerJsResult)
 	}
-	log.Info("call_getPairsInfo_finish", "reqId", reqId)
+	//log.Info("call_getPairsInfo_finish", "reqId", reqId)
 
 	return callTracerJsResults, nil
 }
@@ -442,8 +425,8 @@ func getPoolsInfo(ctx context.Context, reqId string, s *BundleAPI, pools []commo
 		}
 	}()
 
-	marshalPairs, _ := json.Marshal(pools)
-	log.Info("call_getPoolsInfo_start", "reqId", reqId, "pools", string(marshalPairs))
+	//marshalPairs, _ := json.Marshal(pools)
+	//log.Info("call_getPoolsInfo_start", "reqId", reqId, "pools", string(marshalPairs))
 
 	var callTracerJsResults []*CallTracerJsResult
 
@@ -455,7 +438,7 @@ func getPoolsInfo(ctx context.Context, reqId string, s *BundleAPI, pools []commo
 			log.Info("call_getPoolsInfo_err", "reqId", reqId, "pool", pool.String(), "method", liquidityMethod, "return", common.Bytes2Hex(liquidityReturn), "err", err)
 			continue
 		}
-		log.Info("call_getPoolsInfo_1", "reqId", reqId, "pool", pool.String(), "method", liquidityMethod, "return", common.Bytes2Hex(liquidityReturn), "err", err)
+		//log.Info("call_getPoolsInfo_1", "reqId", reqId, "pool", pool.String(), "method", liquidityMethod, "return", common.Bytes2Hex(liquidityReturn), "err", err)
 		liquidity := ZeroX + common.Bytes2Hex(liquidityReturn)
 		//-------------------------------------------------------------------------------------------
 
@@ -485,7 +468,7 @@ func getPoolsInfo(ctx context.Context, reqId string, s *BundleAPI, pools []commo
 		}
 		callTracerJsResults = append(callTracerJsResults, callTracerJsResult)
 	}
-	log.Info("call_getPoolsInfo_finish", "reqId", reqId)
+	//log.Info("call_getPoolsInfo_finish", "reqId", reqId)
 	return callTracerJsResults, nil
 }
 
@@ -515,9 +498,10 @@ func executeMethod(ctx context.Context, reqId string, s *BundleAPI, poolorPair c
 
 	if callResult == nil {
 		log.Info("call_executeMethod5", "reqId", reqId)
+		return nil, errors.New("callResult_nil")
 	}
 
-	log.Info("call_executeMethod6", "reqId", reqId, "result", common.Bytes2Hex(callResult.ReturnData))
+	//log.Info("call_executeMethod6", "reqId", reqId, "result", common.Bytes2Hex(callResult.ReturnData))
 
 	if len(callResult.Revert()) > 0 {
 
@@ -529,7 +513,6 @@ func executeMethod(ctx context.Context, reqId string, s *BundleAPI, poolorPair c
 			"revertReason", revertReason,
 			"returnData", common.Bytes2Hex(callResult.Return()),
 		)
-		log.Info("call_executeMethod7", "reqId", reqId, "revertReason", revertReason.reason)
 		return nil, revertReason
 	}
 
@@ -538,6 +521,6 @@ func executeMethod(ctx context.Context, reqId string, s *BundleAPI, poolorPair c
 		return nil, callResult.Err
 	}
 
-	log.Info("call_executeMethod_finish")
+	//log.Info("call_executeMethod_finish")
 	return callResult.Return(), nil
 }

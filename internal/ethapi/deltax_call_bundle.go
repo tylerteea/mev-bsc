@@ -174,9 +174,6 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 
 		txHash := tx.Hash().String()
 
-		if err != nil {
-			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
-		}
 		to := "0x"
 		if tx.To() != nil {
 			to = tx.To().String()
@@ -273,7 +270,7 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 		log.Info("CallBundleCheckBalance_end_defer", "reqId", reqId, "runtime", time.Since(start))
 	}(time.Now())
 
-	log.Info("CallBundleCheckBalance_0", "reqId", reqId)
+	//log.Info("CallBundleCheckBalance_0", "reqId", reqId)
 
 	if len(args.Txs) == 0 {
 		return nil, errors.New("bundle missing txs")
@@ -413,9 +410,9 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 	for _, tx := range txs {
 
 		// Check if the context was cancelled (eg. timed-out)
-		if err := ctx.Err(); err != nil {
-			log.Info("CallBundleCheckBalance_8", "reqId", reqId, "err", err)
-			return nil, err
+		if err1 := ctx.Err(); err1 != nil {
+			log.Info("CallBundleCheckBalance_8", "reqId", reqId, "err", err1)
+			return nil, err1
 		}
 
 		from, err := types.Sender(signer, tx)
@@ -425,11 +422,6 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 		receipt, result, err := ApplyTransactionWithResult(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, &header.GasUsed, vmconfig)
 		if err != nil {
 			log.Info("CallBundleCheckBalance_12", "reqId", reqId, "err", err)
-			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
-		}
-
-		if err != nil {
-			log.Info("call_bundle_balance_err14", "reqId", reqId, "err", err)
 			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
 		}
 
@@ -506,7 +498,7 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 			log.Info("call_bundle_balance校验失败", "reqId", reqId, "mevToken", address, "balanceBefore", balanceBeforeTmp.String(), "balanceAfter", balanceAfterTmp.String(), "err", err)
 			isSuccess = false
 		} else {
-			log.Info("call_bundle_balance校验成功", "reqId", reqId, "mevToken", address, "balanceBefore", balanceBeforeTmp.String(), "balanceAfter", balanceAfterTmp.String(), "err", err)
+			//log.Info("call_bundle_balance校验成功", "reqId", reqId, "mevToken", address, "balanceBefore", balanceBeforeTmp.String(), "balanceAfter", balanceAfterTmp.String(), "err", err)
 		}
 	}
 	ret := map[string]interface{}{}
@@ -535,8 +527,8 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 	checkResultJson, _ := json.Marshal(checkResult)
 	ret["check_result"] = string(checkResultJson)
 
-	newResultJson, _ := json.Marshal(ret)
-	log.Info("call_bundle_result_balance", "reqId", reqId, "ret", string(newResultJson))
+	//newResultJson, _ := json.Marshal(ret)
+	//log.Info("call_bundle_result_balance", "reqId", reqId, "ret", string(newResultJson))
 
 	return ret, nil
 }
@@ -759,11 +751,6 @@ func (s *BundleAPI) CallBundleCheckBalanceAndAccessList(ctx context.Context, arg
 		receipt, result, err := ApplyTransactionWithResult(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, &header.GasUsed, vmconfig)
 		if err != nil {
 			log.Info("CallBundleCheckBalance_12", "reqId", reqId, "err", err)
-			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
-		}
-
-		if err != nil {
-			log.Info("call_bundle_balance_err14", "reqId", reqId, "err", err)
 			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
 		}
 
