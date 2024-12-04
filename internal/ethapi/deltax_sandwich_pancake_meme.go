@@ -111,9 +111,6 @@ func (s *BundleAPI) SandwichBestProfitPanMeme(ctx context.Context, sbp SbpPanMem
 		log.Info("call_sbp_4_", "reqId", reqId, "blockNumber", number.BlockNumber.Int64(), "number", head.Number, "hash", head.Hash(), "parentHash", head.ParentHash)
 	}
 
-	victimData := victimTransaction.Data()
-	methodId := common.Bytes2Hex(victimData[:4])
-
 	nextBlockNum := new(big.Int).Add(head.Number, BigIntOne)
 
 	bestInFunc := func(x []float64) float64 {
@@ -163,7 +160,7 @@ func (s *BundleAPI) SandwichBestProfitPanMeme(ctx context.Context, sbp SbpPanMem
 
 		startTime := time.Now()
 		stateDB := stateDBNew.Copy()
-		workerResults := workerPanMemeNew(ctx, head, nextBlockNum, victimTransaction, sbp, s, reqId, stateDB, amountInInt, methodId)
+		workerResults := workerPanMemeNew(ctx, head, nextBlockNum, victimTransaction, sbp, s, reqId, stateDB, amountInInt)
 		costTime := time.Since(startTime).Milliseconds()
 
 		if sbp.LogEnable {
@@ -267,7 +264,7 @@ func (s *BundleAPI) SandwichBestProfitPanMeme(ctx context.Context, sbp SbpPanMem
 	reqAndIndex := reqId + "_end"
 
 	sdb := stateDBNew.Copy()
-	workerResults := workerPanMemeNew(ctx, head, nextBlockNum, victimTransaction, sbp, s, reqAndIndex, sdb, quoteAmountIn, methodId)
+	workerResults := workerPanMemeNew(ctx, head, nextBlockNum, victimTransaction, sbp, s, reqAndIndex, sdb, quoteAmountIn)
 
 	if sbp.LogEnable {
 		marshal, _ := json.Marshal(workerResults)
@@ -297,7 +294,6 @@ func workerPanMemeNew(
 	reqAndIndex string,
 	statedb *state.StateDB,
 	amountIn *big.Int,
-	methodId string,
 ) map[string]interface{} {
 
 	defer func() {
@@ -325,7 +321,7 @@ func workerPanMemeNew(
 	//}
 
 	// 抢跑----------------------------------------------------------------------------------------
-	fErr := executePanMemeNew(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head, nextBlockNum, methodId)
+	fErr := executePanMemeNew(ctx, reqAndIndex, true, sbp, amountIn, statedb, s, head, nextBlockNum)
 
 	if sbp.LogEnable {
 		log.Info("call_execute_front", "reqAndIndex", reqAndIndex, "amountIn", amountIn, "fErr", fErr)
@@ -407,7 +403,7 @@ func workerPanMemeNew(
 	// 跟跑----------------------------------------------------------------------------------------¬
 	backAmountIn := tokenBalance
 
-	bErr := executePanMemeNew(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head, nextBlockNum, methodId)
+	bErr := executePanMemeNew(ctx, reqAndIndex, false, sbp, backAmountIn, statedb, s, head, nextBlockNum)
 	caBalanceAfter := statedb.GetBalance(sbp.Contract).ToBig()
 
 	if sbp.LogEnable {
@@ -451,7 +447,6 @@ func executePanMemeNew(
 	s *BundleAPI,
 	head *types.Header,
 	nextBlockNum *big.Int,
-	methodId string,
 ) error {
 
 	var callArgs *TransactionArgs
@@ -463,7 +458,7 @@ func executePanMemeNew(
 	value := (*hexutil.Big)(nextBlockNum)
 
 	if isFront {
-		data := encodeParamsPanMemeFrontNew(sbp.Token, amountIn, methodId)
+		data := encodeParamsPanMemeFrontNew(sbp.Token, amountIn)
 
 		bytes := hexutil.Bytes(data)
 		callArgs = &TransactionArgs{
@@ -543,7 +538,6 @@ func executePanMemeNew(
 func encodeParamsPanMemeFrontNew(
 	tokenIn common.Address,
 	frontAmountIn *big.Int,
-	methodId string,
 ) []byte {
 
 	params := []byte{}
@@ -551,13 +545,6 @@ func encodeParamsPanMemeFrontNew(
 	params = append(params, FillBytes(20, tokenIn.Bytes())...)
 	params = append(params, FillBytes(20, BigIntZeroValue.Bytes())...)
 	params = append(params, FillBytes(1, BigIntOne.Bytes())...)
-
-	if methodId == "87f27655" {
-		params = append(params, FillBytes(1, BigIntFour.Bytes())...)
-	} else {
-		params = append(params, FillBytes(1, BigIntOne.Bytes())...)
-	}
-
 	params = append(params, FillBytes(12, frontAmountIn.Bytes())...)
 
 	return params
