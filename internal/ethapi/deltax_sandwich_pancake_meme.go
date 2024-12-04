@@ -550,7 +550,6 @@ func encodeParamsPanMemeFrontNew(
 
 	params = append(params, FillBytes(20, tokenIn.Bytes())...)
 	params = append(params, FillBytes(20, BigIntZeroValue.Bytes())...)
-	params = append(params, FillBytes(1, BigIntOne.Bytes())...)
 
 	if methodId == "87f27655" {
 		params = append(params, FillBytes(1, BigIntFour.Bytes())...)
