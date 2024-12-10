@@ -267,7 +267,7 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 			log.Info("recover...CallBundleCheckBalance", "err", r, "stack", dss, "reqId", reqId)
 		}
 
-		log.Info("CallBundleCheckBalance_end_defer", "reqId", reqId, "runtime", time.Since(start))
+		//log.Info("CallBundleCheckBalance_end_defer", "reqId", reqId, "runtime", time.Since(start))
 	}(time.Now())
 
 	//log.Info("CallBundleCheckBalance_0", "reqId", reqId)
@@ -549,7 +549,7 @@ func (s *BundleAPI) CallBundleCheckBalanceAndAccessList(ctx context.Context, arg
 			log.Info("recover...CallBundleCheckBalance", "err", r, "stack", dss, "reqId", reqId)
 		}
 
-		log.Info("CallBundleCheckBalance_end_defer", "reqId", reqId, "runtime", time.Since(start))
+		//log.Info("CallBundleCheckBalance_end_defer", "reqId", reqId, "runtime", time.Since(start))
 	}(time.Now())
 
 	//log.Info("CallBundleCheckBalance_0", "reqId", reqId)

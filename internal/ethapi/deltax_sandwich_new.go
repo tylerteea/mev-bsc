@@ -203,8 +203,10 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) *Combin
 
 	res, err := optimize.Minimize(p, initValues.X, settings, meth)
 
-	resJson, _ := json.Marshal(res)
-	log.Info("call_sbp_minimize_result", "reqId", reqId, "result", string(resJson))
+	if sbp.LogEnable {
+		resJson, _ := json.Marshal(res)
+		log.Info("call_sbp_minimize_result", "reqId", reqId, "result", string(resJson))
+	}
 
 	if err != nil {
 		result.Error = "minimize_err"
