@@ -478,7 +478,12 @@ func getSimulateRouters(isFront bool, commonPathInfos []*CommonPathInfo, firstSw
 			frontTokenIn := commonPathInfo.TokenIn
 			frontTokenOut := commonPathInfo.TokenOut
 
-			swap := NewSwap(frontTokenIn, commonPathInfo.PairsOrPool, commonPathInfo.ZeroForOne, commonPathInfo.Version, amountIn, amountOut, commonPathInfo.Fee, frontTokenOut)
+			address := commonPathInfo.PairsOrPool
+			if commonPathInfo.Version == Version5 {
+				address = commonPathInfo.Router
+			}
+
+			swap := NewSwap(frontTokenIn, address, commonPathInfo.ZeroForOne, commonPathInfo.Version, amountIn, amountOut, commonPathInfo.Fee, frontTokenOut)
 			frontSwaps = append(frontSwaps, swap)
 		}
 
@@ -503,7 +508,12 @@ func getSimulateRouters(isFront bool, commonPathInfos []*CommonPathInfo, firstSw
 			backTokenIn := commonPathInfo.TokenOut
 			backTokenOut := commonPathInfo.TokenIn
 
-			swap := NewSwap(backTokenIn, commonPathInfo.PairsOrPool, !commonPathInfo.ZeroForOne, commonPathInfo.Version, amountIn, amountOut, commonPathInfo.Fee, backTokenOut)
+			address := commonPathInfo.PairsOrPool
+			if commonPathInfo.Version == Version5 {
+				address = commonPathInfo.Router
+			}
+
+			swap := NewSwap(backTokenIn, address, !commonPathInfo.ZeroForOne, commonPathInfo.Version, amountIn, amountOut, commonPathInfo.Fee, backTokenOut)
 			backSwaps = append(backSwaps, swap)
 		}
 
