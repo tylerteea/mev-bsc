@@ -432,7 +432,7 @@ func getERC20TokenBalance(ctx context.Context, s *BundleAPI, token common.Addres
 	}
 
 	balance := new(big.Int).SetBytes(callResult.Return())
-	log.Info("call_balance_finish", "reqId", reqId, "balance", balance.String())
+	//log.Info("call_balance_finish", "reqId", reqId, "balance", balance.String())
 
 	return balance, nil
 }

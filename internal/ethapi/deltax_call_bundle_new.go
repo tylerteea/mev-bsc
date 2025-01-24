@@ -105,7 +105,7 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 			log.Info("recover...CallBundleCheckBalance", "err", r, "stack", dss, "reqId", reqId)
 		}
 
-		log.Info("CallBundleCheckBalance_end_defer", "reqId", reqId, "runtime", time.Since(start))
+		//log.Info("CallBundleCheckBalance_end_defer", "reqId", reqId, "runtime", time.Since(start))
 	}(time.Now())
 
 	if len(args.Txs) == 0 {
@@ -287,11 +287,6 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
 		}
 
-		if err != nil {
-			log.Info("call_bundle_balance_err14", "reqId", reqId, "err", err)
-			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
-		}
-
 		simulateBundleResultNew.GasUsed = receipt.GasUsed
 
 		bundleHash.Write(tx.Hash().Bytes())
@@ -347,7 +342,7 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 			callTracerJsResults = append(callTracerJsResults, callTracerJsResultsPool...)
 		}
 	} else {
-		log.Info("call_bundle_pools_nil", "reqId", reqId)
+		//log.Info("call_bundle_pools_nil", "reqId", reqId)
 	}
 
 	if args.Pairs != nil {
@@ -356,7 +351,7 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 			callTracerJsResults = append(callTracerJsResults, callTracerJsResultsPair...)
 		}
 	} else {
-		log.Info("call_bundle_pairs_nil", "reqId", reqId)
+		//log.Info("call_bundle_pairs_nil", "reqId", reqId)
 	}
 
 	callBundleResultNew := &CallBundleResultNew{
