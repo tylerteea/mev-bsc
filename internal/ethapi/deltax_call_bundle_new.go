@@ -137,9 +137,6 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairStateNew(ctx context.Context, args
 	// 避免相互影响
 	state := stateHead.Copy()
 
-	if err2 := args.StateOverrides.ApplyNew(state); err2 != nil {
-		return nil, err2
-	}
 	blockNumber := big.NewInt(int64(args.BlockNumber))
 
 	timestamp := parent.Time + 1
@@ -175,6 +172,48 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairStateNew(ctx context.Context, args
 		Coinbase:      coinbase,
 		BaseFee:       baseFee,
 		ExcessBlobGas: parent.ExcessBlobGas,
+	}
+
+	var callTracerJsResults []*CallTracerJsResult
+
+	if args.Pools != nil {
+		callTracerJsResultsPool, poolErr := getPoolsInfo(ctx, reqId, s, args.Pools, state, header)
+		if poolErr == nil {
+			callTracerJsResults = append(callTracerJsResults, callTracerJsResultsPool...)
+		}
+	} else {
+		//log.Info("call_bundle_pools_nil", "reqId", reqId)
+	}
+
+	if args.Pairs != nil {
+		callTracerJsResultsPair, pairErr := getPairsInfo(ctx, reqId, s, args.Pairs, state, header)
+		if pairErr == nil {
+			callTracerJsResults = append(callTracerJsResults, callTracerJsResultsPair...)
+		}
+	} else {
+		//log.Info("call_bundle_pairs_nil", "reqId", reqId)
+	}
+
+	if err2 := args.StateOverrides.ApplyNew(state); err2 != nil {
+		return nil, err2
+	}
+
+	if args.Pools != nil {
+		callTracerJsResultsPool, poolErr := getPoolsInfo(ctx, reqId, s, args.Pools, state, header)
+		if poolErr == nil {
+			callTracerJsResults = append(callTracerJsResults, callTracerJsResultsPool...)
+		}
+	} else {
+		//log.Info("call_bundle_pools_nil", "reqId", reqId)
+	}
+
+	if args.Pairs != nil {
+		callTracerJsResultsPair, pairErr := getPairsInfo(ctx, reqId, s, args.Pairs, state, header)
+		if pairErr == nil {
+			callTracerJsResults = append(callTracerJsResults, callTracerJsResultsPair...)
+		}
+	} else {
+		//log.Info("call_bundle_pairs_nil", "reqId", reqId)
 	}
 
 	// Setup context so it may be cancelled the call has completed
@@ -334,25 +373,23 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairStateNew(ctx context.Context, args
 		//-------------------------------------------after
 	}
 
-	var callTracerJsResults []*CallTracerJsResult
-
-	if args.Pools != nil {
-		callTracerJsResultsPool, poolErr := getPoolsInfo(ctx, reqId, s, args.Pools, state, header)
-		if poolErr == nil {
-			callTracerJsResults = append(callTracerJsResults, callTracerJsResultsPool...)
-		}
-	} else {
-		//log.Info("call_bundle_pools_nil", "reqId", reqId)
-	}
-
-	if args.Pairs != nil {
-		callTracerJsResultsPair, pairErr := getPairsInfo(ctx, reqId, s, args.Pairs, state, header)
-		if pairErr == nil {
-			callTracerJsResults = append(callTracerJsResults, callTracerJsResultsPair...)
-		}
-	} else {
-		//log.Info("call_bundle_pairs_nil", "reqId", reqId)
-	}
+	//if args.Pools != nil {
+	//	callTracerJsResultsPool, poolErr := getPoolsInfo(ctx, reqId, s, args.Pools, state, header)
+	//	if poolErr == nil {
+	//		callTracerJsResults = append(callTracerJsResults, callTracerJsResultsPool...)
+	//	}
+	//} else {
+	//	//log.Info("call_bundle_pools_nil", "reqId", reqId)
+	//}
+	//
+	//if args.Pairs != nil {
+	//	callTracerJsResultsPair, pairErr := getPairsInfo(ctx, reqId, s, args.Pairs, state, header)
+	//	if pairErr == nil {
+	//		callTracerJsResults = append(callTracerJsResults, callTracerJsResultsPair...)
+	//	}
+	//} else {
+	//	//log.Info("call_bundle_pairs_nil", "reqId", reqId)
+	//}
 
 	callBundleResultNew := &CallBundleResultNew{
 		ErrMsg:             "",
