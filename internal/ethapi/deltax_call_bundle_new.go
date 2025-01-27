@@ -194,7 +194,7 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairStateNew(ctx context.Context, args
 		//log.Info("call_bundle_pairs_nil", "reqId", reqId)
 	}
 
-	if err2 := args.StateOverrides.ApplyNew(state); err2 != nil {
+	if err2 := args.StateOverrides.Apply(state); err2 != nil {
 		return nil, err2
 	}
 
