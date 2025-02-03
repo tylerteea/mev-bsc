@@ -194,9 +194,58 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairStateNew(ctx context.Context, args
 		//log.Info("call_bundle_pairs_nil", "reqId", reqId)
 	}
 
-	if err2 := args.StateOverrides.Apply(state); err2 != nil {
+	var CheckBalanceResults []*CheckBalanceResult
+	//-------------------------------------------before
+	if args.MevTokens != nil {
+
+		balancesBefore, err11 := getTokenBalanceByContract(ctx, s, args.MevTokens, args.MevContract, state, header)
+		if err11 != nil {
+			log.Info("call_bundle_balance_err1", "reqId", reqId, "err", err11)
+			return nil, err11
+		}
+		if len(args.MevTokens) != len(balancesBefore) {
+			log.Info("call_bundle_balance_err2", "reqId", reqId, "mevTokens_len", len(args.MevTokens), "balances_len", len(balancesBefore))
+			return nil, errors.New("call_bundle_balance_err2")
+		}
+		for i, mevTokenTmp := range args.MevTokens {
+			checkBalanceResult := &CheckBalanceResult{
+				BalanceType: "balancesBeforeApply",
+				Token:       mevTokenTmp,
+				Balance:     balancesBefore[i],
+			}
+			CheckBalanceResults = append(CheckBalanceResults, checkBalanceResult)
+		}
+
+	}
+	//-------------------------------------------before
+
+	if err2 := args.StateOverrides.ApplyNew(state); err2 != nil {
 		return nil, err2
 	}
+
+	//-------------------------------------------before
+	if args.MevTokens != nil {
+
+		balancesBefore, err11 := getTokenBalanceByContract(ctx, s, args.MevTokens, args.MevContract, state, header)
+		if err11 != nil {
+			log.Info("call_bundle_balance_err1", "reqId", reqId, "err", err11)
+			return nil, err11
+		}
+		if len(args.MevTokens) != len(balancesBefore) {
+			log.Info("call_bundle_balance_err2", "reqId", reqId, "mevTokens_len", len(args.MevTokens), "balances_len", len(balancesBefore))
+			return nil, errors.New("call_bundle_balance_err2")
+		}
+		for i, mevTokenTmp := range args.MevTokens {
+			checkBalanceResult := &CheckBalanceResult{
+				BalanceType: "balancesAfterApply",
+				Token:       mevTokenTmp,
+				Balance:     balancesBefore[i],
+			}
+			CheckBalanceResults = append(CheckBalanceResults, checkBalanceResult)
+		}
+
+	}
+	//-------------------------------------------before
 
 	if args.Pools != nil {
 		callTracerJsResultsPool, poolErr := getPoolsInfo(ctx, reqId, s, args.Pools, state, header)
@@ -241,8 +290,6 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairStateNew(ctx context.Context, args
 
 	isPostMerge := header.Difficulty.Cmp(common.Big0) == 0
 	rules := s.b.ChainConfig().Rules(header.Number, isPostMerge, header.Time)
-
-	var CheckBalanceResults []*CheckBalanceResult
 
 	for index, tx := range txs {
 
