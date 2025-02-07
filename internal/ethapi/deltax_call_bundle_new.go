@@ -3,6 +3,7 @@ package ethapi
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -13,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/eth/tracers"
 	"github.com/ethereum/go-ethereum/rpc"
 	"golang.org/x/crypto/sha3"
 	"math"
@@ -223,6 +225,44 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairStateNew(ctx context.Context, args
 		return nil, err2
 	}
 
+	//--------------------------------------------------------------------
+
+	transaction := txs[0]
+	signer := types.MakeSigner(s.b.ChainConfig(), blockNumber, header.Time)
+	from111, _ := types.Sender(signer, transaction)
+
+	bytes := hexutil.Bytes(transaction.Data())
+	callArgs := &TransactionArgs{
+		From:  &from111,
+		To:    transaction.To(),
+		Data:  &bytes,
+		Value: (*hexutil.Big)(transaction.Value()),
+	}
+
+	msg, _ := callArgs.ToMessage(s.b.RPCGasCap(), header.BaseFee)
+
+	txContext := core.NewEVMTxContext(msg)
+
+	config := &tracers.TraceConfig{}
+
+	txctx := new(tracers.Context)
+
+	tracer, err := tracers.DefaultDirectory.New(*config.Tracer, txctx, config.TracerConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a new context to be used in the EVM environment
+	blockContext := core.NewEVMBlockContext(header, s.chain, &coinbase)
+
+	vmenv := vm.NewEVM(blockContext, txContext, state, s.b.ChainConfig(), vm.Config{Tracer: tracer, NoBaseFee: true})
+
+	txNew, err2 := tracers.TraceTxNew(ctx, msg, txctx, state, false, vmenv)
+
+	marshal, _ := json.Marshal(txNew)
+
+	log.Info("call_TraceTxNew", "reqId", reqId, "err", err2, "traceTxNew", string(marshal))
+
 	//-------------------------------------------before
 	if args.MevTokens != nil {
 
@@ -286,7 +326,6 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairStateNew(ctx context.Context, args
 	var results []*SimulateBundleResultNew
 
 	bundleHash := sha3.NewLegacyKeccak256()
-	signer := types.MakeSigner(s.b.ChainConfig(), blockNumber, header.Time)
 
 	isPostMerge := header.Difficulty.Cmp(common.Big0) == 0
 	rules := s.b.ChainConfig().Rules(header.Number, isPostMerge, header.Time)

@@ -1080,6 +1080,42 @@ func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, bloc
 	return api.traceTx(ctx, msg, new(Context), vmctx, statedb, traceConfig, false)
 }
 
+// TraceTxNew configures a new tracer according to the provided configuration, and
+// executes the given message in the provided environment. The return value will
+// be tracer dependent.
+func TraceTxNew(ctx context.Context, message *core.Message, txctx *Context, statedb *state.StateDB, isSystemTx bool, vmenv *vm.EVM) (interface{}, error) {
+	var (
+		tracer  Tracer
+		err     error
+		timeout = defaultTraceTimeout
+	)
+
+	deadlineCtx, cancel := context.WithTimeout(ctx, timeout)
+	go func() {
+		<-deadlineCtx.Done()
+		if errors.Is(deadlineCtx.Err(), context.DeadlineExceeded) {
+			tracer.Stop(errors.New("execution timeout"))
+			// Stop evm execution. Note cancellation is not necessarily immediate.
+			vmenv.Cancel()
+		}
+	}()
+	defer cancel()
+
+	var intrinsicGas uint64 = 0
+	// Run the transaction with tracing enabled.
+	if isSystemTx {
+		intrinsicGas, _ = core.IntrinsicGas(message.Data, message.AccessList, false, true, true, false)
+	}
+
+	// Call Prepare to clear out the statedb access list
+	statedb.SetTxContext(txctx.TxHash, txctx.TxIndex)
+	if _, err = core.ApplyMessage(vmenv, message, new(core.GasPool).AddGas(message.GasLimit)); err != nil {
+		return nil, fmt.Errorf("tracing failed: %w", err)
+	}
+	tracer.CaptureSystemTxEnd(intrinsicGas)
+	return tracer.GetResult()
+}
+
 // traceTx configures a new tracer according to the provided configuration, and
 // executes the given message in the provided environment. The return value will
 // be tracer dependent.
