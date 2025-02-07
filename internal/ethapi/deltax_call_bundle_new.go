@@ -35,6 +35,7 @@ type (
 		GasLimit               *uint64               `json:"gasLimit"`
 		Difficulty             *big.Int              `json:"difficulty"`
 		SimulationLogs         bool                  `json:"simulationLogs"`
+		ApplyStateSwitch       bool                  `json:"applyStateSwitch"`
 		StateOverrides         *StateOverride        `json:"stateOverrides"`
 		BaseFee                *big.Int              `json:"baseFee"`
 
@@ -219,8 +220,10 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairStateNew(ctx context.Context, args
 	}
 	//-------------------------------------------before
 
-	if err2 := args.StateOverrides.ApplyNew(state); err2 != nil {
-		return nil, err2
+	if args.ApplyStateSwitch {
+		if err2 := args.StateOverrides.ApplyNew(state); err2 != nil {
+			return nil, err2
+		}
 	}
 
 	//-------------------------------------------before
