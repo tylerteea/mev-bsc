@@ -36,6 +36,7 @@ type (
 		Difficulty             *big.Int              `json:"difficulty"`
 		SimulationLogs         bool                  `json:"simulationLogs"`
 		ApplyStateSwitch       bool                  `json:"applyStateSwitch"`
+		ApplyStateNewSwitch    bool                  `json:"applyStateNewSwitch"`
 		StateOverrides         *StateOverride        `json:"stateOverrides"`
 		BaseFee                *big.Int              `json:"baseFee"`
 
@@ -221,6 +222,14 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairStateNew(ctx context.Context, args
 	//-------------------------------------------before
 
 	if args.ApplyStateSwitch {
+		log.Info("StateOverrides_Apply_", "reqId", reqId)
+		if err2 := args.StateOverrides.Apply(state); err2 != nil {
+			return nil, err2
+		}
+	}
+
+	if args.ApplyStateNewSwitch {
+		log.Info("StateOverrides_ApplyNew_", "reqId", reqId)
 		if err2 := args.StateOverrides.ApplyNew(state); err2 != nil {
 			return nil, err2
 		}
