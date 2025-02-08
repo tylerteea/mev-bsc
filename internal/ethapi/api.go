@@ -1177,7 +1177,7 @@ func (diff *StateOverride) ApplyNew(state *state.StateDB, delEmpty bool) error {
 	// Now finalize the changes. Finalize is normally performed between transactions.
 	// By using finalize, the overrides are semantically behaving as
 	// if they were created in a transaction just before the tracing occur.
-	state.Finalise(delEmpty)
+	//state.Finalise(delEmpty)
 	return nil
 }
 
