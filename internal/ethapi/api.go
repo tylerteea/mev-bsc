@@ -1142,42 +1142,42 @@ func (diff *StateOverride) Apply(state *state.StateDB) error {
 }
 
 // ApplyNew overrides the fields of specified accounts into the given state.
-func (diff *StateOverride) ApplyNew(state *state.StateDB) error {
+func (diff *StateOverride) ApplyNew(state *state.StateDB, delEmpty bool) error {
 	if diff == nil {
 		return nil
 	}
 	for addr, account := range *diff {
-		// Override account nonce.
-		if account.Nonce != nil {
-			state.SetNonce(addr, uint64(*account.Nonce))
-		}
-		// Override account(contract) code.
-		if account.Code != nil {
-			state.SetCode(addr, *account.Code)
-		}
-		// Override account balance.
-		if account.Balance != nil {
-			u256Balance, _ := uint256.FromBig((*big.Int)(*account.Balance))
-			state.SetBalance(addr, u256Balance)
-		}
-		if account.State != nil && account.StateDiff != nil {
-			return fmt.Errorf("account %s has both 'state' and 'stateDiff'", addr.Hex())
-		}
+		//// Override account nonce.
+		//if account.Nonce != nil {
+		//	state.SetNonce(addr, uint64(*account.Nonce))
+		//}
+		//// Override account(contract) code.
+		//if account.Code != nil {
+		//	state.SetCode(addr, *account.Code)
+		//}
+		//// Override account balance.
+		//if account.Balance != nil {
+		//	u256Balance, _ := uint256.FromBig((*big.Int)(*account.Balance))
+		//	state.SetBalance(addr, u256Balance)
+		//}
+		//if account.State != nil && account.StateDiff != nil {
+		//	return fmt.Errorf("account %s has both 'state' and 'stateDiff'", addr.Hex())
+		//}
 		// Replace entire state if caller requires.
 		if account.State != nil {
 			state.SetStorage(addr, *account.State)
 		}
-		// Apply state diff into specified accounts.
-		if account.StateDiff != nil {
-			for key, value := range *account.StateDiff {
-				state.SetState(addr, key, value)
-			}
-		}
+		//// Apply state diff into specified accounts.
+		//if account.StateDiff != nil {
+		//	for key, value := range *account.StateDiff {
+		//		state.SetState(addr, key, value)
+		//	}
+		//}
 	}
 	// Now finalize the changes. Finalize is normally performed between transactions.
 	// By using finalize, the overrides are semantically behaving as
 	// if they were created in a transaction just before the tracing occur.
-	state.Finalise(true)
+	state.Finalise(delEmpty)
 	return nil
 }
 

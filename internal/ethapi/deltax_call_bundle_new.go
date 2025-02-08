@@ -37,6 +37,7 @@ type (
 		SimulationLogs         bool                  `json:"simulationLogs"`
 		ApplyStateSwitch       bool                  `json:"applyStateSwitch"`
 		ApplyStateNewSwitch    bool                  `json:"applyStateNewSwitch"`
+		DelEmpty               bool                  `json:"delEmpty"`
 		StateOverrides         *StateOverride        `json:"stateOverrides"`
 		BaseFee                *big.Int              `json:"baseFee"`
 
@@ -230,7 +231,7 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairStateNew(ctx context.Context, args
 
 	if args.ApplyStateNewSwitch {
 		log.Info("StateOverrides_ApplyNew_", "reqId", reqId)
-		if err2 := args.StateOverrides.ApplyNew(state); err2 != nil {
+		if err2 := args.StateOverrides.ApplyNew(state, args.DelEmpty); err2 != nil {
 			return nil, err2
 		}
 	}
