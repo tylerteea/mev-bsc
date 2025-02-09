@@ -1150,15 +1150,18 @@ func (diff *StateOverride) ApplyNew(state *state.StateDB, delEmpty bool) error {
 		// Override account nonce.
 		if account.Nonce != nil {
 			state.SetNonce(addr, uint64(*account.Nonce))
+			log.Info("call_bundle_ApplyNew_nonce", "account.Nonce", account.Nonce)
 		}
 		// Override account(contract) code.
 		if account.Code != nil {
 			state.SetCode(addr, *account.Code)
+			log.Info("call_bundle_ApplyNew_Code", "account.Code", account.Code)
 		}
 		// Override account balance.
 		if account.Balance != nil {
 			u256Balance, _ := uint256.FromBig((*big.Int)(*account.Balance))
 			state.SetBalance(addr, u256Balance)
+			log.Info("call_bundle_ApplyNew_Balance", "account.Balance", account.Balance)
 		}
 		if account.State != nil && account.StateDiff != nil {
 			return fmt.Errorf("account %s has both 'state' and 'stateDiff'", addr.Hex())
@@ -1172,6 +1175,7 @@ func (diff *StateOverride) ApplyNew(state *state.StateDB, delEmpty bool) error {
 			for key, value := range *account.StateDiff {
 				state.SetState(addr, key, value)
 			}
+			log.Info("call_bundle_ApplyNew_StateDiff")
 		}
 	}
 	// Now finalize the changes. Finalize is normally performed between transactions.
