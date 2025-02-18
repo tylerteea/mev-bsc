@@ -398,7 +398,10 @@ func workerPanMemeEoa(
 	_, appErr := mevCall(reqAndIndex, statedb, head, s, ctx, approveCallArgs, nil, nil, nil)
 
 	if sbp.LogEnable {
-		log.Info("call_execute_approve", "reqAndIndex", reqAndIndex, "appErr", appErr)
+
+		marshal, _ := json.Marshal(approveCallArgs)
+
+		log.Info("call_execute_approve", "reqAndIndex", reqAndIndex, "appErr", appErr, "approveCallArgs", string(marshal))
 	}
 
 	if appErr != nil {
