@@ -472,7 +472,7 @@ func executePanMemeEoa(
 		log.Info("call_execute1", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
 	}
 	if isFront {
-		data := encodeParamsPanMemeEoaFront(sbp.Token, sbp.Eoa)
+		data := encodeParamsPanMemeEoaFront(sbp.Token, amountIn)
 		value := (*hexutil.Big)(amountIn)
 		bytes := hexutil.Bytes(data)
 		callArgs = &TransactionArgs{
@@ -485,7 +485,7 @@ func executePanMemeEoa(
 			log.Info("call_execute2", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "value", value.String(), "data_hex", common.Bytes2Hex(data))
 		}
 	} else {
-		data := encodeParamsPanMemeEoaBack(sbp.Token, amountIn, sbp.Eoa)
+		data := encodeParamsPanMemeEoaBack(sbp.Token, amountIn)
 		bytes := hexutil.Bytes(data)
 		callArgs = &TransactionArgs{
 			From: &sbp.Eoa,
@@ -547,15 +547,15 @@ func executePanMemeEoa(
 
 func encodeParamsPanMemeEoaFront(
 	tokenIn common.Address,
-	eoa common.Address,
+	amountIn *big.Int,
 ) []byte {
 
 	//0x87f27655
 	params := []byte{0x87, 0xf2, 0x76, 0x55}
 
 	params = append(params, FillBytes(32, tokenIn.Bytes())...)
+	params = append(params, FillBytes(32, amountIn.Bytes())...)
 	params = append(params, FillBytes(32, BigIntZeroValue.Bytes())...)
-	params = append(params, FillBytes(32, eoa.Bytes())...)
 
 	return params
 }
@@ -563,16 +563,13 @@ func encodeParamsPanMemeEoaFront(
 func encodeParamsPanMemeEoaBack(
 	token common.Address,
 	amountIn *big.Int,
-	eoa common.Address,
 ) []byte {
 
-	//0xedf9e251
-	params := []byte{0xed, 0xf9, 0xe2, 0x51}
+	//0xf464e7db
+	params := []byte{0xf4, 0x64, 0xe7, 0xdb}
 
 	params = append(params, FillBytes(32, token.Bytes())...)
 	params = append(params, FillBytes(32, amountIn.Bytes())...)
-	params = append(params, FillBytes(32, BigIntZeroValue.Bytes())...)
-	params = append(params, FillBytes(32, eoa.Bytes())...)
 
 	return params
 }
