@@ -21,7 +21,7 @@ import (
 	"time"
 )
 
-var ApproveBytesPanMemeEoa = hexutil.Bytes(common.Hex2Bytes("0x095ea7b30000000000000000000000005c952063c7fc8610ffdb798152d69f0b9550762b00000000000000000000000000000000ffffffffffffffffffffffffffffffff"))
+var ApproveBytesPanMemeEoa = hexutil.Bytes(common.Hex2Bytes("095ea7b30000000000000000000000005c952063c7fc8610ffdb798152d69f0b9550762b00000000000000000000000000000000ffffffffffffffffffffffffffffffff"))
 
 //----------------------------------PanMemeEoa-------------------------------------------------------------------------------
 
