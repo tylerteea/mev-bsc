@@ -659,6 +659,11 @@ web3._extend({
 			call: 'eth_sandwichBestProfitPanMeme',
 			params: 1,
 		}),
+        new web3._extend.Method({
+			name: 'sandwichBestProfitPanMemeEoa',
+			call: 'eth_sandwichBestProfitPanMemeEoa',
+			params: 1,
+		}),
 		new web3._extend.Method({
 			name: 'getNowValidators',
 			call: 'eth_getNowValidators',
