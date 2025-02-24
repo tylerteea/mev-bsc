@@ -18,17 +18,15 @@
 package web3ext
 
 var Modules = map[string]string{
-	"admin":    AdminJs,
-	"clique":   CliqueJs,
-	"ethash":   EthashJs,
-	"debug":    DebugJs,
-	"eth":      EthJs,
-	"miner":    MinerJs,
-	"net":      NetJs,
-	"personal": PersonalJs,
-	"rpc":      RpcJs,
-	"txpool":   TxpoolJs,
-	"dev":      DevJs,
+	"admin":  AdminJs,
+	"clique": CliqueJs,
+	"debug":  DebugJs,
+	"eth":    EthJs,
+	"miner":  MinerJs,
+	"net":    NetJs,
+	"rpc":    RpcJs,
+	"txpool": TxpoolJs,
+	"dev":    DevJs,
 }
 
 const CliqueJs = `
@@ -83,34 +81,6 @@ web3._extend({
 		new web3._extend.Property({
 			name: 'proposals',
 			getter: 'clique_proposals'
-		}),
-	]
-});
-`
-
-const EthashJs = `
-web3._extend({
-	property: 'ethash',
-	methods: [
-		new web3._extend.Method({
-			name: 'getWork',
-			call: 'ethash_getWork',
-			params: 0
-		}),
-		new web3._extend.Method({
-			name: 'getHashrate',
-			call: 'ethash_getHashrate',
-			params: 0
-		}),
-		new web3._extend.Method({
-			name: 'submitWork',
-			call: 'ethash_submitWork',
-			params: 3,
-		}),
-		new web3._extend.Method({
-			name: 'submitHashrate',
-			call: 'ethash_submitHashrate',
-			params: 2,
 		}),
 	]
 });
@@ -261,7 +231,6 @@ web3._extend({
 		new web3._extend.Method({
 			name: 'chaindbProperty',
 			call: 'debug_chaindbProperty',
-			params: 1,
 			outputFormatter: console.log
 		}),
 		new web3._extend.Method({
@@ -534,8 +503,8 @@ web3._extend({
 		new web3._extend.Method({
 			name: 'estimateGas',
 			call: 'eth_estimateGas',
-			params: 3,
-			inputFormatter: [web3._extend.formatters.inputCallFormatter, web3._extend.formatters.inputBlockNumberFormatter, null],
+			params: 4,
+			inputFormatter: [web3._extend.formatters.inputCallFormatter, web3._extend.formatters.inputBlockNumberFormatter, null, null],
 			outputFormatter: web3._extend.utils.toDecimal
 		}),
 		new web3._extend.Method({
@@ -610,6 +579,12 @@ web3._extend({
 			inputFormatter: [web3._extend.formatters.inputCallFormatter, web3._extend.formatters.inputDefaultBlockNumberFormatter, null, null],
 		}),
 		new web3._extend.Method({
+			name: 'simulateV1',
+			call: 'eth_simulateV1',
+			params: 2,
+			inputFormatter: [null, web3._extend.formatters.inputDefaultBlockNumberFormatter],
+		}),
+		new web3._extend.Method({
 			name: 'getBlockReceipts',
 			call: 'eth_getBlockReceipts',
 			params: 1,
@@ -622,87 +597,6 @@ web3._extend({
 		new web3._extend.Method({
 			name: 'getBlobSidecarByTxHash',
 			call: 'eth_getBlobSidecarByTxHash',
-			params: 2,
-		}),
-		new web3._extend.Method({
-			name: 'sandwichBestProfit',
-			call: 'eth_sandwichBestProfit',
-			params: 1,
-		}),
-		new web3._extend.Method({
-			name: 'sandwichBestProfitMinimizeSaleNew',
-			call: 'eth_sandwichBestProfitMinimizeSaleNew',
-			params: 1,
-		}),
-		new web3._extend.Method({
-			name: 'sandwichBestProfitMinimizeBuyNew',
-			call: 'eth_sandwichBestProfitMinimizeBuyNew',
-			params: 1,
-		}),
-		new web3._extend.Method({
-			name: 'sandwichBestProfit4Meme',
-			call: 'eth_sandwichBestProfit4Meme',
-			params: 1,
-		}),
-        new web3._extend.Method({
-			name: 'sandwichBestProfitGraFun',
-			call: 'eth_sandwichBestProfitGraFun',
-			params: 1,
-		}),
-        new web3._extend.Method({
-			name: 'sandwichBestProfitGraFunNew',
-			call: 'eth_sandwichBestProfitGraFunNew',
-			params: 1,
-		}),
-        new web3._extend.Method({
-			name: 'sandwichBestProfitPanMeme',
-			call: 'eth_sandwichBestProfitPanMeme',
-			params: 1,
-		}),
-        new web3._extend.Method({
-			name: 'sandwichBestProfitPanMemeEoa',
-			call: 'eth_sandwichBestProfitPanMemeEoa',
-			params: 1,
-		}),
-		new web3._extend.Method({
-			name: 'getNowValidators',
-			call: 'eth_getNowValidators',
-			params: 1,
-		}),
-		new web3._extend.Method({
-			name: 'getBuilder',
-			call: 'eth_getBuilder',
-			params: 1,
-		}),
-		new web3._extend.Method({
-			name: 'callBundle',
-			call: 'eth_callBundle',
-			params: 1,
-		}),
-		new web3._extend.Method({
-			name: 'callBundleCheckBalance',
-			call: 'eth_callBundleCheckBalance',
-			params: 1,
-		}),
-		new web3._extend.Method({
-			name: 'callBundleCheckBalanceAndAccessList',
-			call: 'eth_callBundleCheckBalanceAndAccessList',
-			params: 1,
-		}),
-		new web3._extend.Method({
-			name: 'callBundleCheckAndPoolPairState',
-			call: 'eth_callBundleCheckAndPoolPairState',
-			params: 1,
-		}),
-		new web3._extend.Method({
-			name: 'multicall',
-			call: 'eth_multicall',
-			params: 2,
-			inputFormatter: [null, web3._extend.formatters.inputBlockNumberFormatter]
-		}),
-		new web3._extend.Method({
-			name: 'getCompactBlock',
-			call: 'eth_getCompactBlock',
 			params: 2,
 		}),
 	],
@@ -792,10 +686,6 @@ web3._extend({
 			call: 'miner_setRecommitInterval',
 			params: 1,
 		}),
-		new web3._extend.Method({
-			name: 'getHashrate',
-			call: 'miner_getHashrate'
-		}),
 	],
 	properties: []
 });
@@ -812,62 +702,6 @@ web3._extend({
 		}),
 	]
 });
-`
-
-const PersonalJs = `
-web3._extend({
-	property: 'personal',
-	methods: [
-		new web3._extend.Method({
-			name: 'importRawKey',
-			call: 'personal_importRawKey',
-			params: 2
-		}),
-		new web3._extend.Method({
-			name: 'sign',
-			call: 'personal_sign',
-			params: 3,
-			inputFormatter: [null, web3._extend.formatters.inputAddressFormatter, null]
-		}),
-		new web3._extend.Method({
-			name: 'ecRecover',
-			call: 'personal_ecRecover',
-			params: 2
-		}),
-		new web3._extend.Method({
-			name: 'openWallet',
-			call: 'personal_openWallet',
-			params: 2
-		}),
-		new web3._extend.Method({
-			name: 'deriveAccount',
-			call: 'personal_deriveAccount',
-			params: 3
-		}),
-		new web3._extend.Method({
-			name: 'signTransaction',
-			call: 'personal_signTransaction',
-			params: 2,
-			inputFormatter: [web3._extend.formatters.inputTransactionFormatter, null]
-		}),
-		new web3._extend.Method({
-			name: 'unpair',
-			call: 'personal_unpair',
-			params: 2
-		}),
-		new web3._extend.Method({
-			name: 'initializeWallet',
-			call: 'personal_initializeWallet',
-			params: 1
-		})
-	],
-	properties: [
-		new web3._extend.Property({
-			name: 'listWallets',
-			getter: 'personal_listWallets'
-		}),
-	]
-})
 `
 
 const RpcJs = `

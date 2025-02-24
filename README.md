@@ -49,7 +49,7 @@ Many of the below are the same as or similar to go-ethereum.
 
 For prerequisites and detailed build instructions please read the [Installation Instructions](https://geth.ethereum.org/docs/getting-started/installing-geth).
 
-Building `geth` requires both a Go (version 1.21 or later) and a C compiler (GCC 5 or higher). You can install
+Building `geth` requires both a Go (version 1.22 or later) and a C compiler (GCC 5 or higher). You can install
 them using your favourite package manager. Once the dependencies are installed, run
 
 ```shell
@@ -139,15 +139,11 @@ Download latest chaindata snapshot from [here](https://github.com/bnb-chain/bsc-
 
 #### 4. Start a full node
 ```shell
+## It will run with Path-Base Storage Scheme by default and enable inline state prune, keeping the latest 90000 blocks' history state.
 ./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --history.transactions 0
 
-## It is recommend to run fullnode with `--tries-verify-mode none` if you want high performance and care little about state consistency
-## It will run with Hash-Base Storage Scheme by default
+## It is recommend to run fullnode with `--tries-verify-mode none` if you want high performance and care little about state consistency.
 ./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --history.transactions 0 --tries-verify-mode none
-
-## It runs fullnode with Path-Base Storage Scheme. 
-## It will enable inline state prune, keeping the latest 90000 blocks' history state by default.
-./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --history.transactions 0 --tries-verify-mode none --state.scheme path
 ```
 
 #### 5. Monitor node status
@@ -209,19 +205,18 @@ you'd expect.
 
 HTTP based JSON-RPC API options:
 
-* `--http` Enable the HTTP-RPC server
-* `--http.addr` HTTP-RPC server listening interface (default: `localhost`)
-* `--http.port` HTTP-RPC server listening port (default: `8545`)
-* `--http.api` API's offered over the HTTP-RPC interface (default: `eth,net,web3`)
-* `--http.corsdomain` Comma separated list of domains from which to accept cross origin requests (browser enforced)
-* `--ws` Enable the WS-RPC server
-* `--ws.addr` WS-RPC server listening interface (default: `localhost`)
-* `--ws.port` WS-RPC server listening port (default: `8546`)
-* `--ws.api` API's offered over the WS-RPC interface (default: `eth,net,web3`)
-* `--ws.origins` Origins from which to accept WebSocket requests
-* `--ipcdisable` Disable the IPC-RPC server
-* `--ipcapi` API's offered over the IPC-RPC interface (default: `admin,debug,eth,miner,net,personal,txpool,web3`)
-* `--ipcpath` Filename for IPC socket/pipe within the datadir (explicit paths escape it)
+  * `--http` Enable the HTTP-RPC server
+  * `--http.addr` HTTP-RPC server listening interface (default: `localhost`)
+  * `--http.port` HTTP-RPC server listening port (default: `8545`)
+  * `--http.api` API's offered over the HTTP-RPC interface (default: `eth,net,web3`)
+  * `--http.corsdomain` Comma separated list of domains from which to accept cross-origin requests (browser enforced)
+  * `--ws` Enable the WS-RPC server
+  * `--ws.addr` WS-RPC server listening interface (default: `localhost`)
+  * `--ws.port` WS-RPC server listening port (default: `8546`)
+  * `--ws.api` API's offered over the WS-RPC interface (default: `eth,net,web3`)
+  * `--ws.origins` Origins from which to accept WebSocket requests
+  * `--ipcdisable` Disable the IPC-RPC server
+  * `--ipcpath` Filename for IPC socket/pipe within the datadir (explicit paths escape it)
 
 You'll need to use your own programming environments' capabilities (libraries, tools, etc) to
 connect via HTTP, WS or IPC to a `geth` node configured with the above flags and you'll

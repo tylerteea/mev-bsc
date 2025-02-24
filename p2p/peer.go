@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strings"
+	"slices"
 	"sync"
 	"time"
 
@@ -32,7 +32,6 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/rlp"
-	"golang.org/x/exp/slices"
 )
 
 var (
@@ -379,9 +378,7 @@ func (p *Peer) handle(msg Msg) error {
 	case msg.Code == discMsg:
 		// This is the last message. We don't need to discard or
 		// check errors because, the connection will be closed after it.
-		var m struct{ R DiscReason }
-		rlp.Decode(msg.Payload, &m)
-		return m.R
+		return decodeDisconnectMessage(msg.Payload)
 	case msg.Code < baseProtocolLength:
 		// ignore other base protocol messages
 		return msg.Discard()
@@ -391,7 +388,7 @@ func (p *Peer) handle(msg Msg) error {
 		if err != nil {
 			return fmt.Errorf("msg code out of range: %v", msg.Code)
 		}
-		if metrics.Enabled {
+		if metrics.Enabled() {
 			m := fmt.Sprintf("%s/%s/%d/%#02x", ingressMeterName, proto.Name, proto.Version, msg.Code-proto.offset)
 			metrics.GetOrRegisterMeter(m, nil).Mark(int64(msg.meterSize))
 			metrics.GetOrRegisterMeter(m+"/packets", nil).Mark(1)
@@ -406,49 +403,25 @@ func (p *Peer) handle(msg Msg) error {
 	return nil
 }
 
-func countMatchingProtocolsBscAndBlockRozar(protocols []Protocol, caps []Cap, c *conn) int {
-	n := 0
-	isBsc := false
-	for _, cap := range caps {
-		if "bsc" == cap.Name {
-			isBsc = true
-		}
-		for _, proto := range protocols {
-			if proto.Name == cap.Name && proto.Version == cap.Version {
-				n++
-			}
-		}
+// decodeDisconnectMessage decodes the payload of discMsg.
+func decodeDisconnectMessage(r io.Reader) (reason DiscReason) {
+	s := rlp.NewStream(r, 100)
+	k, _, err := s.Kind()
+	if err != nil {
+		return DiscInvalid
 	}
-
-	if !isBsc {
-		if c != nil && c.fd != nil && c.fd.RemoteAddr() != nil {
-			remoteAddr := c.fd.RemoteAddr().String()
-			if strings.Contains(remoteAddr, "35.157.64.49:") {
-				log.Info("block_razor_remote_addr", "remoteAddr", remoteAddr)
-				return n
-			}
-		}
-		return 0
+	if k == rlp.List {
+		s.List()
+		err = s.Decode(&reason)
+	} else {
+		// Legacy path: some implementations, including geth, used to send the disconnect
+		// reason as a byte array by accident.
+		err = s.Decode(&reason)
 	}
-	return n
-}
-func countMatchingProtocolsBsc(protocols []Protocol, caps []Cap) int {
-	n := 0
-	isBsc := false
-	for _, cap := range caps {
-		if "bsc" == cap.Name {
-			isBsc = true
-		}
-		for _, proto := range protocols {
-			if proto.Name == cap.Name && proto.Version == cap.Version {
-				n++
-			}
-		}
+	if err != nil {
+		reason = DiscInvalid
 	}
-	if !isBsc {
-		return 0
-	}
-	return n
+	return reason
 }
 
 func countMatchingProtocols(protocols []Protocol, caps []Cap) int {
@@ -491,7 +464,6 @@ outer:
 func (p *Peer) startProtocols(writeStart <-chan struct{}, writeErr chan<- error) {
 	p.wg.Add(len(p.running))
 	for _, proto := range p.running {
-		proto := proto
 		proto.closed = p.closed
 		proto.wstart = writeStart
 		proto.werr = writeErr
