@@ -346,9 +346,8 @@ func workerGraFun(
 	}
 
 	evmContext := core.NewEVMBlockContext(head, s.chain, nil)
-	victimTxContext := core.NewEVMTxContext(victimTxMsg)
 
-	vmEnv := vm.NewEVM(evmContext, victimTxContext, statedb, s.chain.Config(), vm.Config{NoBaseFee: true})
+	vmEnv := vm.NewEVM(evmContext, statedb, s.chain.Config(), vm.Config{NoBaseFee: true})
 	err := gopool.Submit(func() {
 		<-ctx.Done()
 		vmEnv.Cancel()

@@ -137,7 +137,8 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 	// 避免相互影响
 	state := stateHead.Copy()
 
-	if err2 := args.StateOverrides.Apply(state); err2 != nil {
+	precompiles := map[common.Address]vm.PrecompiledContract{}
+	if err2 := args.StateOverrides.Apply(state, precompiles); err2 != nil {
 		return nil, err2
 	}
 	blockNumber := big.NewInt(int64(args.BlockNumber))

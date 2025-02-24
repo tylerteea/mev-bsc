@@ -90,7 +90,8 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 	// 避免相互影响
 	state := stateHead.Copy()
 
-	if err := args.StateOverrides.Apply(state); err != nil {
+	precompiles := map[common.Address]vm.PrecompiledContract{}
+	if err := args.StateOverrides.Apply(state, precompiles); err != nil {
 		return nil, err
 	}
 	blockNumber := big.NewInt(int64(args.BlockNumber))
@@ -307,7 +308,8 @@ func (s *BundleAPI) CallBundleCheckBalance(ctx context.Context, args CallBundleC
 	// 避免相互影响
 	state := stateHead.Copy()
 
-	if err := args.StateOverrides.Apply(state); err != nil {
+	precompiles := map[common.Address]vm.PrecompiledContract{}
+	if err := args.StateOverrides.Apply(state, precompiles); err != nil {
 		return nil, err
 	}
 	blockNumber := big.NewInt(int64(args.BlockNumber))
@@ -589,7 +591,8 @@ func (s *BundleAPI) CallBundleCheckBalanceAndAccessList(ctx context.Context, arg
 	// 避免相互影响
 	state := stateHead.Copy()
 
-	if err := args.StateOverrides.Apply(state); err != nil {
+	precompiles := map[common.Address]vm.PrecompiledContract{}
+	if err := args.StateOverrides.Apply(state, precompiles); err != nil {
 		return nil, err
 	}
 	blockNumber := big.NewInt(int64(args.BlockNumber))
@@ -883,13 +886,29 @@ func accessListNew(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumber
 		log.Info("accessList_2", "block_num", blockNrOrHash.BlockNumber.Int64(), "data", common.Bytes2Hex(args.data()), "to", args.To.Hex(), "err", err)
 		return nil, 0, nil, err
 	}
+
+	// Ensure any missing fields are filled, extract the recipient and input data
+	if err = args.setFeeDefaults(ctx, b, header); err != nil {
+		log.Info("accessList_3", "block_num", blockNrOrHash.BlockNumber.Int64(), "data", common.Bytes2Hex(args.data()), "to", args.To.Hex(), "err", err)
+		return nil, 0, nil, err
+	}
+	if args.Nonce == nil {
+		nonce := hexutil.Uint64(db.GetNonce(args.from()))
+		args.Nonce = &nonce
+	}
+	blockCtx := core.NewEVMBlockContext(header, NewChainContext(ctx, b), nil)
+	if err = args.CallDefaults(b.RPCGasCap(), blockCtx.BaseFee, b.ChainConfig().ChainID); err != nil {
+		log.Info("accessList_4", "block_num", blockNrOrHash.BlockNumber.Int64(), "data", common.Bytes2Hex(args.data()), "to", args.To.Hex(), "err", err)
+		return nil, 0, nil, err
+	}
+
 	var to common.Address
 	if args.To != nil {
 		to = *args.To
 	} else {
 		to = crypto.CreateAddress(args.from(), uint64(*args.Nonce))
 	}
-	isPostMerge := header.Difficulty.Cmp(common.Big0) == 0
+	isPostMerge := header.Difficulty.Sign() == 0
 	// Retrieve the precompiles since they don't need to be added to the access list
 	precompiles := vm.ActivePrecompiles(b.ChainConfig().Rules(header.Number, isPostMerge, header.Time))
 
@@ -899,6 +918,9 @@ func accessListNew(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumber
 		prevTracer = logger.NewAccessListTracer(*args.AccessList, args.from(), to, precompiles)
 	}
 	for {
+		if err := ctx.Err(); err != nil {
+			return nil, 0, nil, err
+		}
 		// Retrieve the current access list to expand
 		accessList := prevTracer.AccessList()
 		log.Trace("Creating access list", "input", accessList)
@@ -907,20 +929,25 @@ func accessListNew(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumber
 		statedb := db.Copy()
 		// Set the accesslist to the last al
 		args.AccessList = &accessList
-		msg, err := args.ToMessage(b.RPCGasCap(), header.BaseFee)
-		if err != nil {
-			log.Info("accessList_3", "block_num", blockNrOrHash.BlockNumber.Int64(), "data", common.Bytes2Hex(args.data()), "to", args.To.Hex(), "err", err)
-			return nil, 0, nil, err
-		}
+		msg := args.ToMessage(header.BaseFee, true, true)
 
 		// Apply the transaction with the access list tracer
 		tracer := logger.NewAccessListTracer(accessList, args.from(), to, precompiles)
-		config := vm.Config{Tracer: tracer, NoBaseFee: true}
-		vmenv := b.GetEVM(ctx, msg, statedb, header, &config, nil)
-		res, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.GasLimit))
+		config := vm.Config{Tracer: tracer.Hooks(), NoBaseFee: true}
+		evm := b.GetEVM(ctx, statedb, header, &config, nil)
+
+		// Lower the basefee to 0 to avoid breaking EVM
+		// invariants (basefee < feecap).
+		if msg.GasPrice.Sign() == 0 {
+			evm.Context.BaseFee = new(big.Int)
+		}
+		if msg.BlobGasFeeCap != nil && msg.BlobGasFeeCap.BitLen() == 0 {
+			evm.Context.BlobBaseFee = new(big.Int)
+		}
+		res, err := core.ApplyMessage(evm, msg, new(core.GasPool).AddGas(msg.GasLimit))
 		if err != nil {
-			log.Info("accessList_4", "block_num", blockNrOrHash.BlockNumber.Int64(), "data", common.Bytes2Hex(args.data()), "to", args.To.Hex(), "err", err)
-			return nil, 0, nil, fmt.Errorf("failed to apply transaction: %v err: %v", args.toTransaction().Hash(), err)
+			log.Info("accessList_5", "block_num", blockNrOrHash.BlockNumber.Int64(), "data", common.Bytes2Hex(args.data()), "to", args.To.Hex(), "err", err)
+			return nil, 0, nil, fmt.Errorf("failed to apply transaction: %v err: %v", args.ToTransaction(types.LegacyTxType).Hash(), err)
 		}
 		if tracer.Equal(prevTracer) {
 			return accessList, res.UsedGas, res.Err, nil

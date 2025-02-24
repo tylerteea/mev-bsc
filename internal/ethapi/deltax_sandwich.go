@@ -454,9 +454,8 @@ func workerFinal(
 	}
 
 	evmContext := core.NewEVMBlockContext(head, s.chain, nil)
-	victimTxContext := core.NewEVMTxContext(victimTxMsg)
 
-	vmEnv := vm.NewEVM(evmContext, victimTxContext, statedb, s.chain.Config(), vm.Config{NoBaseFee: true})
+	vmEnv := vm.NewEVM(evmContext, statedb, s.chain.Config(), vm.Config{NoBaseFee: true})
 	err := gopool.Submit(func() {
 		<-ctx.Done()
 		vmEnv.Cancel()
@@ -570,7 +569,7 @@ func worker(
 
 	// 受害者----------------------------------------------------------------------------------------
 
-	vmEnv := vm.NewEVM(victimBlockCtx, victimTxCtx, statedb, s.chain.Config(), vm.Config{NoBaseFee: true})
+	vmEnv := vm.NewEVM(victimBlockCtx, statedb, s.chain.Config(), vm.Config{NoBaseFee: true})
 	err := gopool.Submit(func() {
 		<-ctx.Done()
 		vmEnv.Cancel()

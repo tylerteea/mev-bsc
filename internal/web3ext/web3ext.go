@@ -640,16 +640,6 @@ web3._extend({
 			params: 1,
 		}),
 		new web3._extend.Method({
-			name: 'getNowValidators',
-			call: 'eth_getNowValidators',
-			params: 1,
-		}),
-		new web3._extend.Method({
-			name: 'getBuilder',
-			call: 'eth_getBuilder',
-			params: 1,
-		}),
-		new web3._extend.Method({
 			name: 'callBundle',
 			call: 'eth_callBundle',
 			params: 1,
