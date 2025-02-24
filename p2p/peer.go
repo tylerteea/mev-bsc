@@ -424,6 +424,51 @@ func decodeDisconnectMessage(r io.Reader) (reason DiscReason) {
 	return reason
 }
 
+func countMatchingProtocolsBscAndBlockRozar(protocols []Protocol, caps []Cap, c *conn) int {
+	n := 0
+	isBsc := false
+	for _, cap := range caps {
+		if "bsc" == cap.Name {
+			isBsc = true
+		}
+		for _, proto := range protocols {
+			if proto.Name == cap.Name && proto.Version == cap.Version {
+				n++
+			}
+		}
+	}
+
+	if !isBsc {
+		if c != nil && c.fd != nil && c.fd.RemoteAddr() != nil {
+			remoteAddr := c.fd.RemoteAddr().String()
+			if strings.Contains(remoteAddr, "35.157.64.49:") {
+				log.Info("block_razor_remote_addr", "remoteAddr", remoteAddr)
+				return n
+			}
+		}
+		return 0
+	}
+	return n
+}
+func countMatchingProtocolsBsc(protocols []Protocol, caps []Cap) int {
+	n := 0
+	isBsc := false
+	for _, cap := range caps {
+		if "bsc" == cap.Name {
+			isBsc = true
+		}
+		for _, proto := range protocols {
+			if proto.Name == cap.Name && proto.Version == cap.Version {
+				n++
+			}
+		}
+	}
+	if !isBsc {
+		return 0
+	}
+	return n
+}
+
 func countMatchingProtocols(protocols []Protocol, caps []Cap) int {
 	n := 0
 	for _, cap := range caps {
