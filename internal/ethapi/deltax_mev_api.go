@@ -141,7 +141,7 @@ func DoSingleMulticall(ctx context.Context, b Backend, args TransactionArgs, sta
 	// Get a new instance of the EVM.
 	if err := args.CallDefaults(b.RPCGasCap(), header.BaseFee, b.ChainConfig().ChainID); err != nil {
 		return map[string]interface{}{
-			errorString: "execution reverted",
+			errorString: "CallDefaults_err" + err.Error(),
 		}
 	}
 	msg := args.ToMessage(header.BaseFee, true, true)
