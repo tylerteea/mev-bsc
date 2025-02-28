@@ -433,14 +433,8 @@ func (args *TransactionArgs) ToMessage(baseFee *big.Int, skipNonceCheck, skipEoA
 			gasFeeCap, gasTipCap = gasPrice, gasPrice
 		} else {
 			// User specified 1559 gas fields (or none), use those
-			gasFeeCap = new(big.Int)
-			if args.MaxFeePerGas != nil {
-				gasFeeCap = args.MaxFeePerGas.ToInt()
-			}
-			gasTipCap = new(big.Int)
-			if args.MaxPriorityFeePerGas != nil {
-				gasTipCap = args.MaxPriorityFeePerGas.ToInt()
-			}
+			gasFeeCap = args.MaxFeePerGas.ToInt()
+			gasTipCap = args.MaxPriorityFeePerGas.ToInt()
 			// Backfill the legacy gasPrice for EVM execution, unless we're all zeroes
 			gasPrice = new(big.Int)
 			if gasFeeCap.BitLen() > 0 || gasTipCap.BitLen() > 0 {
