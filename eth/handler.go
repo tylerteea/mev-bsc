@@ -851,12 +851,10 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 	for peer, hashes := range txset {
 		directCount += len(hashes)
 		peer.AsyncSendTransactions(hashes)
-		log.Info("Distributed_transactions_directCount", "peer", peer.ID(), "hash", hashes)
 	}
 	for peer, hashes := range annos {
 		annCount += len(hashes)
 		peer.AsyncSendPooledTransactionHashes(hashes)
-		log.Info("Distributed_transactions_anno", "peer", peer.ID(), "hash", hashes)
 	}
 	log.Debug("Distributed transactions", "plaintxs", len(txs)-blobTxs-largeTxs, "blobtxs", blobTxs, "largetxs", largeTxs,
 		"bcastpeers", len(txset), "bcastcount", directCount, "annpeers", len(annos), "anncount", annCount)
