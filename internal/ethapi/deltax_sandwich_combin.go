@@ -122,7 +122,6 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) *Combin
 	}
 
 	victimBlockCtx := core.NewEVMBlockContext(head, s.chain, nil)
-	victimTxContext := core.NewEVMTxContext(victimTxMsg)
 
 	bestInFunc := func(x []float64) float64 {
 		defer func() {
@@ -163,7 +162,7 @@ func (s *BundleAPI) SandwichBestProfit(ctx context.Context, sbp SbpArgs) *Combin
 		}
 		stateDB := stateDBNew.Copy()
 
-		grossProfit, workErr := workerNew(ctx, head, nextBlockNum, victimBlockCtx, victimTxContext, victimTxMsg, sbp, s, reqId, stateDB, amountInInt)
+		grossProfit, workErr := workerNew(ctx, head, nextBlockNum, victimBlockCtx, victimTxMsg, sbp, s, reqId, stateDB, amountInInt)
 
 		if sbp.LogEnable {
 			reqIdMiniMize := reqId + "_" + amountInInt.String()
@@ -375,7 +374,6 @@ func workerNew(
 	head *types.Header,
 	nextBlockNum *big.Int,
 	victimBlockCtx vm.BlockContext,
-	victimTxCtx vm.TxContext,
 	victimMsg *core.Message,
 	sbp SbpArgs,
 	s *BundleAPI,
