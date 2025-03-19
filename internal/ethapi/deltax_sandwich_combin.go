@@ -759,3 +759,274 @@ func executeFinalNew(
 	}
 	return amountInfos, diff, nil
 }
+
+func executeReverse(
+	ctx context.Context,
+	reqId string,
+	isFront bool,
+	sbp SbpArgs,
+	amountIn *big.Int,
+	sdb *state.StateDB,
+	s *BundleAPI,
+	head *types.Header,
+	nextBlockNum *big.Int,
+) (*big.Int, *big.Int, error) {
+
+	if sbp.LogEnable {
+		log.Info("call_execute0", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
+	}
+
+	//-----------token before balance ------------------------------------------------------------------------
+
+	beginToken := NullAddress
+	finalToken := NullAddress
+	commonPathInfos := sbp.CommonPathInfos
+	pathLen := len(commonPathInfos)
+
+	if isFront {
+		beginToken = commonPathInfos[0].TokenIn
+		finalToken = commonPathInfos[pathLen-1].TokenOut
+	} else {
+		beginToken = commonPathInfos[pathLen-1].TokenOut
+		finalToken = commonPathInfos[0].TokenIn
+	}
+
+	tokenBeforeBalance, tbErr1 := getERC20TokenBalance(ctx, s, finalToken, sbp.Contract, sdb, head)
+
+	if tbErr1 != nil {
+		return nil, nil, tbErr1
+	}
+	amountInCost := SandwichBigIntZeroValue
+	if finalToken.Cmp(beginToken) == 0 {
+		amountInCost = amountIn
+	}
+	tokenBeforeBalance.Sub(tokenBeforeBalance, amountInCost)
+	if sbp.LogEnable {
+		log.Info("call_execute1", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "tokenBeforeBalance", tokenBeforeBalance, "amountInCost", amountInCost)
+	}
+
+	//-----------token before balance ------------------------------------------------------------------------
+
+	paramHead := getSimulateHead()
+	routers := getSimulateRouters(isFront, sbp.CommonPathInfos, amountIn)
+	data := MakeParams(paramHead, nil, routers, Simulate)
+
+	if sbp.LogEnable {
+		log.Info("call_execute2", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
+	}
+
+	bytes := hexutil.Bytes(data)
+	callArgs := &TransactionArgs{
+		From:  &sbp.Eoa,
+		To:    &sbp.Contract,
+		Data:  &bytes,
+		Value: (*hexutil.Big)(nextBlockNum),
+	}
+
+	reqIdString := reqId + "_" + amountIn.String()
+
+	callResult, err := mevCall(reqIdString, sdb, head, s, ctx, callArgs, nil, nil, nil)
+	if sbp.LogEnable {
+		log.Info("call_execute3", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err, "callResult", callResult, "nextBlockNum", nextBlockNum, "data_hex", common.Bytes2Hex(data), "eoa", sbp.Eoa.String(), "contract", sbp.Contract.String())
+	}
+
+	if err != nil {
+		if sbp.LogEnable {
+			log.Info("call_execute6", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err)
+		}
+		return nil, nil, err
+	}
+	if callResult.Err != nil {
+		if sbp.LogEnable {
+			log.Info("call_execute7", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", callResult.Err)
+		}
+		return nil, nil, callResult.Err
+	}
+
+	//-----------token after balance ------------------------------------------------------------------------
+	tokenAfterBalance, tbErr := getERC20TokenBalance(ctx, s, finalToken, sbp.Contract, sdb, head)
+	if tbErr != nil {
+		if sbp.LogEnable {
+			log.Info("call_execute8_tokenAfterBalance_err", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", tbErr)
+		}
+		return nil, nil, tbErr
+	}
+	//-----------token after balance ------------------------------------------------------------------------
+
+	diff := tokenAfterBalance.Sub(tokenAfterBalance, tokenBeforeBalance)
+	if sbp.LogEnable {
+		log.Info("call_execute9", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "tokenAfterBalance", tokenAfterBalance, "tokenBeforeBalance", tokenBeforeBalance, "diff", diff)
+	}
+
+	return amountIn, diff, nil
+}
+
+func executeFinalReverseBack(
+	ctx context.Context,
+	reqId string,
+	isFront bool,
+	sbp SbpArgs,
+	amountIn *big.Int,
+	sdb *state.StateDB,
+	s *BundleAPI,
+	head *types.Header,
+	nextBlockNum *big.Int,
+	isReserve bool,
+	amountOut *big.Int,
+) ([]*AmountInfo, *big.Int, error) {
+
+	if sbp.LogEnable {
+		log.Info("call_execute0", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "isReserve", isReserve, "amountOut", amountOut)
+	}
+
+	if isReserve {
+		if amountOut == nil || amountOut.Cmp(SandwichBigIntZeroValue) <= 0 {
+			if sbp.LogEnable {
+				log.Info("call_execute_00_参数错误", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "isReserve", isReserve, "amountOut", amountOut)
+			}
+			return nil, nil, errors.New("reserve amount can't be zero")
+		}
+	}
+
+	//-----------token before balance ------------------------------------------------------------------------
+
+	beginToken := NullAddress
+	finalToken := NullAddress
+
+	targetToken := NullAddress
+
+	commonPathInfos := sbp.CommonPathInfos
+	pathLen := len(commonPathInfos)
+
+	if isFront {
+		beginToken = commonPathInfos[0].TokenIn
+		finalToken = commonPathInfos[pathLen-1].TokenOut
+		targetToken = finalToken
+	} else {
+		beginToken = commonPathInfos[pathLen-1].TokenOut
+		finalToken = commonPathInfos[0].TokenIn
+
+		if isReserve {
+			targetToken = beginToken
+		} else {
+			targetToken = finalToken
+		}
+	}
+
+	tokenBeforeBalance, tbErr1 := getERC20TokenBalance(ctx, s, targetToken, sbp.Contract, sdb, head)
+
+	if tbErr1 != nil {
+		return nil, nil, tbErr1
+	}
+	amountInCost := SandwichBigIntZeroValue
+
+	if isReserve {
+
+	} else {
+		if finalToken.Cmp(beginToken) == 0 {
+			amountInCost = amountIn
+		}
+		tokenBeforeBalance.Sub(tokenBeforeBalance, amountInCost)
+	}
+
+	if sbp.LogEnable {
+		log.Info("call_execute1", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "isReserve", isReserve, "tokenBeforeBalance", tokenBeforeBalance, "amountInCost", amountInCost)
+	}
+	//-----------token before balance ------------------------------------------------------------------------
+
+	paramHead := getSimulateHead()
+	routers := getSimulateRouters(isFront, sbp.CommonPathInfos, amountIn)
+	data := MakeParams(paramHead, nil, routers, Simulate)
+
+	bytes := hexutil.Bytes(data)
+	callArgs := &TransactionArgs{
+		From:  &sbp.Eoa,
+		To:    &sbp.Contract,
+		Data:  &bytes,
+		Value: (*hexutil.Big)(nextBlockNum),
+	}
+
+	reqIdString := reqId + "_" + amountIn.String()
+
+	callResult, err := mevCall(reqIdString, sdb, head, s, ctx, callArgs, nil, nil, nil)
+	if sbp.LogEnable {
+		log.Info("call_execute3", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err, "callResult", callResult, "nextBlockNum", nextBlockNum, "data_hex", common.Bytes2Hex(data), "eoa", sbp.Eoa.String(), "contract", sbp.Contract.String())
+	}
+	if callResult != nil {
+
+		if sbp.LogEnable {
+			log.Info("call_execute4", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "result", common.Bytes2Hex(callResult.ReturnData))
+		}
+		var revertReason *revertError
+		if len(callResult.Revert()) > 0 {
+
+			revertReason = newRevertError(callResult.Revert())
+			if sbp.LogEnable {
+				log.Info("call_result_not_nil_44",
+					"reqId", reqId,
+					"amountIn", amountIn,
+					"data", callResult,
+					"revert", common.Bytes2Hex(callResult.Revert()),
+					"revertReason", revertReason,
+					"returnData", common.Bytes2Hex(callResult.Return()),
+				)
+				log.Info("call_execute5", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "revertReason", revertReason.reason)
+			}
+			return nil, nil, revertReason
+		}
+	}
+	if err != nil {
+		if sbp.LogEnable {
+			log.Info("call_execute6", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", err)
+		}
+		return nil, nil, err
+	}
+	if callResult.Err != nil {
+		if sbp.LogEnable {
+			log.Info("call_execute7", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", callResult.Err)
+		}
+		return nil, nil, callResult.Err
+	}
+
+	lenR := len(callResult.Return())
+	if sbp.LogEnable {
+		log.Info("call_execute80_结果数据长度", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR)
+	}
+
+	//-----------token after balance ------------------------------------------------------------------------
+	tokenAfterBalance, tbErr := getERC20TokenBalance(ctx, s, finalToken, sbp.Contract, sdb, head)
+	if tbErr != nil {
+		if sbp.LogEnable {
+			log.Info("call_execute8_tokenAfterBalance_err", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "err", tbErr)
+		}
+		return nil, nil, tbErr
+	}
+	var diff *big.Int
+	if isReserve {
+		diff = tokenBeforeBalance.Sub(tokenBeforeBalance, tokenAfterBalance)
+	} else {
+		diff = tokenAfterBalance.Sub(tokenAfterBalance, tokenBeforeBalance)
+	}
+
+	if sbp.LogEnable {
+		log.Info("call_execute9", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "tokenAfterBalance", tokenAfterBalance, "tokenBeforeBalance", tokenBeforeBalance, "diff", diff)
+	}
+	//-----------token after balance ------------------------------------------------------------------------
+
+	amountInfos, aiErr := ReturnValueToAmountInfo(callResult.Return(), pathLen)
+	if aiErr != nil {
+		if sbp.LogEnable {
+			log.Info("call_execute11_卖结果数据长度检验不通过", "reqId", reqId, "amountIn", amountIn, "isFront", isFront, "callResult_len", lenR)
+		}
+		return nil, nil, errors.New("卖结果数据长度检验不通过2")
+	}
+
+	if isReserve {
+		amountInfos[0].AmountIn = diff
+	}
+
+	if sbp.LogEnable {
+		log.Info("call_execute20", "reqId", reqId, "amountIn", amountIn, "isFront", isFront)
+	}
+	return amountInfos, diff, nil
+}
