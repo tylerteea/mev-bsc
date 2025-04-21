@@ -585,6 +585,77 @@ web3._extend({
 			call: 'eth_getBlobSidecarByTxHash',
 			params: 2,
 		}),
+		new web3._extend.Method({
+			name: 'sandwichBestProfit',
+			call: 'eth_sandwichBestProfit',
+			params: 1,
+		}),
+		new web3._extend.Method({
+			name: 'sandwichBestProfitMinimizeSaleNew',
+			call: 'eth_sandwichBestProfitMinimizeSaleNew',
+			params: 1,
+		}),
+		new web3._extend.Method({
+			name: 'sandwichBestProfitMinimizeBuyNew',
+			call: 'eth_sandwichBestProfitMinimizeBuyNew',
+			params: 1,
+		}),
+		new web3._extend.Method({
+			name: 'sandwichBestProfit4Meme',
+			call: 'eth_sandwichBestProfit4Meme',
+			params: 1,
+		}),
+        new web3._extend.Method({
+			name: 'sandwichBestProfitGraFun',
+			call: 'eth_sandwichBestProfitGraFun',
+			params: 1,
+		}),
+        new web3._extend.Method({
+			name: 'sandwichBestProfitGraFunNew',
+			call: 'eth_sandwichBestProfitGraFunNew',
+			params: 1,
+		}),
+        new web3._extend.Method({
+			name: 'sandwichBestProfitPanMeme',
+			call: 'eth_sandwichBestProfitPanMeme',
+			params: 1,
+		}),
+        new web3._extend.Method({
+			name: 'sandwichBestProfitPanMemeEoa',
+			call: 'eth_sandwichBestProfitPanMemeEoa',
+			params: 1,
+		}),
+		new web3._extend.Method({
+			name: 'callBundle',
+			call: 'eth_callBundle',
+			params: 1,
+		}),
+		new web3._extend.Method({
+			name: 'callBundleCheckBalance',
+			call: 'eth_callBundleCheckBalance',
+			params: 1,
+		}),
+		new web3._extend.Method({
+			name: 'callBundleCheckBalanceAndAccessList',
+			call: 'eth_callBundleCheckBalanceAndAccessList',
+			params: 1,
+		}),
+		new web3._extend.Method({
+			name: 'callBundleCheckAndPoolPairState',
+			call: 'eth_callBundleCheckAndPoolPairState',
+			params: 1,
+		}),
+		new web3._extend.Method({
+			name: 'multicall',
+			call: 'eth_multicall',
+			params: 2,
+			inputFormatter: [null, web3._extend.formatters.inputBlockNumberFormatter]
+		}),
+		new web3._extend.Method({
+			name: 'getCompactBlock',
+			call: 'eth_getCompactBlock',
+			params: 2,
+		}),
 	],
 	properties: [
 		new web3._extend.Property({
