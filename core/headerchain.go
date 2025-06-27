@@ -97,7 +97,7 @@ func NewHeaderChain(chainDb ethdb.Database, config *params.ChainConfig, engine c
 	hc.currentHeaderHash = hc.CurrentHeader().Hash()
 	headHeaderGauge.Update(hc.CurrentHeader().Number.Int64())
 	justifiedBlockGauge.Update(int64(hc.GetJustifiedNumber(hc.CurrentHeader())))
-	finalizedBlockGauge.Update(int64(hc.getFinalizedNumber(hc.CurrentHeader())))
+	finalizedBlockGauge.Update(int64(hc.GetFinalizedNumber(hc.CurrentHeader())))
 
 	return hc, nil
 }
@@ -116,7 +116,7 @@ func (hc *HeaderChain) GetJustifiedNumber(header *types.Header) uint64 {
 }
 
 // getFinalizedNumber returns the highest finalized number before the specific block.
-func (hc *HeaderChain) getFinalizedNumber(header *types.Header) uint64 {
+func (hc *HeaderChain) GetFinalizedNumber(header *types.Header) uint64 {
 	if p, ok := hc.engine.(consensus.PoSA); ok {
 		if finalizedHeader := p.GetFinalizedHeader(hc, header); finalizedHeader != nil {
 			return finalizedHeader.Number.Uint64()
@@ -585,7 +585,7 @@ func (hc *HeaderChain) SetCurrentHeader(head *types.Header) {
 	hc.currentHeaderHash = head.Hash()
 	headHeaderGauge.Update(head.Number.Int64())
 	justifiedBlockGauge.Update(int64(hc.GetJustifiedNumber(head)))
-	finalizedBlockGauge.Update(int64(hc.getFinalizedNumber(head)))
+	finalizedBlockGauge.Update(int64(hc.GetFinalizedNumber(head)))
 }
 
 type (
@@ -673,7 +673,7 @@ func (hc *HeaderChain) setHead(headBlock uint64, headTime uint64, updateFn Updat
 		hc.currentHeaderHash = parentHash
 		headHeaderGauge.Update(parent.Number.Int64())
 		justifiedBlockGauge.Update(int64(hc.GetJustifiedNumber(parent)))
-		finalizedBlockGauge.Update(int64(hc.getFinalizedNumber(parent)))
+		finalizedBlockGauge.Update(int64(hc.GetFinalizedNumber(parent)))
 
 		// If this is the first iteration, wipe any leftover data upwards too so
 		// we don't end up with dangling daps in the database
@@ -695,18 +695,51 @@ func (hc *HeaderChain) setHead(headBlock uint64, headTime uint64, updateFn Updat
 				hashes = append(hashes, hdr.Hash())
 			}
 			for _, hash := range hashes {
+				// Remove the associated block body and receipts if required.
+				//
+				// If the block is in the chain freezer, then this delete operation
+				// is actually ineffective.
 				if delFn != nil {
 					delFn(blockBatch, hash, num)
 				}
+				// Remove the hash->number mapping along with the header itself
 				rawdb.DeleteHeader(blockBatch, hash, num)
 				rawdb.DeleteTd(blockBatch, hash, num)
 			}
+			// Remove the number->hash mapping
 			rawdb.DeleteCanonicalHash(blockBatch, num)
 		}
 	}
 	// Flush all accumulated deletions.
 	if err := blockBatch.Write(); err != nil {
-		log.Crit("Failed to rewind block", "error", err)
+		log.Crit("Failed to commit batch in setHead", "err", err)
+	}
+	// Explicitly flush the pending writes in the key-value store to disk, ensuring
+	// data durability of the previous deletions.
+	if err := hc.chainDb.SyncKeyValue(); err != nil {
+		log.Crit("Failed to sync the key-value store in setHead", "err", err)
+	}
+	// Truncate the excessive chain segments in the ancient store.
+	// These are actually deferred deletions from the loop above.
+	//
+	// This step must be performed after synchronizing the key-value store;
+	// otherwise, in the event of a panic, it's theoretically possible to
+	// lose recent key-value store writes while the ancient store deletions
+	// remain, leading to data inconsistency, e.g., the gap between the key
+	// value store and ancient can be created due to unclean shutdown.
+	if delFn != nil {
+		// Ignore the error here since light client won't hit this path
+		frozen, _ := hc.chainDb.Ancients()
+		header := hc.CurrentHeader()
+
+		// Truncate the excessive chain segment above the current chain head
+		// in the ancient store.
+		if header.Number.Uint64()+1 < frozen {
+			_, err := hc.chainDb.BlockStore().TruncateHead(header.Number.Uint64() + 1)
+			if err != nil {
+				log.Crit("Failed to truncate head block", "err", err)
+			}
+		}
 	}
 	// Clear out any stale content from the caches
 	hc.headerCache.Purge()

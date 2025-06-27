@@ -5,6 +5,11 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
+	"math/big"
+	"runtime/debug"
+	"time"
+
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -13,30 +18,27 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/internal/ethapi/override"
 	"github.com/ethereum/go-ethereum/rpc"
 	"golang.org/x/crypto/sha3"
-	"math"
-	"math/big"
-	"runtime/debug"
-	"time"
 
 	"github.com/ethereum/go-ethereum/log"
 )
 
 type (
 	CallBundleCheckAndPoolPairStateArgs struct {
-		ReqId                  string                `json:"reqId"`
-		Txs                    []hexutil.Bytes       `json:"txs"`
-		BlockNumber            rpc.BlockNumber       `json:"blockNumber"`
-		StateBlockNumberOrHash rpc.BlockNumberOrHash `json:"stateBlockNumber"`
-		Coinbase               *string               `json:"coinbase"`
-		Timestamp              *uint64               `json:"timestamp"`
-		Timeout                *int64                `json:"timeout"`
-		GasLimit               *uint64               `json:"gasLimit"`
-		Difficulty             *big.Int              `json:"difficulty"`
-		SimulationLogs         bool                  `json:"simulationLogs"`
-		StateOverrides         *StateOverride        `json:"stateOverrides"`
-		BaseFee                *big.Int              `json:"baseFee"`
+		ReqId                  string                  `json:"reqId"`
+		Txs                    []hexutil.Bytes         `json:"txs"`
+		BlockNumber            rpc.BlockNumber         `json:"blockNumber"`
+		StateBlockNumberOrHash rpc.BlockNumberOrHash   `json:"stateBlockNumber"`
+		Coinbase               *string                 `json:"coinbase"`
+		Timestamp              *uint64                 `json:"timestamp"`
+		Timeout                *int64                  `json:"timeout"`
+		GasLimit               *uint64                 `json:"gasLimit"`
+		Difficulty             *big.Int                `json:"difficulty"`
+		SimulationLogs         bool                    `json:"simulationLogs"`
+		StateOverrides         *override.StateOverride `json:"stateOverrides"`
+		BaseFee                *big.Int                `json:"baseFee"`
 
 		NeedAccessList []bool `json:"needAccessList"`
 
@@ -237,7 +239,7 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 		}
 		//-------------------------------------------before
 
-		from, err := types.Sender(signer, tx)
+		from, _ := types.Sender(signer, tx)
 
 		simulateBundleResultNew := &SimulateBundleResultNew{
 			TxHash: tx.Hash().String(),
@@ -263,7 +265,7 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 					Value:    (*hexutil.Big)(tx.Value()),
 				}
 
-				accessList, errAL := createAccessListNew(ctx, s.b, callArgs, &args.StateBlockNumberOrHash, state, header)
+				accessList, errAL := createAccessListNew(ctx, s.b, callArgs, &args.StateBlockNumberOrHash, args.StateOverrides, state, header)
 
 				if errAL == nil && accessList != nil {
 

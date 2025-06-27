@@ -28,9 +28,13 @@ import (
 )
 
 var (
-	defaultDelayLeftOver = 50 * time.Millisecond
+	defaultDelayLeftOver         = 50 * time.Millisecond
+	defaultRecommit              = 10 * time.Second
+	defaultMaxWaitProposalInSecs = uint64(45)
 	// default configurations for MEV
+	defaultMevEnabled                   = false
 	defaultGreedyMergeTx         bool   = true
+	defaultBuilderFeeCeil        string = "0"
 	defaultValidatorCommission   uint64 = 100
 	defaultBidSimulationLeftOver        = 50 * time.Millisecond
 	defaultNoInterruptLeftOver          = 250 * time.Millisecond
@@ -39,17 +43,16 @@ var (
 
 // Config is the configuration parameters of mining.
 type Config struct {
-	Etherbase             common.Address `toml:",omitempty"` // Public address for block mining rewards
-	ExtraData             hexutil.Bytes  `toml:",omitempty"` // Block extra data set by the miner
-	DelayLeftOver         *time.Duration `toml:",omitempty"` // Time reserved to finalize a block(calculate root, distribute income...)
-	GasFloor              uint64         // Target gas floor for mined blocks.
-	GasCeil               uint64         // Target gas ceiling for mined blocks.
-	GasPrice              *big.Int       // Minimum gas price for mining a transaction
-	Recommit              time.Duration  // The time interval for miner to re-create mining work.
-	VoteEnable            bool           // Whether to vote when mining
-	MaxWaitProposalInSecs uint64         // The maximum time to wait for the proposal to be done, it's aimed to prevent validator being slashed when restarting
-
-	DisableVoteAttestation bool // Whether to skip assembling vote attestation
+	Etherbase              common.Address `toml:",omitempty"` // Public address for block mining rewards
+	ExtraData              hexutil.Bytes  `toml:",omitempty"` // Block extra data set by the miner
+	DelayLeftOver          *time.Duration `toml:",omitempty"` // Time reserved to finalize a block(calculate root, distribute income...)
+	GasFloor               uint64         // Target gas floor for mined blocks.
+	GasCeil                uint64         // Target gas ceiling for mined blocks.
+	GasPrice               *big.Int       // Minimum gas price for mining a transaction
+	Recommit               *time.Duration `toml:",omitempty"` // The time interval for miner to re-create mining work.
+	VoteEnable             bool           // Whether to vote when mining
+	MaxWaitProposalInSecs  *uint64        `toml:",omitempty"` // The maximum time to wait for the proposal to be done, it's aimed to prevent validator being slashed when restarting
+	DisableVoteAttestation bool           // Whether to skip assembling vote attestation
 
 	Mev MevConfig // Mev configuration
 }
@@ -63,12 +66,12 @@ var DefaultConfig = Config{
 	// consensus-layer usually will wait a half slot of time(6s)
 	// for payload generation. It should be enough for Geth to
 	// run 3 rounds.
-	Recommit:      3 * time.Second,
+	Recommit:      &defaultRecommit,
 	DelayLeftOver: &defaultDelayLeftOver,
 
-	// The default value is set to 30 seconds.
-	// Because the avg restart time in mainnet is around 30s, so the node try to wait for the next multi-proposals to be done.
-	MaxWaitProposalInSecs: 30,
+	// The default value is set to 45 seconds.
+	// Because the avg restart time in mainnet could be 30+ seconds, so the node try to wait for the next multi-proposals to be done.
+	MaxWaitProposalInSecs: &defaultMaxWaitProposalInSecs,
 
 	Mev: DefaultMevConfig,
 }
@@ -79,9 +82,9 @@ type BuilderConfig struct {
 }
 
 type MevConfig struct {
-	Enabled               bool            // Whether to enable Mev or not
+	Enabled               *bool           `toml:",omitempty"` // Whether to enable Mev or not
 	GreedyMergeTx         *bool           `toml:",omitempty"` // Whether to merge local transactions to the bid
-	BuilderFeeCeil        string          // The maximum builder fee of a bid
+	BuilderFeeCeil        *string         `toml:",omitempty"` // The maximum builder fee of a bid
 	SentryURL             string          // The url of Mev sentry
 	Builders              []BuilderConfig // The list of builders
 	ValidatorCommission   *uint64         `toml:",omitempty"` // 100 means the validator claims 1% from block reward
@@ -91,8 +94,9 @@ type MevConfig struct {
 }
 
 var DefaultMevConfig = MevConfig{
-	Enabled:               false,
+	Enabled:               &defaultMevEnabled,
 	GreedyMergeTx:         &defaultGreedyMergeTx,
+	BuilderFeeCeil:        &defaultBuilderFeeCeil,
 	SentryURL:             "",
 	Builders:              nil,
 	ValidatorCommission:   &defaultValidatorCommission,
@@ -106,13 +110,30 @@ func ApplyDefaultMinerConfig(cfg *Config) {
 		log.Warn("ApplyDefaultMinerConfig cfg == nil")
 		return
 	}
+
 	// check [Eth.Miner]
 	if cfg.DelayLeftOver == nil {
 		cfg.DelayLeftOver = &defaultDelayLeftOver
 		log.Info("ApplyDefaultMinerConfig", "DelayLeftOver", *cfg.DelayLeftOver)
 	}
+	if cfg.MaxWaitProposalInSecs == nil {
+		cfg.MaxWaitProposalInSecs = &defaultMaxWaitProposalInSecs
+		log.Info("ApplyDefaultMinerConfig", "MaxWaitProposalInSecs", *cfg.MaxWaitProposalInSecs)
+	}
+	if cfg.Recommit == nil {
+		cfg.Recommit = &defaultRecommit
+		log.Info("ApplyDefaultMinerConfig", "Recommit", *cfg.Recommit)
+	}
 
 	// check [Eth.Miner.Mev]
+	if cfg.Mev.Enabled == nil {
+		cfg.Mev.Enabled = &defaultMevEnabled
+		log.Info("ApplyDefaultMinerConfig", "Mev.Enabled", *cfg.Mev.Enabled)
+	}
+	if cfg.Mev.BuilderFeeCeil == nil {
+		cfg.Mev.BuilderFeeCeil = &defaultBuilderFeeCeil
+		log.Info("ApplyDefaultMinerConfig", "Mev.BuilderFeeCeil", *cfg.Mev.BuilderFeeCeil)
+	}
 	if cfg.Mev.GreedyMergeTx == nil {
 		cfg.Mev.GreedyMergeTx = &defaultGreedyMergeTx
 		log.Info("ApplyDefaultMinerConfig", "Mev.GreedyMergeTx", *cfg.Mev.GreedyMergeTx)

@@ -6,6 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"math/big"
+	"runtime/debug"
+	"time"
+
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -16,12 +21,10 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
+	"github.com/ethereum/go-ethereum/internal/ethapi/override"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 	"golang.org/x/crypto/sha3"
-	"math"
-	"math/big"
-	"runtime/debug"
-	"time"
 
 	"github.com/ethereum/go-ethereum/log"
 )
@@ -232,24 +235,24 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 
 // CallBundleCheckArgs represents the arguments for a call.
 type CallBundleCheckArgs struct {
-	Txs                    []hexutil.Bytes       `json:"txs"`
-	BlockNumber            rpc.BlockNumber       `json:"blockNumber"`
-	StateBlockNumberOrHash rpc.BlockNumberOrHash `json:"stateBlockNumber"`
-	Coinbase               *string               `json:"coinbase"`
-	Timestamp              *uint64               `json:"timestamp"`
-	Timeout                *int64                `json:"timeout"`
-	GasLimit               *uint64               `json:"gasLimit"`
-	Difficulty             *big.Int              `json:"difficulty"`
-	SimulationLogs         bool                  `json:"simulationLogs"`
-	StateOverrides         *StateOverride        `json:"stateOverrides"`
-	BaseFee                *big.Int              `json:"baseFee"`
-	MevToken               common.Address        `json:"mevToken"`
-	MevContract            common.Address        `json:"mevContract"`
-	GrossProfit            *big.Int              `json:"grossProfit"`
-	MinTokenOutBalance     *big.Int              `json:"minTokenOutBalance"`
-	MevTokens              []common.Address      `json:"mevTokens"`
-	ReqId                  string                `json:"reqId"`
-	NeedAccessList         []bool                `json:"need_access_list"`
+	Txs                    []hexutil.Bytes         `json:"txs"`
+	BlockNumber            rpc.BlockNumber         `json:"blockNumber"`
+	StateBlockNumberOrHash rpc.BlockNumberOrHash   `json:"stateBlockNumber"`
+	Coinbase               *string                 `json:"coinbase"`
+	Timestamp              *uint64                 `json:"timestamp"`
+	Timeout                *int64                  `json:"timeout"`
+	GasLimit               *uint64                 `json:"gasLimit"`
+	Difficulty             *big.Int                `json:"difficulty"`
+	SimulationLogs         bool                    `json:"simulationLogs"`
+	StateOverrides         *override.StateOverride `json:"stateOverrides"`
+	BaseFee                *big.Int                `json:"baseFee"`
+	MevToken               common.Address          `json:"mevToken"`
+	MevContract            common.Address          `json:"mevContract"`
+	GrossProfit            *big.Int                `json:"grossProfit"`
+	MinTokenOutBalance     *big.Int                `json:"minTokenOutBalance"`
+	MevTokens              []common.Address        `json:"mevTokens"`
+	ReqId                  string                  `json:"reqId"`
+	NeedAccessList         []bool                  `json:"need_access_list"`
 }
 
 // CallBundleCheckBalance will simulate a bundle of transactions at the top of a given block
@@ -732,7 +735,7 @@ func (s *BundleAPI) CallBundleCheckBalanceAndAccessList(ctx context.Context, arg
 					Value:    (*hexutil.Big)(tx.Value()),
 				}
 
-				accessList, errAL := createAccessListNew(ctx, s.b, callArgs, &args.StateBlockNumberOrHash, state, header)
+				accessList, errAL := createAccessListNew(ctx, s.b, callArgs, &args.StateBlockNumberOrHash, args.StateOverrides, state, header)
 
 				if errAL == nil && accessList != nil {
 
@@ -859,12 +862,12 @@ func (s *BundleAPI) CallBundleCheckBalanceAndAccessList(ctx context.Context, arg
 
 // createAccessListNew creates an EIP-2930 type AccessList for the given transaction.
 // Reexec and BlockNrOrHash can be specified to create the accessList on top of a certain state.
-func createAccessListNew(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash *rpc.BlockNumberOrHash, stateCopy *state.StateDB, header *types.Header) (*accessListResult, error) {
+func createAccessListNew(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash *rpc.BlockNumberOrHash, stateOverrides *override.StateOverride, stateCopy *state.StateDB, header *types.Header) (*accessListResult, error) {
 	bNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 	if blockNrOrHash != nil {
 		bNrOrHash = *blockNrOrHash
 	}
-	acl, gasUsed, vmerr, err := accessListNew(ctx, b, bNrOrHash, args, stateCopy, header)
+	acl, gasUsed, vmerr, err := accessListNew(ctx, b, bNrOrHash, args, stateOverrides, stateCopy, header)
 	if err != nil {
 		log.Info("accessList_0", "block_num", blockNrOrHash.BlockNumber.Int64(), "data", common.Bytes2Hex(args.data()), "to", args.To.Hex(), "err", err)
 		return nil, err
@@ -879,12 +882,21 @@ func createAccessListNew(ctx context.Context, b Backend, args TransactionArgs, b
 // accessListNew creates an access list for the given transaction.
 // If the accesslist creation fails an error is returned.
 // If the transaction itself fails, an vmErr is returned.
-func accessListNew(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrHash, args TransactionArgs, db *state.StateDB, header *types.Header) (acl types.AccessList, gasUsed uint64, vmErr error, err error) {
+func accessListNew(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrHash, args TransactionArgs, stateOverrides *override.StateOverride, db *state.StateDB, header *types.Header) (acl types.AccessList, gasUsed uint64, vmErr error, err error) {
 
 	// Ensure any missing fields are filled, extract the recipient and input data
 	if err := args.setDefaults(ctx, b, true); err != nil {
 		log.Info("accessList_2", "block_num", blockNrOrHash.BlockNumber.Int64(), "data", common.Bytes2Hex(args.data()), "to", args.To.Hex(), "err", err)
 		return nil, 0, nil, err
+	}
+
+	// Apply state overrides immediately after StateAndHeaderByNumberOrHash.
+	// If not applied here, there could be cases where user-specified overrides (e.g., nonce)
+	// may conflict with default values from the database, leading to inconsistencies.
+	if stateOverrides != nil {
+		if err := stateOverrides.Apply(db, nil); err != nil {
+			return nil, 0, nil, err
+		}
 	}
 
 	// Ensure any missing fields are filled, extract the recipient and input data
@@ -912,10 +924,33 @@ func accessListNew(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumber
 	// Retrieve the precompiles since they don't need to be added to the access list
 	precompiles := vm.ActivePrecompiles(b.ChainConfig().Rules(header.Number, isPostMerge, header.Time))
 
+	// addressesToExclude contains sender, receiver, precompiles and valid authorizations
+	addressesToExclude := map[common.Address]struct{}{args.from(): {}, to: {}}
+	for _, addr := range precompiles {
+		addressesToExclude[addr] = struct{}{}
+	}
+
+	// Prevent redundant operations if args contain more authorizations than EVM may handle
+	maxAuthorizations := uint64(*args.Gas) / params.CallNewAccountGas
+	if uint64(len(args.AuthorizationList)) > maxAuthorizations {
+		return nil, 0, nil, errors.New("insufficient gas to process all authorizations")
+	}
+
+	for _, auth := range args.AuthorizationList {
+		// Duplicating stateTransition.validateAuthorization() logic
+		if (!auth.ChainID.IsZero() && auth.ChainID.CmpBig(b.ChainConfig().ChainID) != 0) || auth.Nonce+1 < auth.Nonce {
+			continue
+		}
+
+		if authority, err := auth.Authority(); err == nil {
+			addressesToExclude[authority] = struct{}{}
+		}
+	}
+
 	// Create an initial tracer
-	prevTracer := logger.NewAccessListTracer(nil, args.from(), to, precompiles)
+	prevTracer := logger.NewAccessListTracer(nil, addressesToExclude)
 	if args.AccessList != nil {
-		prevTracer = logger.NewAccessListTracer(*args.AccessList, args.from(), to, precompiles)
+		prevTracer = logger.NewAccessListTracer(*args.AccessList, addressesToExclude)
 	}
 	for {
 		if err := ctx.Err(); err != nil {
@@ -932,7 +967,7 @@ func accessListNew(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumber
 		msg := args.ToMessage(header.BaseFee, true, true)
 
 		// Apply the transaction with the access list tracer
-		tracer := logger.NewAccessListTracer(accessList, args.from(), to, precompiles)
+		tracer := logger.NewAccessListTracer(accessList, addressesToExclude)
 		config := vm.Config{Tracer: tracer.Hooks(), NoBaseFee: true}
 		evm := b.GetEVM(ctx, statedb, header, &config, nil)
 

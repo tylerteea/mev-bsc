@@ -6,9 +6,10 @@ program.option("--startNum <startNum>", "start num");
 program.option("--endNum <endNum>", "end num");
 program.option("--miner <miner>", "miner", "");
 program.option("--num <Num>", "validator num", 21);
-program.option("--turnLength <Num>", "the consecutive block length", 4);
+program.option("--turnLength <Num>", "the consecutive block length", 8);
 program.option("--topNum <Num>", "top num of address to be displayed", 20);
 program.option("--blockNum <Num>", "block num", 0);
+program.option("--gasUsedThreshold <Num>", "gas used threshold", 5000000);
 program.option("-h, --help", "");
 
 function printUsage() {
@@ -25,8 +26,11 @@ function printUsage() {
     console.log("  GetFaucetStatus: get faucet status of BSC testnet");
     console.log("  GetKeyParameters: dump some key governance parameter");
     console.log("  GetMevStatus: get mev blocks of a block range");
+    console.log("  GetLargeTxs: get large txs of a block range");
     console.log("\nOptions:");
     console.log("  --rpc       specify the url of RPC endpoint");
+    console.log("              mainnet: https://bsc-mainnet.nodereal.io/v1/454e504917db4f82b756bd0cf6317dce");
+    console.log("              testnet: https://bsc-testnet-dataseed.bnbchain.org");
     console.log("  --startNum  the start block number");
     console.log("  --endNum    the end block number");
     console.log("  --miner     the miner address");
@@ -34,9 +38,8 @@ function printUsage() {
     console.log("  --topNum    the topNum of blocks to be checked");
     console.log("  --blockNum  the block number to be checked");
     console.log("\nExample:");
-    // mainnet https://bsc-mainnet.nodereal.io/v1/454e504917db4f82b756bd0cf6317dce
     console.log("  node getchainstatus.js GetMaxTxCountInBlockRange --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000005");
-    console.log("  node getchainstatus.js GetBinaryVersion --rpc https://bsc-testnet-dataseed.bnbchain.org --num 21 --turnLength 4");
+    console.log("  node getchainstatus.js GetBinaryVersion --rpc https://bsc-testnet-dataseed.bnbchain.org --num 21 --turnLength 8");
     console.log("  node getchainstatus.js GetTopAddr --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010 --topNum 10");
     console.log("  node getchainstatus.js GetSlashCount --rpc https://bsc-testnet-dataseed.bnbchain.org --blockNum 40000001"); // default: latest block
     console.log("  node getchainstatus.js GetPerformanceData --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010");
@@ -45,6 +48,7 @@ function printUsage() {
     console.log("  node getchainstatus.js GetKeyParameters --rpc https://bsc-testnet-dataseed.bnbchain.org"); // default: latest block
     console.log("  node getchainstatus.js GetEip7623 --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010");
     console.log("  node getchainstatus.js GetMevStatus --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010");
+    console.log("  node getchainstatus.js GetLargeTxs --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --num 100 --gasUsedThreshold 5000000");
 }
 
 program.usage = printUsage;
@@ -56,6 +60,7 @@ const addrValidatorSet = "0x0000000000000000000000000000000000001000";
 const addrSlash = "0x0000000000000000000000000000000000001001";
 const addrStakeHub = "0x0000000000000000000000000000000000002002";
 const addrGovernor = "0x0000000000000000000000000000000000002004";
+const TimelockContract = "0x0000000000000000000000000000000000002006";
 
 const validatorSetAbi = [
     "function validatorExtraSet(uint256 offset) external view returns (uint256, bool, bytes)",
@@ -89,17 +94,25 @@ const stakeHubAbi = [
     "function felonySlashAmount() public view returns (uint256)", // default 200BNB, valid: > max(100, downtimeSlashAmount)
     "function downtimeJailTime() public view returns (uint256)", // default 2days,
     "function felonyJailTime() public view returns (uint256)", // default 30days,
-];
+    "function getValidators(uint256, uint256) external view returns(address[], address[], uint256)",
+    "function getNodeIDs(address[] validatorsToQuery) external view returns(address[], bytes32[][])",
+    ];
+
 
 const governorAbi = [
     "function votingPeriod() public view returns (uint256)",
     "function lateQuorumVoteExtension() public view returns (uint64)", // it represents minPeriodAfterQuorum
 ];
 
+const timelockAbi = [
+    "function getMinDelay() public view returns (uint256)",
+];
+
 const validatorSet = new ethers.Contract(addrValidatorSet, validatorSetAbi, provider);
 const slashIndicator = new ethers.Contract(addrSlash, slashAbi, provider);
 const stakeHub = new ethers.Contract(addrStakeHub, stakeHubAbi, provider);
 const governor = new ethers.Contract(addrGovernor, governorAbi, provider);
+const timelock = new ethers.Contract(TimelockContract, timelockAbi, provider);
 
 const validatorMap = new Map([
     // BSC mainnet
@@ -152,6 +165,7 @@ const validatorMap = new Map([
     ["0x0dC5e1CAe4d364d0C79C9AE6BDdB5DA49b10A7d9", "ListaDAO"],
     ["0xE554F591cCFAc02A84Cf9a5165DDF6C1447Cc67D", "ListaDAO2"],
     ["0x059a8BFd798F29cE665816D12D56400Fa47DE028", "ListaDAO3"],
+    ["0xEC3C2D51b8A6ca9Cf244F709EA3AdE0c7B21238F", "GlobalStk"],
     // Chapel
     ["0x08265dA01E1A65d62b903c7B34c08cB389bF3D99", "Ararat"],
     ["0x7f5f2cF1aec83bF0c74DF566a41aa7ed65EA84Ea", "Kita"],
@@ -183,6 +197,7 @@ const validatorMap = new Map([
     ["0x86eb31b90566a9f4F3AB85138c78A000EBA81685", "GucciOp3k"],
     ["0x28D70c3756d4939DCBdEB3f0fFF5B4B36E6e327F", "OmegaV"],
     ["0x6a5470a3B7959ab064d6815e349eD4aE2dE5210d", "Skynet10k"],
+    ["0x90409F56966B5da954166eB005Cb1A8790430BA1", "Legend"],
 ]);
 
 const builderMap = new Map([
@@ -240,9 +255,17 @@ const builderMap = new Map([
 
     // Chapel
     ["0x627fE6AFA2E84e461CB7AE7C2c46e8adf9a954a2", "txboost"],
-    // ["0x79102dB16781ddDfF63F301C9Be557Fd1Dd48fA0", "nodereal ap"],
-    // ["0x4827b423D03a349b7519Dda537e9A28d31ecBB48", "puissant y"],
-    ["0x0eAbBdE133fbF3c5eB2BEE6F7c8210deEAA0f7db", "blockrazor"],
+    ["0x5EC60f73f938e36400ec3CC3Ff4d7a7703F7c005", "nodereal ap"],
+    ["0x6C98EB21139F6E12db5b78a4AeD4d8eBA147FB7b", "nodereal eu"],
+    // ["0x79102dB16781ddDfF63F301C9Be557Fd1Dd48fA0", "nodereal us"],
+    ["0x4827b423D03a349b7519Dda537e9A28d31ecBB48", "club48 ap"],
+    ["0x48B2665E5E9a343409199D70F7495c8aB660BB48", "club48 eu"],
+    ["0x48B4bBEbF0655557A461e91B8905b85864B8BB48", "club48 us"],
+    ["0x0eAbBdE133fbF3c5eB2BEE6F7c8210deEAA0f7db", "blockrazor ap"],
+    ["0x95c8436143c82Ea4d3529A3ed8DDa9998F6daC5F", "blockrazor eu"],
+    ["0xb71Ba9e570ee20E983De1d5aE01baf5dCB4e4299", "blockrazor us"],
+    ["0x7b3ee856c98b1bb3689ef7f90477df2927fcbdb6",  "trustnet"],
+    ["0xA8caEc0D68a90Ac971EA1aDEFA1747447e1f9871",  "blockroute"],
 ]);
 
 // 1.cmd: "GetMaxTxCountInBlockRange", usage:
@@ -275,7 +298,7 @@ async function getMaxTxCountInBlockRange() {
 // node getchainstatus.js GetBinaryVersion \
 //      --rpc https://bsc-testnet-dataseed.bnbchain.org \
 //       --num(optional): default 21, the number of blocks that will be checked
-//       --turnLength(optional): default 4, the consecutive block length
+//       --turnLength(optional): default 8, the consecutive block length
 async function getBinaryVersion() {
     const blockNum = await provider.getBlockNumber();
     let turnLength = program.turnLength;
@@ -404,8 +427,10 @@ async function getPerformanceData() {
     let gasUsedTotal = 0;
     let inturnBlocks = 0;
     let justifiedBlocks = 0;
-    let turnLength = 1;
+    let turnLength = 8;
+    let lastTimestamp = null; 
     let parliaEnabled = true;
+    
     try {
         turnLength = await provider.send("parlia_getTurnLength", [ethers.toQuantity(program.startNum)]);
     } catch (error) {
@@ -426,14 +451,7 @@ async function getPerformanceData() {
             inturnBlocks += 1;
         }
         let timestamp = eval(eval(header.milliTimestamp).toString(10));
-        if (parliaEnabled) {
-            let justifiedNumber = await provider.send("parlia_getJustifiedNumber", [ethers.toQuantity(i)]);
-            if (justifiedNumber + 1 == i) {
-                justifiedBlocks += 1;
-            } else {
-                console.log("justified unexpected", "BlockNumber =", i, "justifiedNumber", justifiedNumber);
-            }
-        }
+        let blockInterval = lastTimestamp !== null ? timestamp - lastTimestamp : null;
         console.log(
             "BlockNumber =",
             i,
@@ -448,8 +466,20 @@ async function getPerformanceData() {
             "gasUsed",
             gasUsed,
             "timestamp",
-            timestamp
+            timestamp,
+            "blockInterval",
+            blockInterval !== null ? blockInterval : "N/A"
         );
+        lastTimestamp = timestamp;
+
+        if (parliaEnabled) {
+            let justifiedNumber = await provider.send("parlia_getJustifiedNumber", [ethers.toQuantity(i)]);
+            if (justifiedNumber + 1 == i) {
+                justifiedBlocks += 1;
+            } else {
+                console.log("justified unexpected", "BlockNumber =", i, "justifiedNumber", justifiedNumber);
+            }
+        }
     }
     let blockCount = program.endNum - program.startNum;
     let txCountPerBlock = txCountTotal / blockCount;
@@ -610,7 +640,7 @@ async function getKeyParameters() {
     let validatorTable = [];
     for (let i = 0; i < totalLength; i++) {
         validatorTable.push({
-            addr: consensusAddrs[i],
+            consensusAddr: consensusAddrs[i],
             votingPower: Number(votingPowers[i] / BigInt(10 ** 18)),
             voteAddr: voteAddrs[i],
             moniker: await getValidatorMoniker(consensusAddrs[i], blockNum),
@@ -618,6 +648,20 @@ async function getKeyParameters() {
     }
     validatorTable.sort((a, b) => b.votingPower - a.votingPower);
     console.table(validatorTable);
+    // get EVN node ids
+    let validators = await stakeHub.getValidators(0, 1000, { blockTag: blockNum });
+    let operatorAddrs = validators[0];
+    let nodeIdss = await stakeHub.getNodeIDs(Array.from(operatorAddrs), { blockTag: blockNum });
+    let consensusAddrs2 = nodeIdss[0];
+    let nodeIdArr = nodeIdss[1];
+    for (let i = 0; i < consensusAddrs2.length; i++) {
+        let addr = consensusAddrs2[i];
+        let nodeId = nodeIdArr[i];
+        if (nodeId.length > 0) {
+            console.log("consensusAddr:", addr, "nodeId:", nodeId);
+        }
+    }
+
 
     // part 4: governance
     let votingPeriod = await governor.votingPeriod({ blockTag: blockNum });
@@ -625,6 +669,11 @@ async function getKeyParameters() {
     console.log("\n##==== GovernorContract: 0x0000000000000000000000000000000000002004")
     console.log("\tvotingPeriod", Number(votingPeriod));
     console.log("\tminPeriodAfterQuorum", Number(minPeriodAfterQuorum));
+
+    // part 5: timelock
+    let minDelay = await timelock.getMinDelay({ blockTag: blockNum });
+    console.log("\n##==== TimelockContract: 0x0000000000000000000000000000000000002006")
+    console.log("\tminDelay", Number(minDelay));
 }
 
 // 9.cmd: "getEip7623", usage:
@@ -708,16 +757,7 @@ async function getEip7623() {
 async function getMevStatus() {
     let counts = {
         local: 0,
-        blockrazor: 0,
-        puissant: 0,
-        blockroute: 0,
-        jetbldr: 0,
-        txboost: 0,
-        blockbus: 0,
-        darwin: 0,
-        inblock: 0,
-        nodereal: 0,
-        xzbuilder: 0,
+        ...Object.fromEntries([...new Set(builderMap.values())].map(builder => [builder, 0]))
     };
 
     // Get the latest block number
@@ -772,11 +812,7 @@ async function getMevStatus() {
         for (const txData of txResults) {
             if (builderMap.has(txData.to)) {
                 const builder = builderMap.get(txData.to);
-                const builderKey = Object.keys(counts).find(key => builder.includes(key));
-
-                if (builderKey) {
-                    counts[builderKey]++;
-                }
+                counts[builder]++;
 
                 mevBlock = true;
                 console.log(
@@ -803,10 +839,135 @@ async function getMevStatus() {
     console.log(`Range: [${startBlock}, ${endBlock}]`);
     console.log(`Total Blocks: ${total}`);
     console.log("\nBuilder Distribution:");
-    Object.entries(counts).forEach(([key, value]) => {
-        const ratio = (value *100 / total).toFixed(2);
-        console.log(`${key.padEnd(10)}: ${value.toString().padStart(3)} blocks (${ratio}%)`);
-    });
+    const localRatio = (counts.local * 100 / total).toFixed(2);
+    console.log(`${"local".padEnd(maxBuilderLength)}: ${counts.local.toString().padStart(3)} blocks (${localRatio}%)`);
+
+    Object.entries(counts)
+        .filter(([key, value]) => key !== "local" && value > 0)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .forEach(([key, value]) => {
+            const ratio = (value * 100 / total).toFixed(2);
+            console.log(`${key.padEnd(maxBuilderLength)}: ${value.toString().padStart(3)} blocks (${ratio}%)`);
+        });
+}
+
+// 11.cmd: "getLargeTxs", usage:
+// node getchainstatus.js GetLargeTxs \
+//      --rpc https://bsc-testnet-dataseed.bnbchain.org \
+//      --startNum 40000001  --num 100 \
+//      --gasUsedThreshold 5000000
+async function getLargeTxs() {
+    const startTime = Date.now();
+    const gasUsedThreshold = program.gasUsedThreshold;
+    const startBlock = parseInt(program.startNum);
+    const size = parseInt(program.num) || 100;
+    
+    let actualStartBlock = startBlock;
+    if (isNaN(startBlock) || startBlock === 0) {
+        actualStartBlock = await provider.getBlockNumber() - size;
+    }
+    const endBlock = actualStartBlock + size;
+    
+    console.log(`Finding transactions with gas usage >= ${gasUsedThreshold} between blocks ${actualStartBlock} and ${endBlock-1}`);
+    
+    // Cache for validator monikers to avoid redundant RPC calls
+    const validatorCache = new Map();
+    
+    // Process blocks in batches to avoid memory issues with large ranges
+    const BATCH_SIZE = 50;
+    let largeTxCount = 0;
+    
+    for (let batchStart = actualStartBlock; batchStart < endBlock; batchStart += BATCH_SIZE) {
+        const batchEnd = Math.min(batchStart + BATCH_SIZE, endBlock);
+        
+        // Create promises for all blocks in the current batch
+        const blockPromises = [];
+        for (let i = batchStart; i < batchEnd; i++) {
+            blockPromises.push(provider.getBlock(i, true));
+        }
+        
+        // Process all blocks in parallel
+        const blocks = await Promise.all(blockPromises);
+        
+        // Process each block
+        const results = await Promise.all(blocks.map(async (blockData) => {
+            if (!blockData || blockData.transactions.length === 0) {
+                return [];
+            }
+            
+            const blockResults = [];
+            const potentialTxs = [];
+            
+            // First-pass filter: check gas limit from the block data
+            for (let txIndex = 0; txIndex < blockData.transactions.length; txIndex++) {
+                const txData = await blockData.getTransaction(txIndex);
+                if (txData && txData.gasLimit >= gasUsedThreshold) {
+                    potentialTxs.push(txData);
+                }
+            }
+            if (potentialTxs.length === 0) {
+                return [];
+            }
+            
+            // Fetch all transaction receipts in parallel
+            const receiptPromises = potentialTxs.map(tx => provider.getTransactionReceipt(tx.hash));
+            const receipts = await Promise.all(receiptPromises);
+            
+            // Filter transactions by actual gas used
+            const largeTxs = potentialTxs.filter((tx, index) => 
+                receipts[index] && receipts[index].gasUsed >= gasUsedThreshold
+            );
+            if (largeTxs.length === 0) {
+                return [];
+            }
+            
+            // Get validator moniker (use cache if available)
+            let moniker;
+            if (validatorCache.has(blockData.miner)) {
+                moniker = validatorCache.get(blockData.miner);
+            } else {
+                moniker = await getValidatorMoniker(blockData.miner, blockData.number);
+                validatorCache.set(blockData.miner, moniker);
+            }
+
+            // Add details for each large transaction
+            for (let i = 0; i < largeTxs.length; i++) {
+                const tx = largeTxs[i];
+                const receipt = receipts[potentialTxs.findIndex(p => p.hash === tx.hash)];
+                
+                blockResults.push({
+                    blockNumber: blockData.number,
+                    difficulty: Number(blockData.difficulty),
+                    txHash: tx.hash,
+                    gasUsed: Number(receipt.gasUsed),
+                    miner: moniker
+                });
+            }
+            
+            return blockResults;
+        }));
+        
+        // Flatten results and log
+        const flatResults = results.flat();
+        largeTxCount += flatResults.length;
+        
+        flatResults.forEach(result => {
+            console.log(
+                "block:", result.blockNumber, 
+                "difficulty:", result.difficulty, 
+                "txHash:", result.txHash, 
+                "gasUsed:", result.gasUsed,
+                "miner:", result.miner
+            );
+        });
+        
+        // Show progress
+        console.log(`Progress: ${Math.min(batchEnd, endBlock) - actualStartBlock}/${endBlock - actualStartBlock} blocks processed (${Math.round((batchEnd - actualStartBlock) * 100 / (endBlock - actualStartBlock))}%)`);
+    }
+    
+    const endTime = Date.now();
+    const duration = (endTime - startTime) / 1000;
+    console.log(`Found ${largeTxCount} large transactions in ${duration.toFixed(2)} seconds`);
 }
 
 const main = async () => {
@@ -840,6 +1001,8 @@ const main = async () => {
         await getEip7623();
     } else if (cmd === "GetMevStatus") {
         await getMevStatus();
+    } else if (cmd === "GetLargeTxs") {
+        await getLargeTxs();
     } else {
         console.log("unsupported cmd", cmd);
         printUsage();

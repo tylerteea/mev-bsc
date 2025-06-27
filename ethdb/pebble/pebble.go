@@ -168,9 +168,10 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 	// Taken from https://github.com/cockroachdb/pebble/blob/master/internal/constants/constants.go
 	maxMemTableSize := (1<<31)<<(^uint(0)>>63) - 1
 
-	// Two memory tables is configured which is identical to leveldb,
-	// including a frozen memory table and another live one.
-	memTableLimit := 2
+	// Six memory tables are configured
+	// Maintaining the same total memory limit but dividing it into multiple
+	// smaller memtables enables smoother flush operations.
+	memTableLimit := 6
 	memTableSize := cache * 1024 * 1024 / 2 / memTableLimit
 
 	// The memory table size is currently capped at maxMemTableSize-1 due to a
@@ -187,9 +188,18 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 		"handles", handles, "memory table", common.StorageSize(memTableSize))
 
 	db := &Database{
-		fn:           file,
-		log:          logger,
-		quitChan:     make(chan chan error),
+		fn:       file,
+		log:      logger,
+		quitChan: make(chan chan error),
+
+		// Use asynchronous write mode by default. Otherwise, the overhead of frequent fsync
+		// operations can be significant, especially on platforms with slow fsync performance
+		// (e.g., macOS) or less capable SSDs.
+		//
+		// Note that enabling async writes means recent data may be lost in the event of an
+		// application-level panic (writes will also be lost on a machine-level failure,
+		// of course). Geth is expected to handle recovery from an unclean shutdown.
+		// writeOptions: pebble.NoSync,
 		writeOptions: pebble.Sync,
 	}
 	opt := &pebble.Options{
@@ -234,6 +244,15 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 		},
 		Levels: make([]pebble.LevelOptions, numLevels),
 		Logger: panicLogger{}, // TODO(karalabe): Delete when this is upstreamed in Pebble
+
+		// Pebble is configured to use asynchronous write mode, meaning write operations
+		// return as soon as the data is cached in memory, without waiting for the WAL
+		// to be written. This mode offers better write performance but risks losing
+		// recent writes if the application crashes or a power failure/system crash occurs.
+		//
+		// By setting the WALBytesPerSync, the cached WAL writes will be periodically
+		// flushed at the background if the accumulated size exceeds this threshold.
+		WALBytesPerSync: 5 * ethdb.IdealBatchSize,
 	}
 
 	for i := 0; i < len(opt.Levels); i++ {
@@ -431,6 +450,18 @@ func (d *Database) Compact(start []byte, limit []byte) error {
 // Path returns the path to the database directory.
 func (d *Database) Path() string {
 	return d.fn
+}
+
+// SyncKeyValue flushes all pending writes in the write-ahead-log to disk,
+// ensuring data durability up to that point.
+func (d *Database) SyncKeyValue() error {
+	// The entry (value=nil) is not written to the database; it is only
+	// added to the WAL. Writing this special log entry in sync mode
+	// automatically flushes all previous writes, ensuring database
+	// durability up to this point.
+	b := d.db.NewBatch()
+	b.LogData(nil, nil)
+	return d.db.Apply(b, pebble.Sync)
 }
 
 // meter periodically retrieves internal pebble counters and reports them to

@@ -311,6 +311,11 @@ var (
 		Usage:    "Manually specify the Maxwell fork timestamp, overriding the bundled setting",
 		Category: flags.EthCategory,
 	}
+	OverrideFermi = &cli.Uint64Flag{
+		Name:     "override.fermi",
+		Usage:    "Manually specify the Fermi fork timestamp, overriding the bundled setting",
+		Category: flags.EthCategory,
+	}
 	OverrideVerkle = &cli.Uint64Flag{
 		Name:     "override.verkle",
 		Usage:    "Manually specify the Verkle fork timestamp, overriding the bundled setting",
@@ -641,7 +646,7 @@ var (
 	MinerRecommitIntervalFlag = &cli.DurationFlag{
 		Name:     "miner.recommit",
 		Usage:    "Time interval to recreate the block being mined",
-		Value:    ethconfig.Defaults.Miner.Recommit,
+		Value:    *ethconfig.Defaults.Miner.Recommit,
 		Category: flags.MinerCategory,
 	}
 	MinerDelayLeftoverFlag = &cli.DurationFlag{
@@ -826,6 +831,7 @@ var (
 		Value:    strings.Join(node.DefaultConfig.GraphQLVirtualHosts, ","),
 		Category: flags.APICategory,
 	}
+
 	WSEnabledFlag = &cli.BoolFlag{
 		Name:     "ws",
 		Usage:    "Enable the WS-RPC server",
@@ -1124,6 +1130,52 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Name:  "init.p2p-port",
 		Usage: "the p2p port of the nodes in the network",
 		Value: 30311,
+	}
+	InitSentryNodeSize = &cli.IntFlag{
+		Name:  "init.sentrynode-size",
+		Usage: "the size of the sentry node",
+		Value: 0,
+	}
+	InitSentryNodeIPs = &cli.StringFlag{
+		Name:  "init.sentrynode-ips",
+		Usage: "the ips of each sentry node in the network, example '192.168.0.1,192.168.0.2'",
+		Value: "",
+	}
+	InitSentryNodePorts = &cli.StringFlag{
+		Name:  "init.sentrynode-ports",
+		Usage: "the ports of each sentry node in the network, example '30311,30312'",
+		Value: "",
+	}
+	InitFullNodeSize = &cli.IntFlag{
+		Name:  "init.fullnode-size",
+		Usage: "the size of the full node",
+		Value: 0,
+	}
+	InitFullNodeIPs = &cli.StringFlag{
+		Name:  "init.fullnode-ips",
+		Usage: "the ips of each full node in the network, example '192.168.0.1,192.168.0.2'",
+		Value: "",
+	}
+	InitFullNodePorts = &cli.StringFlag{
+		Name:  "init.fullnode-ports",
+		Usage: "the ports of each full node in the network, example '30311,30312'",
+		Value: "",
+	}
+	InitEVNSentryWhitelist = &cli.BoolFlag{
+		Name:  "init.evn-sentry-whitelist",
+		Usage: "whether to add evn sentry NodeIDs in Node.P2P.EVNNodeIDsWhitelist",
+	}
+	InitEVNValidatorWhitelist = &cli.BoolFlag{
+		Name:  "init.evn-validator-whitelist",
+		Usage: "whether to add evn validator NodeIDs in Node.P2P.EVNNodeIDsWhitelist",
+	}
+	InitEVNSentryRegister = &cli.BoolFlag{
+		Name:  "init.evn-sentry-register",
+		Usage: "whether to add evn sentry NodeIDs in ETH.EVNNodeIDsToAdd",
+	}
+	InitEVNValidatorRegister = &cli.BoolFlag{
+		Name:  "init.evn-validator-register",
+		Usage: "whether to add evn validator NodeIDs in ETH.EVNNodeIDsToAdd",
 	}
 	MetricsInfluxDBOrganizationFlag = &cli.StringFlag{
 		Name:     "metrics.influxdb.organization",
@@ -1862,7 +1914,8 @@ func setMiner(ctx *cli.Context, cfg *minerconfig.Config) {
 		cfg.GasPrice = flags.GlobalBig(ctx, MinerGasPriceFlag.Name)
 	}
 	if ctx.IsSet(MinerRecommitIntervalFlag.Name) {
-		cfg.Recommit = ctx.Duration(MinerRecommitIntervalFlag.Name)
+		recommitIntervalFlag := ctx.Duration(MinerRecommitIntervalFlag.Name)
+		cfg.Recommit = &recommitIntervalFlag
 	}
 	if ctx.IsSet(MinerDelayLeftoverFlag.Name) {
 		minerDelayLeftover := ctx.Duration(MinerDelayLeftoverFlag.Name)
@@ -1873,7 +1926,8 @@ func setMiner(ctx *cli.Context, cfg *minerconfig.Config) {
 	}
 	if ctx.IsSet(MinerNewPayloadTimeoutFlag.Name) {
 		log.Warn("The flag --miner.newpayload-timeout is deprecated and will be removed, please use --miner.recommit")
-		cfg.Recommit = ctx.Duration(MinerNewPayloadTimeoutFlag.Name)
+		recommitIntervalFlag := ctx.Duration(MinerRecommitIntervalFlag.Name)
+		cfg.Recommit = &recommitIntervalFlag
 	}
 	if ctx.Bool(DisableVoteAttestationFlag.Name) {
 		cfg.DisableVoteAttestation = true
@@ -1977,12 +2031,17 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 			ctx.Set(CacheFlag.Name, strconv.Itoa(allowance))
 		}
 	}
-	// Ensure Go's GC ignores the database cache for trigger percentage
-	cache := ctx.Int(CacheFlag.Name)
-	gogc := math.Max(20, math.Min(100, 100/(float64(cache)/1024)))
+	// if the total memory is greater than 64GB, skip the GC trigger sanitization
+	if err == nil && int(mem.Total/1024/1024) > 64000 {
+		log.Info("Skipping Go's GC trigger sanitization", "total", mem.Total/1024/1024)
+	} else {
+		// Ensure Go's GC ignores the database cache for trigger percentage
+		cache := ctx.Int(CacheFlag.Name)
+		gogc := math.Max(20, math.Min(100, 100/(float64(cache)/1024)))
 
-	log.Debug("Sanitizing Go's GC trigger", "percent", int(gogc))
-	godebug.SetGCPercent(int(gogc))
+		log.Info("Sanitizing Go's GC trigger", "percent", int(gogc))
+		godebug.SetGCPercent(int(gogc))
+	}
 
 	if ctx.IsSet(SyncTargetFlag.Name) {
 		cfg.SyncMode = ethconfig.FullSync // dev sync target forces full sync
@@ -2443,7 +2502,7 @@ func parseMiningFeatures(ctx *cli.Context, cfg *ethconfig.Config) string {
 		return ""
 	}
 	var features []string
-	if cfg.Miner.Mev.Enabled {
+	if cfg.Miner.Mev.Enabled != nil && *cfg.Miner.Mev.Enabled {
 		features = append(features, "MEV")
 	}
 	if cfg.Miner.VoteEnable {

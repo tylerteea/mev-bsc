@@ -256,6 +256,11 @@ web3._extend({
 			params: 1,
 		}),
 		new web3._extend.Method({
+			name: 'setMemoryLimit',
+			call: 'debug_setMemoryLimit',
+			params: 1,
+		}),
+		new web3._extend.Method({
 			name: 'memStats',
 			call: 'debug_memStats',
 			params: 0,
@@ -585,7 +590,7 @@ web3._extend({
 			call: 'eth_getBlobSidecarByTxHash',
 			params: 2,
 		}),
-		new web3._extend.Method({
+				new web3._extend.Method({
 			name: 'sandwichBestProfit',
 			call: 'eth_sandwichBestProfit',
 			params: 1,
