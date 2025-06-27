@@ -231,7 +231,7 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 
 					var balancesBeforeTmp *big.Int
 					if mevTokenTmp.Cmp(WbnbAddress) == 0 {
-						balancesBeforeTmp = new(big.Int).Add(balancesBefore[i], state.GetBalance(mevTokenTmp).ToBig())
+						balancesBeforeTmp = new(big.Int).Add(balancesBefore[i], state.GetBalance(args.MevContract).ToBig())
 					} else {
 						balancesBeforeTmp = balancesBefore[i]
 					}
@@ -336,7 +336,7 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 
 					var balancesAfterTmp *big.Int
 					if mevTokenTmp.Cmp(WbnbAddress) == 0 {
-						balancesAfterTmp = new(big.Int).Add(balancesAfter[i], state.GetBalance(mevTokenTmp).ToBig())
+						balancesAfterTmp = new(big.Int).Add(balancesAfter[i], state.GetBalance(args.MevContract).ToBig())
 					} else {
 						balancesAfterTmp = balancesAfter[i]
 					}
