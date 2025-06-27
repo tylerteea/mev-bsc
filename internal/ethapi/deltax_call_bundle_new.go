@@ -228,10 +228,18 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 					return nil, errors.New("call_bundle_balance_err2")
 				}
 				for i, mevTokenTmp := range args.MevTokens {
+
+					var balancesBeforeTmp *big.Int
+					if mevTokenTmp.Cmp(WbnbAddress) == 0 {
+						balancesBeforeTmp = new(big.Int).Add(balancesBefore[i], state.GetBalance(mevTokenTmp).ToBig())
+					} else {
+						balancesBeforeTmp = balancesBefore[i]
+					}
+
 					checkBalanceResult := &CheckBalanceResult{
 						BalanceType: "balancesBefore",
 						Token:       mevTokenTmp,
-						Balance:     balancesBefore[i],
+						Balance:     balancesBeforeTmp,
 					}
 					CheckBalanceResults = append(CheckBalanceResults, checkBalanceResult)
 				}
@@ -325,10 +333,18 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 					return nil, errors.New("call_bundle_balance_err4")
 				}
 				for i, mevTokenTmp := range args.MevTokens {
+
+					var balancesAfterTmp *big.Int
+					if mevTokenTmp.Cmp(WbnbAddress) == 0 {
+						balancesAfterTmp = new(big.Int).Add(balancesAfter[i], state.GetBalance(mevTokenTmp).ToBig())
+					} else {
+						balancesAfterTmp = balancesAfter[i]
+					}
+
 					checkBalanceResult := &CheckBalanceResult{
 						BalanceType: "balancesAfter",
 						Token:       mevTokenTmp,
-						Balance:     balancesAfter[i],
+						Balance:     balancesAfterTmp,
 					}
 					CheckBalanceResults = append(CheckBalanceResults, checkBalanceResult)
 				}
