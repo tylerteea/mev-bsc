@@ -5,22 +5,25 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	gomath "math"
+	"math/big"
+	"runtime/debug"
+	"time"
+
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/internal/ethapi/override"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
-	"math"
-	gomath "math"
-	"math/big"
-	"runtime/debug"
-	"time"
 
 	"github.com/ethereum/go-ethereum/log"
 )
@@ -240,29 +243,45 @@ func FillBytes(l int, rawData []byte) []byte {
 	return res
 }
 
-func mevCall(reqId string, state *state.StateDB, header *types.Header, s *BundleAPI, ctx context.Context, args *TransactionArgs, msg *core.Message, overrides *StateOverride, blockOverrides *BlockOverrides) (*core.ExecutionResult, error) {
+func mevCall(reqId string, state *state.StateDB, header *types.Header, s *BundleAPI, ctx context.Context, args *TransactionArgs, msg *core.Message, overrides *override.StateOverride, blockOverrides *override.BlockOverrides) (*core.ExecutionResult, error) {
 
-	//defer func(start time.Time) {
-	//log.Info("call_ExecutingEVMCallFinished", "runtime", time.Since(start), "reqId", reqId)
-	//}(time.Now())
-	//result, err := doMevCall(ctx, s.b, args, state, header, overrides, blockOverrides, s.b.RPCEVMTimeout(), s.b.RPCGasCap())
-	result, err := doMevCall(ctx, s.b, args, msg, state, header, overrides, blockOverrides, 50*time.Millisecond, s.b.RPCGasCap())
+	result, err := DoMevCall(reqId, state, header, s, ctx, args, msg, overrides, blockOverrides, 50*time.Millisecond, s.b.RPCGasCap())
 
 	if err != nil {
 		return nil, err
 	}
 	// If the result contains a revert reason, try to unpack and return it.
-	if len(result.Revert()) > 0 {
+	if errors.Is(result.Err, vm.ErrExecutionReverted) {
 		return nil, newRevertError(result.Revert())
 	}
 	return result, result.Err
 }
 
-func doMevCall(ctx context.Context, b Backend, args *TransactionArgs, msg *core.Message, state *state.StateDB, header *types.Header, overrides *StateOverride, blockOverrides *BlockOverrides, timeout time.Duration, globalGasCap uint64) (*core.ExecutionResult, error) {
+func DoMevCall(reqId string, state *state.StateDB, header *types.Header, s *BundleAPI, ctx context.Context, args *TransactionArgs, msg *core.Message, overrides *override.StateOverride, blockOverrides *override.BlockOverrides, timeout time.Duration, globalGasCap uint64) (*core.ExecutionResult, error) {
+
+	res, derr := doMevCall(ctx, s.b, args, msg, state, header, overrides, blockOverrides, timeout, globalGasCap)
+
+	// Retry once if snapshot error
+	if derr != nil && errors.Is(derr, snapshot.ErrSnapshotStale) {
+		select {
+		case <-time.After(100 * time.Millisecond):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+
+		res, derr = doMevCall(ctx, s.b, args, msg, state, header, overrides, blockOverrides, timeout, globalGasCap)
+	}
+
+	return res, derr
+}
+
+func doMevCall(ctx context.Context, b Backend, args *TransactionArgs, msg *core.Message, state *state.StateDB, header *types.Header, overrides *override.StateOverride, blockOverrides *override.BlockOverrides, timeout time.Duration, globalGasCap uint64) (*core.ExecutionResult, error) {
 
 	blockCtx := core.NewEVMBlockContext(header, NewChainContext(ctx, b), nil)
 	if blockOverrides != nil {
-		blockOverrides.Apply(&blockCtx)
+		if err := blockOverrides.Apply(&blockCtx); err != nil {
+			return nil, err
+		}
 	}
 	rules := b.ChainConfig().Rules(blockCtx.BlockNumber, blockCtx.Random != nil, blockCtx.Time)
 	precompiles := vm.ActivePrecompiledContracts(rules)
@@ -336,10 +355,10 @@ func ApplyTransactionWithResult(config *params.ChainConfig, bc core.ChainContext
 	defer func() {
 		vmenv.Cancel()
 	}()
-	return applyTransactionWithResult(msg, gp, statedb, header.Number, header.Hash(), tx, usedGas, vmenv, receiptProcessors...)
+	return applyTransactionWithResult(msg, gp, statedb, header.Number, header.Hash(), header.Time, tx, usedGas, vmenv, receiptProcessors...)
 }
 
-func applyTransactionWithResult(msg *core.Message, gp *core.GasPool, statedb *state.StateDB, blockNumber *big.Int, blockHash common.Hash, tx *types.Transaction, usedGas *uint64, evm *vm.EVM, receiptProcessors ...core.ReceiptProcessor) (receipt *types.Receipt, result *core.ExecutionResult, err error) {
+func applyTransactionWithResult(msg *core.Message, gp *core.GasPool, statedb *state.StateDB, blockNumber *big.Int, blockHash common.Hash, blockTime uint64, tx *types.Transaction, usedGas *uint64, evm *vm.EVM, receiptProcessors ...core.ReceiptProcessor) (receipt *types.Receipt, result *core.ExecutionResult, err error) {
 	if hooks := evm.Config.Tracer; hooks != nil {
 		if hooks.OnTxStart != nil {
 			hooks.OnTxStart(evm.GetVMContext(), tx, msg.From)
@@ -367,17 +386,17 @@ func applyTransactionWithResult(msg *core.Message, gp *core.GasPool, statedb *st
 	// Merge the tx-local access event into the "block-local" one, in order to collect
 
 	// all values, so that the witness can be built.
-	if statedb.GetTrie().IsVerkle() {
+	if statedb.Database().TrieDB().IsVerkle() {
 		statedb.AccessEvents().Merge(evm.AccessEvents)
 	}
 
-	receipt = MakeReceipt(evm, result, statedb, blockNumber, blockHash, tx, *usedGas, root, receiptProcessors...)
+	receipt = MakeReceipt(evm, result, statedb, blockNumber, blockHash, blockTime, tx, *usedGas, root, receiptProcessors...)
 
 	return receipt, result, err
 }
 
 // MakeReceipt generates the receipt object for a transaction given its execution result.
-func MakeReceipt(evm *vm.EVM, result *core.ExecutionResult, statedb *state.StateDB, blockNumber *big.Int, blockHash common.Hash, tx *types.Transaction, usedGas uint64, root []byte, receiptProcessors ...core.ReceiptProcessor) *types.Receipt {
+func MakeReceipt(evm *vm.EVM, result *core.ExecutionResult, statedb *state.StateDB, blockNumber *big.Int, blockHash common.Hash, blockTime uint64, tx *types.Transaction, usedGas uint64, root []byte, receiptProcessors ...core.ReceiptProcessor) *types.Receipt {
 	// Create a new receipt for the transaction, storing the intermediate root and gas used
 	// by the tx.
 	receipt := &types.Receipt{Type: tx.Type(), PostState: root, CumulativeGasUsed: usedGas}
@@ -400,7 +419,7 @@ func MakeReceipt(evm *vm.EVM, result *core.ExecutionResult, statedb *state.State
 	}
 
 	// Set the receipt logs and create the bloom filter.
-	receipt.Logs = statedb.GetLogs(tx.Hash(), blockNumber.Uint64(), blockHash)
+	receipt.Logs = statedb.GetLogs(tx.Hash(), blockNumber.Uint64(), blockHash, blockTime)
 	receipt.BlockHash = blockHash
 	receipt.BlockNumber = blockNumber
 	receipt.TransactionIndex = uint(statedb.TxIndex())

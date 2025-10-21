@@ -128,7 +128,7 @@ func (cs *chainSyncer) loop() {
 			// Disable all insertion on the blockchain. This needs to happen before
 			// terminating the downloader because the downloader waits for blockchain
 			// inserts, and these can take a long time to finish.
-			cs.handler.chain.StopInsert()
+			cs.handler.chain.InterruptInsert(true)
 			cs.handler.downloader.Terminate()
 			if cs.doneCh != nil {
 				<-cs.doneCh
@@ -217,9 +217,6 @@ func (cs *chainSyncer) modeAndLocalHead() (downloader.SyncMode, *big.Int) {
 	head := cs.handler.chain.CurrentBlock()
 	if pivot := rawdb.ReadLastPivotNumber(cs.handler.database); pivot != nil {
 		if head.Number.Uint64() < *pivot {
-			if rawdb.ReadAncientType(cs.handler.database) == rawdb.PruneFreezerType {
-				log.Crit("Current rewound to before the fast sync pivot, can't enable pruneancient mode", "current block number", head.Number.Uint64(), "pivot", *pivot)
-			}
 			block := cs.handler.chain.CurrentSnapBlock()
 			td := cs.handler.chain.GetTd(block.Hash(), block.Number.Uint64())
 			return ethconfig.SnapSync, td

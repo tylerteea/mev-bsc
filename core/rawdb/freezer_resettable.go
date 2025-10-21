@@ -49,12 +49,12 @@ type resettableFreezer struct {
 //
 // The reset function will delete directory atomically and re-create the
 // freezer from scratch.
-func newResettableFreezer(datadir string, namespace string, readonly bool, offset uint64, maxTableSize uint32, tables map[string]bool) (*resettableFreezer, error) {
+func newResettableFreezer(datadir string, namespace string, readonly bool, maxTableSize uint32, tables map[string]freezerTableConfig) (*resettableFreezer, error) {
 	if err := cleanup(datadir); err != nil {
 		return nil, err
 	}
 	opener := func() (*Freezer, error) {
-		return NewFreezer(datadir, namespace, readonly, offset, maxTableSize, tables)
+		return NewFreezer(datadir, namespace, readonly, maxTableSize, tables)
 	}
 	freezer, err := opener()
 	if err != nil {
@@ -103,15 +103,6 @@ func (f *resettableFreezer) Close() error {
 	defer f.lock.RUnlock()
 
 	return f.freezer.Close()
-}
-
-// HasAncient returns an indicator whether the specified ancient data exists
-// in the freezer
-func (f *resettableFreezer) HasAncient(kind string, number uint64) (bool, error) {
-	f.lock.RLock()
-	defer f.lock.RUnlock()
-
-	return f.freezer.HasAncient(kind, number)
 }
 
 // Ancient retrieves an ancient binary blob from the append-only immutable files.
@@ -166,22 +157,6 @@ func (f *resettableFreezer) ReadAncients(fn func(ethdb.AncientReaderOp) error) (
 	defer f.lock.RUnlock()
 
 	return f.freezer.ReadAncients(fn)
-}
-
-// ItemAmountInAncient returns the actual length of current ancientDB.
-func (f *resettableFreezer) ItemAmountInAncient() (uint64, error) {
-	f.lock.RLock()
-	defer f.lock.RUnlock()
-
-	return f.freezer.ItemAmountInAncient()
-}
-
-// AncientOffSet returns the offset of current ancientDB.
-func (f *resettableFreezer) AncientOffSet() uint64 {
-	f.lock.RLock()
-	defer f.lock.RUnlock()
-
-	return f.freezer.AncientOffSet()
 }
 
 // ModifyAncients runs the given write operation.

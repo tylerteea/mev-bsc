@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	lru "github.com/hashicorp/golang-lru"
+	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/holiman/uint256"
 	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
 	"github.com/willf/bitset"
@@ -196,11 +196,11 @@ func isToSystemContract(to common.Address) bool {
 }
 
 // ecrecover extracts the Ethereum account address from a signed header.
-func ecrecover(header *types.Header, sigCache *lru.ARCCache, chainId *big.Int) (common.Address, error) {
+func ecrecover(header *types.Header, sigCache *lru.Cache[common.Hash, common.Address], chainId *big.Int) (common.Address, error) {
 	// If the signature's already cached, return that
 	hash := header.Hash()
 	if address, known := sigCache.Get(hash); known {
-		return address.(common.Address), nil
+		return address, nil
 	}
 	// Retrieve the signature from the header extra-data
 	if len(header.Extra) < extraSeal {
@@ -240,9 +240,9 @@ type Parlia struct {
 	genesisHash common.Hash
 	db          ethdb.Database // Database to store and retrieve snapshot checkpoints
 
-	recentSnaps   *lru.ARCCache // Snapshots for recent block to speed up
-	signatures    *lru.ARCCache // Signatures of recent blocks to speed up mining
-	recentHeaders *lru.ARCCache //
+	recentSnaps   *lru.Cache[common.Hash, *Snapshot]      // Snapshots for recent block to speed up
+	signatures    *lru.Cache[common.Hash, common.Address] // Signatures of recent blocks to speed up mining
+	recentHeaders *lru.Cache[string, common.Hash]
 	// Recent headers to check for double signing: key includes block number and miner. value is the block header
 	// If same key's value already exists for different block header roots then double sign is detected
 
@@ -276,19 +276,6 @@ func New(
 	parliaConfig := chainConfig.Parlia
 	log.Info("Parlia", "chainConfig", chainConfig)
 
-	// Allocate the snapshot caches and create the engine
-	recentSnaps, err := lru.NewARC(inMemorySnapshots)
-	if err != nil {
-		panic(err)
-	}
-	signatures, err := lru.NewARC(inMemorySignatures)
-	if err != nil {
-		panic(err)
-	}
-	recentHeaders, err := lru.NewARC(inMemoryHeaders)
-	if err != nil {
-		panic(err)
-	}
 	vABIBeforeLuban, err := abi.JSON(strings.NewReader(validatorSetABIBeforeLuban))
 	if err != nil {
 		panic(err)
@@ -311,9 +298,9 @@ func New(
 		genesisHash:                genesisHash,
 		db:                         db,
 		ethAPI:                     ethAPI,
-		recentSnaps:                recentSnaps,
-		recentHeaders:              recentHeaders,
-		signatures:                 signatures,
+		recentSnaps:                lru.NewCache[common.Hash, *Snapshot](inMemorySnapshots),
+		recentHeaders:              lru.NewCache[string, common.Hash](inMemoryHeaders),
+		signatures:                 lru.NewCache[common.Hash, common.Address](inMemorySignatures),
 		validatorSetABIBeforeLuban: vABIBeforeLuban,
 		validatorSetABI:            vABI,
 		slashABI:                   sABI,
@@ -760,7 +747,7 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 	for snap == nil {
 		// If an in-memory snapshot was found, use that
 		if s, ok := p.recentSnaps.Get(hash); ok {
-			snap = s.(*Snapshot)
+			snap = s
 			break
 		}
 
@@ -950,7 +937,7 @@ func (p *Parlia) verifySeal(chain consensus.ChainHeaderReader, header *types.Hea
 	if ok && preHash != header.Hash() {
 		doubleSignCounter.Inc(1)
 		log.Warn("DoubleSign detected", " block", header.Number, " miner", header.Coinbase,
-			"hash1", preHash.(common.Hash), "hash2", header.Hash())
+			"hash1", preHash, "hash2", header.Hash())
 	} else {
 		p.recentHeaders.Add(key, header.Hash())
 	}
@@ -1370,15 +1357,8 @@ func (p *Parlia) EstimateGasReservedForSystemTxs(chain consensus.ChainHeaderRead
 func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, txs *[]*types.Transaction,
 	uncles []*types.Header, _ []*types.Withdrawal, receipts *[]*types.Receipt, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
 	// warn if not in majority fork
-	number := header.Number.Uint64()
-	snap, err := p.snapshot(chain, number-1, header.ParentHash, nil)
-	if err != nil {
-		return err
-	}
-	nextForkHash := forkid.NextForkHash(p.chainConfig, p.genesisHash, chain.GenesisHeader().Time, number, header.Time)
-	if !snap.isMajorityFork(hex.EncodeToString(nextForkHash[:])) {
-		log.Debug("there is a possible fork, and your client is not the majority. Please check...", "nextForkHash", hex.EncodeToString(nextForkHash[:]))
-	}
+	p.detectNewVersionWithFork(chain, header, state)
+
 	// If the block is an epoch end block, verify the validator list
 	// The verification can only be done when the state is ready, it can't be done in VerifyHeader.
 	if err := p.verifyValidators(chain, header); err != nil {
@@ -1398,6 +1378,9 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 
 	systemcontracts.TryUpdateBuildInSystemContract(p.chainConfig, header.Number, parent.Time, header.Time, state, false)
 
+	if err := p.checkNanoBlackList(state, header); err != nil {
+		return err
+	}
 	if p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
 		err := p.initializeFeynmanContract(state, header, cx, txs, receipts, systemTxs, usedGas, false, tracer)
 		if err != nil {
@@ -1413,6 +1396,10 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		}
 	}
 	if header.Difficulty.Cmp(diffInTurn) != 0 {
+		snap, err := p.snapshot(chain, header.Number.Uint64()-1, header.ParentHash, nil)
+		if err != nil {
+			return err
+		}
 		spoiledVal := snap.inturnValidator()
 		signedRecently := false
 		if p.chainConfig.IsPlato(header.Number) {
@@ -1492,6 +1479,10 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	}
 
 	systemcontracts.TryUpdateBuildInSystemContract(p.chainConfig, header.Number, parent.Time, header.Time, state, false)
+
+	if err := p.checkNanoBlackList(state, header); err != nil {
+		return nil, nil, err
+	}
 
 	if p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
 		err := p.initializeFeynmanContract(state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, tracer)
@@ -2154,8 +2145,8 @@ func (p *Parlia) applyTransaction(
 	tracingReceipt.GasUsed = gasUsed
 
 	// Set the receipt logs and create a bloom for filtering
-	tracingReceipt.Logs = state.GetLogs(expectedTx.Hash(), header.Number.Uint64(), header.Hash())
-	tracingReceipt.Bloom = types.CreateBloom(types.Receipts{tracingReceipt})
+	tracingReceipt.Logs = state.GetLogs(expectedTx.Hash(), header.Number.Uint64(), header.Hash(), header.Time)
+	tracingReceipt.Bloom = types.CreateBloom(tracingReceipt)
 	tracingReceipt.BlockHash = header.Hash()
 	tracingReceipt.BlockNumber = header.Number
 	tracingReceipt.TransactionIndex = uint(state.TxIndex())
@@ -2340,6 +2331,43 @@ func (p *Parlia) NextProposalBlock(chain consensus.ChainHeaderReader, header *ty
 	return snap.nextProposalBlock(proposer)
 }
 
+func (p *Parlia) checkNanoBlackList(state vm.StateDB, header *types.Header) error {
+	if p.chainConfig.IsNano(header.Number) {
+		for _, blackListAddr := range types.NanoBlackList {
+			if state.IsAddressInMutations(blackListAddr) {
+				log.Error("blacklisted address found", "address", blackListAddr)
+				return fmt.Errorf("block contains blacklisted address: %s", blackListAddr.Hex())
+			}
+		}
+	}
+	return nil
+}
+
+func (p *Parlia) detectNewVersionWithFork(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB) {
+	// Ignore blocks that are considered too old
+	const maxBlockReceiveDelay = 10 * time.Second
+	blockTime := time.UnixMilli(int64(header.MilliTimestamp()))
+	if time.Since(blockTime) > maxBlockReceiveDelay {
+		return
+	}
+
+	// If the fork is not a majority, log a warning or debug message
+	number := header.Number.Uint64()
+	snap, err := p.snapshot(chain, number-1, header.ParentHash, nil)
+	if err != nil {
+		return
+	}
+	nextForkHash := forkid.NextForkHash(p.chainConfig, p.genesisHash, chain.GenesisHeader().Time, number, header.Time)
+	forkHashHex := hex.EncodeToString(nextForkHash[:])
+	if !snap.isMajorityFork(forkHashHex) {
+		logFn := log.Debug
+		if state.NoTries() {
+			logFn = log.Warn
+		}
+		logFn("possible fork detected: client is not in majority", "nextForkHash", forkHashHex)
+	}
+}
+
 // chain context
 type chainContext struct {
 	Chain  consensus.ChainHeaderReader
@@ -2378,7 +2406,7 @@ func applyMessage(
 	state.SetNonce(msg.From, state.GetNonce(msg.From)+1, tracing.NonceChangeEoACall)
 
 	ret, returnGas, err := evm.Call(
-		vm.AccountRef(msg.From),
+		msg.From,
 		*msg.To,
 		msg.Data,
 		msg.GasLimit,
