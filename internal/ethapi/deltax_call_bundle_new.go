@@ -442,8 +442,9 @@ func getPairsInfo(ctx context.Context, reqId string, s *BundleAPI, pairs []*Pair
 			Type:     "v2",
 		}
 		callTracerJsResults = append(callTracerJsResults, callTracerJsResult)
+		log.Info("call_getPairsInfo_success", "reqId", reqId, "pair", pairInfo.Address)
 	}
-	//log.Info("call_getPairsInfo_finish", "reqId", reqId)
+	log.Info("call_getPairsInfo_finish", "reqId", reqId, "callTracerJsResults", len(callTracerJsResults))
 
 	return callTracerJsResults, nil
 }
@@ -513,7 +514,7 @@ func getPoolsInfo(ctx context.Context, reqId string, s *BundleAPI, pools []*Pool
 		}
 
 		if err != nil {
-			log.Info("call_getPoolsInfo_err", "reqId", reqId, "pool", poolInfo.Address, "err", err)
+			log.Info("call_getPoolsInfo_err", "reqId", reqId, "pool", poolInfo.Address, "version", poolInfo.Version, "err", err)
 			continue
 		}
 		//-------------------------------------------------------------------------------------------
@@ -526,8 +527,10 @@ func getPoolsInfo(ctx context.Context, reqId string, s *BundleAPI, pools []*Pool
 			Type:         "v3",
 		}
 		callTracerJsResults = append(callTracerJsResults, callTracerJsResult)
+
+		log.Info("call_getPoolsInfo_success", "reqId", reqId, "pool", poolInfo.Address, "version", poolInfo.Version)
 	}
-	//log.Info("call_getPoolsInfo_finish", "reqId", reqId)
+	log.Info("call_getPoolsInfo_finish", "reqId", reqId, "callTracerJsResults", len(callTracerJsResults))
 	return callTracerJsResults, nil
 }
 
