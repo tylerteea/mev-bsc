@@ -422,8 +422,9 @@ func getPairsInfo(ctx context.Context, reqId string, s *BundleAPI, pairs []*Pair
 	for _, pairInfo := range pairs {
 
 		getReservesMethod := "getReserves"
+		getReservesData := getMethodData(getReservesMethod)
 
-		getReservesReturn, err := executeMethod(ctx, reqId, s, common.HexToAddress(pairInfo.Address), getReservesMethod, nil, state, header)
+		getReservesReturn, err := executeMethod(ctx, reqId, s, common.HexToAddress(pairInfo.Address), getReservesData, state, header)
 		if err != nil {
 			log.Info("call_getPairsInfo_err", "reqId", reqId, "pair", pairInfo.Address, "method", getReservesMethod, "return", common.Bytes2Hex(getReservesReturn), "err", err)
 			continue
@@ -445,6 +446,37 @@ func getPairsInfo(ctx context.Context, reqId string, s *BundleAPI, pairs []*Pair
 	//log.Info("call_getPairsInfo_finish", "reqId", reqId)
 
 	return callTracerJsResults, nil
+}
+
+func getMethodData(method string) hexutil.Bytes {
+	newMethod := abi.NewMethod(method, method, abi.Function, "pure", false, false, nil, nil)
+	bytes := (hexutil.Bytes)(newMethod.ID)
+	return bytes
+}
+
+func getV4MethodData(methodName, address string) hexutil.Bytes {
+	poolIdFixed, err := getPooID32Bytes(address)
+	if err != nil {
+		return nil
+	}
+
+	poolIdType, _ := abi.NewType("bytes32", "bytes32", nil)
+
+	inArgument := []abi.Argument{
+		{
+			Name: "",
+			Type: poolIdType,
+		},
+	}
+
+	newMethod := abi.NewMethod(methodName, methodName, abi.Function, "pure", false, false, inArgument, nil)
+
+	pack, err := newMethod.Inputs.Pack(poolIdFixed)
+	if err != nil {
+		return nil
+	}
+	var data = append(newMethod.ID, pack...)
+	return data
 }
 
 func getPoolsInfo(ctx context.Context, reqId string, s *BundleAPI, pools []*PoolInfo, state *state.StateDB, header *types.Header) ([]*CallTracerJsResult, error) {
@@ -521,24 +553,20 @@ func getPoolInfoV4(ctx context.Context, reqId string, s *BundleAPI, poolInfo *Po
 		return "", "", "", errors.New("unknown poolInfo.Version")
 	}
 
-	poolIdFixed, err := getPooID32Bytes(poolInfo.Address)
-	if err != nil {
-		return "", "", "", err
-	}
-	params := poolIdFixed[:]
-
 	liquidityMethod := "getLiquidity"
-	liquidityReturn, err := executeMethod(ctx, reqId, s, liquidityToAddress, liquidityMethod, params, state, header)
+	liquidityData := getV4MethodData(liquidityMethod, poolInfo.Address)
+	liquidityReturn, err := executeMethod(ctx, reqId, s, liquidityToAddress, liquidityData, state, header)
 	if err != nil {
-		log.Info("call_getPoolsInfo_err", "reqId", reqId, "pool", poolInfo.Address, "method", liquidityMethod, "return", common.Bytes2Hex(liquidityReturn), "err", err)
+		log.Info("call_getPoolsInfo_v4_getLiquidity_err", "reqId", reqId, "pool", poolInfo.Address, "method", liquidityMethod, "return", common.Bytes2Hex(liquidityReturn), "err", err)
 		return "", "", "", err
 	}
 	liquidity := ZeroX + common.Bytes2Hex(liquidityReturn)
 
 	slot0Method := "getSlot0"
-	slot0Return, err := executeMethod(ctx, reqId, s, common.HexToAddress(poolInfo.Address), slot0Method, params, state, header)
+	slot0Data := getV4MethodData(slot0Method, poolInfo.Address)
+	slot0Return, err := executeMethod(ctx, reqId, s, liquidityToAddress, slot0Data, state, header)
 	if err != nil {
-		log.Info("call_getPoolsInfo_err", "reqId", reqId, "pool", poolInfo.Address, "method", slot0Method, "return", common.Bytes2Hex(slot0Return), "err", err)
+		log.Info("call_getPoolsInfo_v4_getSlot0_err", "reqId", reqId, "pool", poolInfo.Address, "method", slot0Method, "return", common.Bytes2Hex(slot0Return), "err", err)
 		return "", "", "", err
 	}
 
@@ -550,7 +578,8 @@ func getPoolInfoV4(ctx context.Context, reqId string, s *BundleAPI, poolInfo *Po
 
 func getPoolInfoV3(ctx context.Context, reqId string, s *BundleAPI, poolInfo *PoolInfo, state *state.StateDB, header *types.Header) (string, string, string, error) {
 	liquidityMethod := "liquidity"
-	liquidityReturn, err := executeMethod(ctx, reqId, s, common.HexToAddress(poolInfo.Address), liquidityMethod, nil, state, header)
+	liquidityData := getMethodData(liquidityMethod)
+	liquidityReturn, err := executeMethod(ctx, reqId, s, common.HexToAddress(poolInfo.Address), liquidityData, state, header)
 	if err != nil {
 		log.Info("call_getPoolsInfo_err", "reqId", reqId, "pool", poolInfo.Address, "method", liquidityMethod, "return", common.Bytes2Hex(liquidityReturn), "err", err)
 		return "", "", "", err
@@ -561,10 +590,12 @@ func getPoolInfoV3(ctx context.Context, reqId string, s *BundleAPI, poolInfo *Po
 
 	var sqrtPriceX96, tick string
 	slot0Method := "slot0"
-	slot0Return, err := executeMethod(ctx, reqId, s, common.HexToAddress(poolInfo.Address), slot0Method, nil, state, header)
+	slot0Data := getMethodData(slot0Method)
+	slot0Return, err := executeMethod(ctx, reqId, s, common.HexToAddress(poolInfo.Address), slot0Data, state, header)
 	if err != nil {
 		globalStateMethod := "globalState"
-		slot0Return, err = executeMethod(ctx, reqId, s, common.HexToAddress(poolInfo.Address), globalStateMethod, nil, state, header)
+		globalStateData := getMethodData(globalStateMethod)
+		slot0Return, err = executeMethod(ctx, reqId, s, common.HexToAddress(poolInfo.Address), globalStateData, state, header)
 		if err != nil {
 			return "", "", "", err
 		}
@@ -575,7 +606,7 @@ func getPoolInfoV3(ctx context.Context, reqId string, s *BundleAPI, poolInfo *Po
 	return liquidity, sqrtPriceX96, tick, nil
 }
 
-func executeMethod(ctx context.Context, reqId string, s *BundleAPI, poolorPair common.Address, method string, params []byte, state *state.StateDB, header *types.Header) ([]byte, error) {
+func executeMethod(ctx context.Context, reqId string, s *BundleAPI, poolorPair common.Address, data hexutil.Bytes, state *state.StateDB, header *types.Header) ([]byte, error) {
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -585,16 +616,9 @@ func executeMethod(ctx context.Context, reqId string, s *BundleAPI, poolorPair c
 
 	reqId += "_executeMethod_" + poolorPair.String()
 
-	newMethod := abi.NewMethod(method, method, abi.Function, "pure", false, false, nil, nil)
-	bytes := (hexutil.Bytes)(newMethod.ID)
-
-	if params != nil {
-		bytes = append(bytes, params...)
-	}
-
 	callArgs := &TransactionArgs{
 		To:   &poolorPair,
-		Data: &bytes,
+		Data: &data,
 	}
 	callResult, err := mevCall(reqId, state, header, s, ctx, callArgs, nil, nil, nil)
 
