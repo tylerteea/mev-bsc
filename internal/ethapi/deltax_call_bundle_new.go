@@ -475,7 +475,15 @@ func getV4MethodData(methodName, address string) hexutil.Bytes {
 	if err != nil {
 		return nil
 	}
-	var data = append(newMethod.ID, pack...)
+
+	var data hexutil.Bytes
+
+	data = (hexutil.Bytes)(newMethod.ID)
+
+	data = append(data, (hexutil.Bytes)(pack)...)
+
+	log.Info("call_getV4MethodData_finish", "method", methodName, "address", address, "data", common.Bytes2Hex(data))
+
 	return data
 }
 
