@@ -443,6 +443,7 @@ func getPairsInfo(ctx context.Context, reqId string, s *BundleAPI, pairs []*Pair
 		}
 		callTracerJsResults = append(callTracerJsResults, callTracerJsResult)
 		log.Info("call_getPairsInfo_success", "reqId", reqId, "pair", pairInfo.Address)
+
 	}
 	log.Info("call_getPairsInfo_finish", "reqId", reqId, "callTracerJsResults", len(callTracerJsResults))
 
