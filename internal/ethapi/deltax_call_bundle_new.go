@@ -8,6 +8,7 @@ import (
 	"math"
 	"math/big"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -23,6 +24,11 @@ import (
 	"golang.org/x/crypto/sha3"
 
 	"github.com/ethereum/go-ethereum/log"
+)
+
+var (
+	UniswapV4StateView     = common.HexToAddress("0xd13Dd3D6E93f276FAfc9Db9E6BB47C1180aeE0c4")
+	PancakeV4CLPoolManager = common.HexToAddress("0xa0FfB9c1CE1Fe56963B0321B32E7A0302114058b")
 )
 
 type (
@@ -43,14 +49,24 @@ type (
 		NeedAccessList []bool `json:"needAccessList"`
 
 		//pair/pool state
-		Pairs []common.Address `json:"pairs,omitempty"`
-		Pools []common.Address `json:"pools,omitempty"`
+		Pairs []*PairInfo `json:"pairs,omitempty"`
+		Pools []*PoolInfo `json:"pools,omitempty"`
 
 		//balance
 		MevContract        common.Address   `json:"mevContract,omitempty"`
 		MevTokens          []common.Address `json:"mevTokens,omitempty"`
 		BalanceBeforeIndex int              `json:"balanceBeforeIndex,omitempty"`
 		BalanceAfterIndex  int              `json:"balanceAfterIndex,omitempty"`
+	}
+
+	PoolInfo struct {
+		Address string `json:"address"`
+		Version int    `json:"version"`
+	}
+
+	PairInfo struct {
+		Address string `json:"address"`
+		Version int    `json:"version"`
 	}
 
 	CallBundleResultNew struct {
@@ -390,7 +406,7 @@ const (
 	ZeroX = "0x"
 )
 
-func getPairsInfo(ctx context.Context, reqId string, s *BundleAPI, pairs []common.Address, state *state.StateDB, header *types.Header) ([]*CallTracerJsResult, error) {
+func getPairsInfo(ctx context.Context, reqId string, s *BundleAPI, pairs []*PairInfo, state *state.StateDB, header *types.Header) ([]*CallTracerJsResult, error) {
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -403,13 +419,13 @@ func getPairsInfo(ctx context.Context, reqId string, s *BundleAPI, pairs []commo
 
 	var callTracerJsResults []*CallTracerJsResult
 
-	for _, pair := range pairs {
+	for _, pairInfo := range pairs {
 
 		getReservesMethod := "getReserves"
 
-		getReservesReturn, err := executeMethod(ctx, reqId, s, pair, getReservesMethod, state, header)
+		getReservesReturn, err := executeMethod(ctx, reqId, s, common.HexToAddress(pairInfo.Address), getReservesMethod, nil, state, header)
 		if err != nil {
-			log.Info("call_getPairsInfo_err", "reqId", reqId, "pair", pair.String(), "method", getReservesMethod, "return", common.Bytes2Hex(getReservesReturn), "err", err)
+			log.Info("call_getPairsInfo_err", "reqId", reqId, "pair", pairInfo.Address, "method", getReservesMethod, "return", common.Bytes2Hex(getReservesReturn), "err", err)
 			continue
 		}
 
@@ -419,7 +435,7 @@ func getPairsInfo(ctx context.Context, reqId string, s *BundleAPI, pairs []commo
 		reserve1 := getReservesReturn[32:64]
 
 		callTracerJsResult := &CallTracerJsResult{
-			Address:  pair.String(),
+			Address:  pairInfo.Address,
 			Reserve0: ZeroX + common.Bytes2Hex(reserve0),
 			Reserve1: ZeroX + common.Bytes2Hex(reserve1),
 			Type:     "v2",
@@ -431,7 +447,7 @@ func getPairsInfo(ctx context.Context, reqId string, s *BundleAPI, pairs []commo
 	return callTracerJsResults, nil
 }
 
-func getPoolsInfo(ctx context.Context, reqId string, s *BundleAPI, pools []common.Address, state *state.StateDB, header *types.Header) ([]*CallTracerJsResult, error) {
+func getPoolsInfo(ctx context.Context, reqId string, s *BundleAPI, pools []*PoolInfo, state *state.StateDB, header *types.Header) ([]*CallTracerJsResult, error) {
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -444,37 +460,26 @@ func getPoolsInfo(ctx context.Context, reqId string, s *BundleAPI, pools []commo
 
 	var callTracerJsResults []*CallTracerJsResult
 
-	for _, pool := range pools {
+	for _, poolInfo := range pools {
 
-		liquidityMethod := "liquidity"
-		liquidityReturn, err := executeMethod(ctx, reqId, s, pool, liquidityMethod, state, header)
-		if err != nil {
-			log.Info("call_getPoolsInfo_err", "reqId", reqId, "pool", pool.String(), "method", liquidityMethod, "return", common.Bytes2Hex(liquidityReturn), "err", err)
+		var liquidity, sqrtPriceX96, tick string
+		var err error
+		if poolInfo.Version == 1 {
+			liquidity, sqrtPriceX96, tick, err = getPoolInfoV3(ctx, reqId, s, poolInfo, state, header)
+		} else if poolInfo.Version == 8 || poolInfo.Version == 9 {
+			liquidity, sqrtPriceX96, tick, err = getPoolInfoV4(ctx, reqId, s, poolInfo, state, header)
+		} else {
 			continue
 		}
-		//log.Info("call_getPoolsInfo_1", "reqId", reqId, "pool", pool.String(), "method", liquidityMethod, "return", common.Bytes2Hex(liquidityReturn), "err", err)
-		liquidity := ZeroX + common.Bytes2Hex(liquidityReturn)
-		//-------------------------------------------------------------------------------------------
 
-		var sqrtPriceX96, tick string
-		slot0Method := "slot0"
-		slot0Return, err := executeMethod(ctx, reqId, s, pool, slot0Method, state, header)
 		if err != nil {
-			globalStateMethod := "globalState"
-			globalStateReturn, err1 := executeMethod(ctx, reqId, s, pool, globalStateMethod, state, header)
-			if err1 != nil {
-				continue
-			}
-			sqrtPriceX96 = ZeroX + common.Bytes2Hex(globalStateReturn[:32])
-			tick = ZeroX + common.Bytes2Hex(globalStateReturn[32:64])
-		} else {
-			sqrtPriceX96 = ZeroX + common.Bytes2Hex(slot0Return[:32])
-			tick = ZeroX + common.Bytes2Hex(slot0Return[32:64])
+			log.Info("call_getPoolsInfo_err", "reqId", reqId, "pool", poolInfo.Address, "err", err)
+			continue
 		}
 		//-------------------------------------------------------------------------------------------
 
 		callTracerJsResult := &CallTracerJsResult{
-			Address:      pool.String(),
+			Address:      poolInfo.Address,
 			Liquidity:    liquidity,
 			SqrtPriceX96: sqrtPriceX96,
 			Tick:         tick,
@@ -486,7 +491,91 @@ func getPoolsInfo(ctx context.Context, reqId string, s *BundleAPI, pools []commo
 	return callTracerJsResults, nil
 }
 
-func executeMethod(ctx context.Context, reqId string, s *BundleAPI, poolorPair common.Address, method string, state *state.StateDB, header *types.Header) ([]byte, error) {
+func getPooID32Bytes(address string) ([32]byte, error) {
+
+	poolId := address
+
+	poolIdHex := strings.TrimPrefix(poolId, "0x")
+	poolIdBytes, err := hex.DecodeString(poolIdHex)
+
+	if err != nil {
+		return [32]byte{}, fmt.Errorf("invalid poolId hex string: %v", err)
+	}
+	if len(poolIdBytes) != 32 {
+		return [32]byte{}, fmt.Errorf("poolId bytes length is not 32")
+	}
+
+	var poolIdFixed [32]byte
+	copy(poolIdFixed[:], poolIdBytes)
+	return poolIdFixed, nil
+}
+
+func getPoolInfoV4(ctx context.Context, reqId string, s *BundleAPI, poolInfo *PoolInfo, state *state.StateDB, header *types.Header) (string, string, string, error) {
+
+	var liquidityToAddress common.Address
+	if poolInfo.Version == 8 {
+		liquidityToAddress = UniswapV4StateView
+	} else if poolInfo.Version == 9 {
+		liquidityToAddress = PancakeV4CLPoolManager
+	} else {
+		return "", "", "", errors.New("unknown poolInfo.Version")
+	}
+
+	poolIdFixed, err := getPooID32Bytes(poolInfo.Address)
+	if err != nil {
+		return "", "", "", err
+	}
+	params := poolIdFixed[:]
+
+	liquidityMethod := "getLiquidity"
+	liquidityReturn, err := executeMethod(ctx, reqId, s, liquidityToAddress, liquidityMethod, params, state, header)
+	if err != nil {
+		log.Info("call_getPoolsInfo_err", "reqId", reqId, "pool", poolInfo.Address, "method", liquidityMethod, "return", common.Bytes2Hex(liquidityReturn), "err", err)
+		return "", "", "", err
+	}
+	liquidity := ZeroX + common.Bytes2Hex(liquidityReturn)
+
+	slot0Method := "getSlot0"
+	slot0Return, err := executeMethod(ctx, reqId, s, common.HexToAddress(poolInfo.Address), slot0Method, params, state, header)
+	if err != nil {
+		log.Info("call_getPoolsInfo_err", "reqId", reqId, "pool", poolInfo.Address, "method", slot0Method, "return", common.Bytes2Hex(slot0Return), "err", err)
+		return "", "", "", err
+	}
+
+	sqrtPriceX96 := ZeroX + common.Bytes2Hex(slot0Return[:32])
+	tick := ZeroX + common.Bytes2Hex(slot0Return[32:64])
+
+	return liquidity, sqrtPriceX96, tick, nil
+}
+
+func getPoolInfoV3(ctx context.Context, reqId string, s *BundleAPI, poolInfo *PoolInfo, state *state.StateDB, header *types.Header) (string, string, string, error) {
+	liquidityMethod := "liquidity"
+	liquidityReturn, err := executeMethod(ctx, reqId, s, common.HexToAddress(poolInfo.Address), liquidityMethod, nil, state, header)
+	if err != nil {
+		log.Info("call_getPoolsInfo_err", "reqId", reqId, "pool", poolInfo.Address, "method", liquidityMethod, "return", common.Bytes2Hex(liquidityReturn), "err", err)
+		return "", "", "", err
+	}
+	//log.Info("call_getPoolsInfo_1", "reqId", reqId, "pool", pool.String(), "method", liquidityMethod, "return", common.Bytes2Hex(liquidityReturn), "err", err)
+	liquidity := ZeroX + common.Bytes2Hex(liquidityReturn)
+	//-------------------------------------------------------------------------------------------
+
+	var sqrtPriceX96, tick string
+	slot0Method := "slot0"
+	slot0Return, err := executeMethod(ctx, reqId, s, common.HexToAddress(poolInfo.Address), slot0Method, nil, state, header)
+	if err != nil {
+		globalStateMethod := "globalState"
+		slot0Return, err = executeMethod(ctx, reqId, s, common.HexToAddress(poolInfo.Address), globalStateMethod, nil, state, header)
+		if err != nil {
+			return "", "", "", err
+		}
+	}
+	sqrtPriceX96 = ZeroX + common.Bytes2Hex(slot0Return[:32])
+	tick = ZeroX + common.Bytes2Hex(slot0Return[32:64])
+
+	return liquidity, sqrtPriceX96, tick, nil
+}
+
+func executeMethod(ctx context.Context, reqId string, s *BundleAPI, poolorPair common.Address, method string, params []byte, state *state.StateDB, header *types.Header) ([]byte, error) {
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -498,6 +587,10 @@ func executeMethod(ctx context.Context, reqId string, s *BundleAPI, poolorPair c
 
 	newMethod := abi.NewMethod(method, method, abi.Function, "pure", false, false, nil, nil)
 	bytes := (hexutil.Bytes)(newMethod.ID)
+
+	if params != nil {
+		bytes = append(bytes, params...)
+	}
 
 	callArgs := &TransactionArgs{
 		To:   &poolorPair,
