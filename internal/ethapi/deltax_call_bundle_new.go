@@ -593,7 +593,7 @@ func getPoolInfoV3(ctx context.Context, reqId string, s *BundleAPI, poolInfo *Po
 	liquidityData := getMethodData(liquidityMethod)
 	liquidityReturn, err := executeMethod(ctx, reqId, s, common.HexToAddress(poolInfo.Address), liquidityData, state, header)
 	if err != nil {
-		log.Info("call_getPoolsInfo_err", "reqId", reqId, "pool", poolInfo.Address, "method", liquidityMethod, "return", common.Bytes2Hex(liquidityReturn), "err", err)
+		log.Info("call_getPoolsInfo_v3_getLiquidity_err", "reqId", reqId, "pool", poolInfo.Address, "method", liquidityMethod, "return", common.Bytes2Hex(liquidityReturn), "err", err)
 		return "", "", "", err
 	}
 	//log.Info("call_getPoolsInfo_1", "reqId", reqId, "pool", pool.String(), "method", liquidityMethod, "return", common.Bytes2Hex(liquidityReturn), "err", err)
