@@ -249,6 +249,7 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 					if mevTokenTmp.Cmp(WbnbAddress) == 0 {
 						// balancesBeforeTmp = new(big.Int).Add(balancesBefore[i], state.GetBalance(args.MevContract).ToBig())
 						balancesBeforeTmp = balancesBefore[i]
+						log.Info("call_bundle_balance_before", "reqId", reqId, "mevTokenTmp", mevTokenTmp, "balancesBeforeTmp", balancesBeforeTmp, "bnbBalance", state.GetBalance(args.MevContract).ToBig())
 					} else {
 						balancesBeforeTmp = balancesBefore[i]
 					}
@@ -355,6 +356,7 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 					if mevTokenTmp.Cmp(WbnbAddress) == 0 {
 						// balancesAfterTmp = new(big.Int).Add(balancesAfter[i], state.GetBalance(args.MevContract).ToBig())
 						balancesAfterTmp = balancesAfter[i]
+						log.Info("call_bundle_balance_after", "reqId", reqId, "mevTokenTmp", mevTokenTmp, "balancesAfterTmp", balancesAfterTmp, "bnbBalance", state.GetBalance(args.MevContract).ToBig())
 					} else {
 						balancesAfterTmp = balancesAfter[i]
 					}
