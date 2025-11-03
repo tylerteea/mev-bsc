@@ -245,19 +245,10 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 				}
 				for i, mevTokenTmp := range args.MevTokens {
 
-					var balancesBeforeTmp *big.Int
-					if mevTokenTmp.Cmp(WbnbAddress) == 0 {
-						// balancesBeforeTmp = new(big.Int).Add(balancesBefore[i], state.GetBalance(args.MevContract).ToBig())
-						balancesBeforeTmp = balancesBefore[i]
-						log.Info("call_bundle_balance_before", "reqId", reqId, "mevTokenTmp", mevTokenTmp, "balancesBeforeTmp", balancesBeforeTmp, "bnbBalance", state.GetBalance(args.MevContract).ToBig())
-					} else {
-						balancesBeforeTmp = balancesBefore[i]
-					}
-
 					checkBalanceResult := &CheckBalanceResult{
 						BalanceType: "balancesBefore",
 						Token:       mevTokenTmp,
-						Balance:     balancesBeforeTmp,
+						Balance:     balancesBefore[i],
 					}
 					CheckBalanceResults = append(CheckBalanceResults, checkBalanceResult)
 				}
@@ -352,19 +343,10 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 				}
 				for i, mevTokenTmp := range args.MevTokens {
 
-					var balancesAfterTmp *big.Int
-					if mevTokenTmp.Cmp(WbnbAddress) == 0 {
-						// balancesAfterTmp = new(big.Int).Add(balancesAfter[i], state.GetBalance(args.MevContract).ToBig())
-						balancesAfterTmp = balancesAfter[i]
-						log.Info("call_bundle_balance_after", "reqId", reqId, "mevTokenTmp", mevTokenTmp, "balancesAfterTmp", balancesAfterTmp, "bnbBalance", state.GetBalance(args.MevContract).ToBig())
-					} else {
-						balancesAfterTmp = balancesAfter[i]
-					}
-
 					checkBalanceResult := &CheckBalanceResult{
 						BalanceType: "balancesAfter",
 						Token:       mevTokenTmp,
-						Balance:     balancesAfterTmp,
+						Balance:     balancesAfter[i],
 					}
 					CheckBalanceResults = append(CheckBalanceResults, checkBalanceResult)
 				}
@@ -380,8 +362,6 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 		if poolErr == nil {
 			callTracerJsResults = append(callTracerJsResults, callTracerJsResultsPool...)
 		}
-	} else {
-		//log.Info("call_bundle_pools_nil", "reqId", reqId)
 	}
 
 	if args.Pairs != nil {
@@ -389,8 +369,6 @@ func (s *BundleAPI) CallBundleCheckAndPoolPairState(ctx context.Context, args Ca
 		if pairErr == nil {
 			callTracerJsResults = append(callTracerJsResults, callTracerJsResultsPair...)
 		}
-	} else {
-		//log.Info("call_bundle_pairs_nil", "reqId", reqId)
 	}
 
 	callBundleResultNew := &CallBundleResultNew{
