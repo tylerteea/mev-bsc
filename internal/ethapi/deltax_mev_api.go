@@ -64,11 +64,7 @@ var BigIntZeroValue = big.NewInt(0)
 var BigIntOne = big.NewInt(1)
 var BigIntTwo = big.NewInt(2)
 var BigIntFour = big.NewInt(4)
-var GweiOne = big.NewInt(1_000_000_000)
-var epochNum = big.NewInt(200)
-var delayBlockNum = big.NewInt(10)
 var NullAddress = common.HexToAddress("0x0000000000000000000000000000000000000000")
-var WbnbAddress = common.HexToAddress("0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c")
 
 // --------------------------------------------------------Call Bundle--------------------------------------------------------
 
