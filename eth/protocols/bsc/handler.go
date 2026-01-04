@@ -85,13 +85,27 @@ type Decoder interface {
 }
 
 var bsc1 = map[uint64]msgHandler{
-	VotesMsg: handleVotes,
+	BscCapMsg: handleBscCap, // ignore capability message for backward compatibility
+	VotesMsg:  handleVotes,
 }
 
 var bsc2 = map[uint64]msgHandler{
+	BscCapMsg:           handleBscCap, // ignore capability message for backward compatibility
 	VotesMsg:            handleVotes,
 	GetBlocksByRangeMsg: handleGetBlocksByRange,
 	BlocksByRangeMsg:    handleBlocksByRange,
+}
+
+// handleBscCap ignores the capability message for backward compatibility.
+// Old nodes send BscCapMsg as part of their handshake, we just ignore it
+// since P2P layer already negotiated the protocol version.
+func handleBscCap(backend Backend, msg Decoder, peer *Peer) error {
+	// Decode the message to consume it, but ignore the content
+	var cap BscCapPacket
+	if err := msg.Decode(&cap); err != nil {
+		return nil // ignore decode errors for backward compatibility
+	}
+	return nil
 }
 
 // handleMessage is invoked whenever an inbound message is received from a
@@ -166,15 +180,17 @@ func handleGetBlocksByRange(backend Backend, msg Decoder, peer *Peer) error {
 		return fmt.Errorf("msg %v, cannot get start block: %v, %v", GetBlocksByRangeMsg, req.StartBlockHeight, req.StartBlockHash)
 	}
 	blocks = append(blocks, NewBlockData(block))
+	balSize := block.BALSize()
 	for i := uint64(1); i < req.Count; i++ {
 		block = backend.Chain().GetBlockByHash(block.ParentHash())
 		if block == nil {
 			break
 		}
+		balSize += block.BALSize()
 		blocks = append(blocks, NewBlockData(block))
 	}
 
-	log.Debug("reply GetBlocksByRange msg", "from", peer.id, "req", req.Count, "blocks", len(blocks))
+	log.Debug("reply GetBlocksByRange msg", "from", peer.id, "req", req.Count, "blocks", len(blocks), "balSize", balSize)
 	return p2p.Send(peer.rw, BlocksByRangeMsg, &BlocksByRangePacket{
 		RequestId: req.RequestId,
 		Blocks:    blocks,

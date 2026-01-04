@@ -71,8 +71,10 @@ var (
 			utils.OverrideLorentz,
 			utils.OverrideMaxwell,
 			utils.OverrideFermi,
+			utils.OverrideOsaka,
+			utils.OverrideMendel,
 			utils.OverrideVerkle,
-			utils.MultiDataBaseFlag,
+			// utils.MultiDataBaseFlag,
 		}, utils.DatabaseFlags),
 		Description: `
 The init command initializes a new genesis block and definition for the network.
@@ -344,6 +346,14 @@ func initGenesis(ctx *cli.Context) error {
 		v := ctx.Uint64(utils.OverrideFermi.Name)
 		overrides.OverrideFermi = &v
 	}
+	if ctx.IsSet(utils.OverrideOsaka.Name) {
+		v := ctx.Uint64(utils.OverrideOsaka.Name)
+		overrides.OverrideOsaka = &v
+	}
+	if ctx.IsSet(utils.OverrideMendel.Name) {
+		v := ctx.Uint64(utils.OverrideMendel.Name)
+		overrides.OverrideMendel = &v
+	}
 	if ctx.IsSet(utils.OverrideVerkle.Name) {
 		v := ctx.Uint64(utils.OverrideVerkle.Name)
 		overrides.OverrideVerkle = &v
@@ -363,7 +373,7 @@ func initGenesis(ctx *cli.Context) error {
 		log.Warn("Multi-database is an experimental feature")
 	}
 
-	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, ctx.Bool(utils.CachePreimagesFlag.Name), false, genesis.IsVerkle())
+	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, ctx.Bool(utils.CachePreimagesFlag.Name), false, genesis.IsVerkle(), false)
 	defer triedb.Close()
 
 	_, hash, compatErr, err := core.SetupGenesisBlockWithOverride(chaindb, triedb, genesis, &overrides)
@@ -446,7 +456,7 @@ func createPorts(ipStr string, port int, size int) []int {
 }
 
 // Create config for node i in the cluster
-func createNodeConfig(baseConfig gethConfig, ip string, port int, enodes []*enode.Node, index int, staticConnect bool) gethConfig {
+func createNodeConfig(baseConfig gethConfig, prefix string, ip string, port int, enodes []*enode.Node, index int) gethConfig {
 	baseConfig.Node.HTTPHost = ip
 	baseConfig.Node.P2P.ListenAddr = fmt.Sprintf(":%d", port)
 	connectEnodes := make([]*enode.Node, 0, len(enodes)-1)
@@ -457,9 +467,10 @@ func createNodeConfig(baseConfig gethConfig, ip string, port int, enodes []*enod
 		connectEnodes = append(connectEnodes, enodes[j])
 	}
 	// Set the P2P connections between this node and the other nodes
-	if staticConnect {
-		baseConfig.Node.P2P.StaticNodes = connectEnodes
-	} else {
+	baseConfig.Node.P2P.StaticNodes = connectEnodes
+	if prefix == "fullnode" {
+		// Fullnodes may reside in different regions than the `enodes`.
+		// StaticNodes cannot connect to them directly, but can still discover them.
 		baseConfig.Node.P2P.BootstrapNodes = connectEnodes
 	}
 	return baseConfig
@@ -521,7 +532,6 @@ func initNetwork(ctx *cli.Context) error {
 		sentryEnodes          []*enode.Node
 		sentryNodeIDs         []enode.ID
 		connectOneExtraEnodes bool
-		staticConnect         bool
 	)
 	if enableSentryNode {
 		sentryConfigs, sentryEnodes, err = createSentryNodeConfigs(ctx, config, initDir)
@@ -533,10 +543,9 @@ func initNetwork(ctx *cli.Context) error {
 			sentryNodeIDs[i] = sentryEnodes[i].ID()
 		}
 		connectOneExtraEnodes = true
-		staticConnect = true
 	}
 
-	configs, enodes, accounts, err := createConfigs(config, initDir, "node", ips, ports, sentryEnodes, connectOneExtraEnodes, staticConnect)
+	configs, enodes, accounts, err := createConfigs(config, initDir, "node", ips, ports, sentryEnodes, connectOneExtraEnodes)
 	if err != nil {
 		utils.Fatalf("Failed to create node configs: %v", err)
 	}
@@ -549,6 +558,7 @@ func initNetwork(ctx *cli.Context) error {
 	if enableSentryNode {
 		for i := 0; i < len(sentryConfigs); i++ {
 			sentryConfigs[i].Node.P2P.ProxyedValidatorAddresses = accounts[i]
+			sentryConfigs[i].Node.P2P.ProxyedNodeIds = []enode.ID{nodeIDs[i]}
 		}
 	}
 	if ctx.Bool(utils.InitEVNValidatorWhitelist.Name) {
@@ -563,7 +573,8 @@ func initNetwork(ctx *cli.Context) error {
 	}
 	if enableSentryNode && ctx.Bool(utils.InitEVNSentryWhitelist.Name) {
 		for i := 0; i < len(sentryConfigs); i++ {
-			sentryConfigs[i].Node.P2P.EVNNodeIdsWhitelist = sentryNodeIDs
+			sentryConfigs[i].Node.P2P.EVNNodeIdsWhitelist = append([]enode.ID{}, sentryNodeIDs...)
+			sentryConfigs[i].Node.P2P.EVNNodeIdsWhitelist[i] = nodeIDs[i]
 		}
 	}
 	if enableSentryNode && ctx.Bool(utils.InitEVNSentryRegister.Name) {
@@ -587,11 +598,9 @@ func initNetwork(ctx *cli.Context) error {
 	}
 
 	if ctx.Int(utils.InitFullNodeSize.Name) > 0 {
-		var extraEnodes []*enode.Node
+		extraEnodes := enodes
 		if enableSentryNode {
 			extraEnodes = sentryEnodes
-		} else {
-			extraEnodes = enodes
 		}
 		_, _, err := createAndSaveFullNodeConfigs(ctx, inGenesisFile, config, initDir, extraEnodes)
 		if err != nil {
@@ -617,7 +626,7 @@ func createSentryNodeConfigs(ctx *cli.Context, baseConfig gethConfig, initDir st
 	if err != nil {
 		utils.Fatalf("Failed to parse ports: %v", err)
 	}
-	configs, enodes, _, err := createConfigs(baseConfig, initDir, "sentry", ips, ports, nil, false, true)
+	configs, enodes, _, err := createConfigs(baseConfig, initDir, "sentry", ips, ports, nil, false)
 	if err != nil {
 		utils.Fatalf("Failed to create config: %v", err)
 	}
@@ -640,7 +649,7 @@ func createAndSaveFullNodeConfigs(ctx *cli.Context, inGenesisFile *os.File, base
 		utils.Fatalf("Failed to parse ports: %v", err)
 	}
 
-	configs, enodes, _, err := createConfigs(baseConfig, initDir, "fullnode", ips, ports, extraEnodes, false, false)
+	configs, enodes, _, err := createConfigs(baseConfig, initDir, "fullnode", ips, ports, extraEnodes, false)
 	if err != nil {
 		utils.Fatalf("Failed to create config: %v", err)
 	}
@@ -655,7 +664,7 @@ func createAndSaveFullNodeConfigs(ctx *cli.Context, inGenesisFile *os.File, base
 	return configs, enodes, nil
 }
 
-func createConfigs(base gethConfig, initDir string, prefix string, ips []string, ports []int, extraEnodes []*enode.Node, connectOneExtraEnodes bool, staticConnect bool) ([]gethConfig, []*enode.Node, [][]common.Address, error) {
+func createConfigs(base gethConfig, initDir string, prefix string, ips []string, ports []int, extraEnodes []*enode.Node, connectOneExtraEnodes bool) ([]gethConfig, []*enode.Node, [][]common.Address, error) {
 	if len(ips) != len(ports) {
 		return nil, nil, nil, errors.New("mismatch of size and length of ports")
 	}
@@ -686,7 +695,7 @@ func createConfigs(base gethConfig, initDir string, prefix string, ips []string,
 			allEnodes = []*enode.Node{enodes[i], extraEnodes[i]}
 			index = 0
 		}
-		configs[i] = createNodeConfig(base, ips[i], ports[i], allEnodes, index, staticConnect)
+		configs[i] = createNodeConfig(base, prefix, ips[i], ports[i], allEnodes, index)
 	}
 	return configs, enodes, accounts, nil
 }
@@ -1091,7 +1100,7 @@ func dump(ctx *cli.Context) error {
 		return err
 	}
 	defer db.Close()
-	triedb := utils.MakeTrieDatabase(ctx, stack, db, true, true, false) // always enable preimage lookup
+	triedb := utils.MakeTrieDatabase(ctx, stack, db, true, true, false, false) // always enable preimage lookup
 	defer triedb.Close()
 
 	state, err := state.New(root, state.NewDatabase(triedb, nil))

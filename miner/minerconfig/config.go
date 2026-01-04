@@ -32,11 +32,12 @@ var (
 	defaultRecommit              = 10 * time.Second
 	defaultMaxWaitProposalInSecs = uint64(45)
 
-	defaultDelayLeftOver         = 20 * time.Millisecond
+	// Extra time for finalizing and committing blocks (excludes writing to disk).
+	defaultDelayLeftOver         = 25 * time.Millisecond
 	defaultBidSimulationLeftOver = 30 * time.Millisecond
-	// Bid simulation speed on mainnet ranges from 400 to 700 mgasps.
-	// Here we assume 500 for estimation.
-	defaultNoInterruptLeftOver = 170 * time.Millisecond // For gas limit 75M
+	// For estimation, assume 500 Mgas/s:
+	//	(100M gas / 500 Mgas/s) * 1000 ms + 10 ms buffer + defaultDelayLeftOver ≈ 235 ms.
+	defaultNoInterruptLeftOver = 235 * time.Millisecond
 )
 
 // Other default MEV-related configurations
@@ -60,15 +61,15 @@ type Config struct {
 	VoteEnable             bool           // Whether to vote when mining
 	MaxWaitProposalInSecs  *uint64        `toml:",omitempty"` // The maximum time to wait for the proposal to be done, it's aimed to prevent validator being slashed when restarting
 	DisableVoteAttestation bool           // Whether to skip assembling vote attestation
+	TxGasLimit             uint64         // Maximum gas for per transaction
 
 	Mev MevConfig // Mev configuration
 }
 
 // DefaultConfig contains default settings for miner.
 var DefaultConfig = Config{
-	GasCeil:  75000000,
+	GasCeil:  100000000,
 	GasPrice: big.NewInt(params.GWei),
-
 	// The default recommit time is chosen as two seconds since
 	// consensus-layer usually will wait a half slot of time(6s)
 	// for payload generation. It should be enough for Geth to
