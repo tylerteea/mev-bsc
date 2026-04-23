@@ -144,7 +144,7 @@ func DoSingleMulticall(ctx context.Context, b Backend, args TransactionArgs, sta
 			errorString: "CallDefaults_err" + err.Error(),
 		}
 	}
-	msg := args.ToMessage(header.BaseFee, true, true)
+	msg := args.ToMessage(header.BaseFee, true)
 
 	evm := b.GetEVM(ctx, state, header, &vm.Config{NoBaseFee: true}, &blockCtx)
 
@@ -312,7 +312,7 @@ func applyMessageForMev(ctx context.Context, msg *core.Message, b Backend, args 
 		return nil, err
 	}
 	if msg == nil && args != nil {
-		msg = args.ToMessage(blockContext.BaseFee, true, true)
+		msg = args.ToMessage(blockContext.BaseFee, true)
 	}
 	// Lower the basefee to 0 to avoid breaking EVM
 	// invariants (basefee < feecap).

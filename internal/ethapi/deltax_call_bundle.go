@@ -879,13 +879,21 @@ func createAccessListNew(ctx context.Context, b Backend, args TransactionArgs, b
 	return result, nil
 }
 
+func currentBlobSidecarVersion(b Backend) byte {
+	h := b.CurrentHeader()
+	if b.ChainConfig().IsOsaka(h.Number, h.Time) && b.ChainConfig().IsNotInBSC() {
+		return types.BlobSidecarVersion1
+	}
+	return types.BlobSidecarVersion0
+}
+
 // accessListNew creates an access list for the given transaction.
 // If the accesslist creation fails an error is returned.
 // If the transaction itself fails, an vmErr is returned.
 func accessListNew(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrHash, args TransactionArgs, stateOverrides *override.StateOverride, db *state.StateDB, header *types.Header) (acl types.AccessList, gasUsed uint64, vmErr error, err error) {
 
 	// Ensure any missing fields are filled, extract the recipient and input data
-	if err := args.setDefaults(ctx, b, true); err != nil {
+	if err := args.setDefaults(ctx, b, sidecarConfig{blobSidecarAllowed: true, blobSidecarVersion: currentBlobSidecarVersion(b)}); err != nil {
 		log.Info("accessList_2", "block_num", blockNrOrHash.BlockNumber.Int64(), "data", common.Bytes2Hex(args.data()), "to", args.To.Hex(), "err", err)
 		return nil, 0, nil, err
 	}
@@ -964,7 +972,7 @@ func accessListNew(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumber
 		statedb := db.Copy()
 		// Set the accesslist to the last al
 		args.AccessList = &accessList
-		msg := args.ToMessage(header.BaseFee, true, true)
+		msg := args.ToMessage(header.BaseFee, true)
 
 		// Apply the transaction with the access list tracer
 		tracer := logger.NewAccessListTracer(accessList, addressesToExclude)
